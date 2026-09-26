@@ -472,6 +472,52 @@ function chip() {
   return p;
 }
 
+// Powerups: a boxed Y2K patch disk, a multitasking window stack, a screensaver toaster, and Ctrl+Alt+Del.
+function patchDisk() {
+  const p = new Pix(16, 16);
+  p.rect(1, 1, 14, 14, PAL.lime).rect(1, 1, 14, 1, PAL.limeLight).rect(14, 1, 1, 14, '#3f7a1e');
+  p.rect(4, 1, 8, 5, PAL.steelLight).rect(8, 2, 2, 3, PAL.steelDark);
+  p.rect(3, 8, 10, 6, PAL.cream);
+  micro(p, 'FIX', 3, 9, PAL.strawberryDark);
+  p.outline(PAL.ink);
+  return p;
+}
+
+function multiWin() {
+  const p = new Pix(18, 16);
+  for (let k = 2; k >= 0; k--) {
+    const x = k * 3;
+    const y = 6 - k * 3;
+    p.rect(x, y, 11, 9, PAL.winFace).rect(x, y, 11, 2, [PAL.winNavy, PAL.tangerine, PAL.strawberry][k]).rect(x + 1, y + 3, 9, 5, PAL.white);
+  }
+  micro(p, 'x3', 8, 4, PAL.ink);
+  p.outline(PAL.ink);
+  return p;
+}
+
+function toaster(frame = 0) {
+  const p = new Pix(18, 14);
+  p.rect(2, 4, 13, 9, '#c8ccd6').rect(2, 4, 13, 1, PAL.white).rect(14, 4, 1, 9, '#8a909c');
+  p.rect(5, 3, 3, 2, '#2a2a30').rect(10, 3, 3, 2, '#2a2a30').px(6, 2, '#d8a060').px(11, 2, '#d8a060');
+  p.rect(15, 7, 2, 1, '#2a2a30');
+  // Wings flap.
+  if (frame % 2) p.rect(0, 2, 5, 2, PAL.white).rect(12, 2, 5, 2, PAL.white);
+  else p.rect(0, 6, 4, 3, PAL.white).rect(13, 6, 4, 3, PAL.white);
+  p.outline(PAL.ink);
+  return p;
+}
+
+function cadKeys() {
+  const p = new Pix(22, 12);
+  ['C', 'A', 'D'].forEach((ch, k) => {
+    const x = k * 7;
+    p.rect(x, 1, 7, 10, '#d8d0b0').rect(x, 1, 7, 1, PAL.white).rect(x, 9, 7, 2, '#a09878');
+    micro(p, ch, x + 2, 3, PAL.ink);
+  });
+  p.outline(PAL.ink);
+  return p;
+}
+
 function goo(big) {
   const s = big ? 48 : 32;
   const p = new Pix(s, s);
@@ -563,7 +609,9 @@ export function buildSprites() {
   S.yoyo2 = [0, 1, 2, 3].map((i) => tex(yoyo(PAL.cyan, PAL.cyanDark, i)));
   S.floppy = [0, 1, 2, 3].map((i) => tex(floppySpin(i)));
   S.flare = [0, 1].map((i) => tex(rocketFlare(i)));
-  S.pickups = { health: tex(cola()), armor: tex(badge()), overclock: tex(chip()) };
+  S.pickups = { health: tex(cola()), armor: tex(badge()), overclock: tex(chip()), patch: tex(patchDisk()), multi: tex(multiWin()), freeze: tex(toaster(0)), cad: tex(cadKeys()) };
+  S.toasters = [toaster(0), toaster(1)];
+  S.buffIcons = { patch: patchDisk(), multi: multiWin(), freeze: toaster(0), overclock: chip() };
   S.goo = tex(goo(false));
   S.gooBig = tex(goo(true));
   S.shadow = tex(shadowBlob());

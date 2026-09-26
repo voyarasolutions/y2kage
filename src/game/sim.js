@@ -1,6 +1,7 @@
 // One level of Y2Kage: the player on their ride, their weapon, the horde and the waves.
 // Pure game state, no drawing. Map units: one cell = 1, x/y on the ground plane, z is height.
 import { ENEMIES, clockFor } from '../data/levels.js';
+import { rankFor, dmgMulFor, xpForRank } from '../data/progress.js';
 import { PARTY } from '../core/palette.js';
 import { rand, clamp, TAU, pickOne } from '../core/util.js';
 import { sfx } from '../audio/sfx.js';
@@ -31,11 +32,18 @@ const NEW_TIPS = {
 const ZMASS = { shambler: 1, runner: 0.8, brute: 2.5, glitch: 1, boss: 8, crawler: 0.7, bloater: 1.6 };
 
 export class Sim {
-  constructor(map, cfg, hero, levelN) {
+  constructor(map, cfg, hero, levelN, xp = 0) {
     this.map = map;
     this.cfg = cfg;
     this.hero = hero;
     this.levelN = levelN;
+    // Hero experience: persistent XP, rank and the damage bonus it grants.
+    this.xp = xp;
+    this.rank = rankFor(xp);
+    this.dmgMul = dmgMulFor(this.rank);
+    this.lvlUp = null;
+    // Timed powerups.
+    this.buffs = { patch: 0, multi: 0, freeze: 0 };
     this.t = 0;
     this.events = [];
     this.blocked = new Uint8Array(map.w * map.h);
@@ -190,6 +198,8 @@ export class Sim {
       this.banner.t -= dt;
       if (this.banner.t <= 0) this.banner = null;
     }
+    for (const k in this.buffs) this.buffs[k] = Math.max(0, this.buffs[k] - dt);
+    if (this.lvlUp && (this.lvlUp.t -= dt) <= 0) this.lvlUp = null;
     this.combo.t -= dt;
     if (this.combo.t <= 0) this.combo.n = 0;
     if (this.comboCall && (this.comboCall.t -= dt) <= 0) this.comboCall = null;
@@ -393,6 +403,10 @@ export class Sim {
   hurtPlayer(dmg) {
     const P = this.player;
     if (P.dashT > 0 || this.lv.phase === 'done') return;
+    if (this.buffs.patch > 0) {
+      this.flash = { color: '#7ac943', t: 0.06, amt: 0.15 };
+      return;
+    }
     if (P.armor > 0) {
       const soak = Math.min(P.armor, dmg * 0.5);
       P.armor -= soak;
@@ -429,7 +443,10 @@ export class Sim {
           P.fireCd += G.every;
           P.tank -= G.drain * oc;
           const a = P.a + rand(-G.spread, G.spread);
-          this.projs.push({ kind: 'water', x: P.x + dx * 0.4 - dy * 0.12, y: P.y + dy * 0.4 + dx * 0.12, z: eyeZ - 0.22, vx: Math.cos(a) * G.speed + P.vx * 0.5, vy: Math.sin(a) * G.speed + P.vy * 0.5, vz: rand(0.3, 0.9), life: G.life, r: 0.12, dmg: G.dmg, knock: G.knock });
+          for (const off of this.spread()) {
+            const b = a + off;
+            this.projs.push({ kind: 'water', x: P.x + dx * 0.4 - dy * 0.12, y: P.y + dy * 0.4 + dx * 0.12, z: eyeZ - 0.22, vx: Math.cos(b) * G.speed + P.vx * 0.5, vy: Math.sin(b) * G.speed + P.vy * 0.5, vz: rand(0.3, 0.9), life: G.life, r: 0.12, dmg: G.dmg, knock: G.knock });
+          }
           if (Math.random() < 0.35) sfx.shoot('soaker');
         }
         P.fireAnim = 0.06;
@@ -448,7 +465,10 @@ export class Sim {
           P.fireCd = G.every * oc;
           const a = P.a + (hand ? 0.03 : -0.03);
           const side = hand ? 1 : -1;
-          this.projs.push({ kind: 'yoyo', hand, x: P.x + dx * 0.3 - dy * 0.15 * side, y: P.y + dy * 0.3 + dx * 0.15 * side, z: eyeZ - 0.18, vx: Math.cos(a) * G.speed, vy: Math.sin(a) * G.speed, vz: 0, travel: 0, back: false, hits: new Set(), r: 0.22, dmg: G.dmg, knock: G.knock, spin: 0 });
+          this.spread().forEach((off, k) => {
+            const b = a + off;
+            this.projs.push({ kind: 'yoyo', hand: k ? 2 : hand, x: P.x + dx * 0.3 - dy * 0.15 * side, y: P.y + dy * 0.3 + dx * 0.15 * side, z: eyeZ - 0.18, vx: Math.cos(b) * G.speed, vy: Math.sin(b) * G.speed, vz: 0, travel: 0, back: false, hits: new Set(), r: 0.22, dmg: G.dmg, knock: G.knock, spin: 0 });
+          });
           sfx.shoot('yoyo');
         }
       }
@@ -456,14 +476,20 @@ export class Sim {
       if (firing && P.fireCd <= 0) {
         P.fireCd = G.every * oc;
         P.fireAnim = 0.16;
-        this.projs.push({ kind: 'floppy', x: P.x + dx * 0.3 - dy * 0.1, y: P.y + dy * 0.3 + dx * 0.1, z: eyeZ - 0.14, vx: dx * G.speed, vy: dy * G.speed, vz: 0, life: G.life, bounces: G.bounces, r: 0.18, dmg: G.dmg, knock: G.knock, spin: 0 });
+        for (const off of this.spread()) {
+          const b = P.a + off;
+          this.projs.push({ kind: 'floppy', x: P.x + dx * 0.3 - dy * 0.1, y: P.y + dy * 0.3 + dx * 0.1, z: eyeZ - 0.14, vx: Math.cos(b) * G.speed, vy: Math.sin(b) * G.speed, vz: 0, life: G.life, bounces: G.bounces, r: 0.18, dmg: G.dmg, knock: G.knock, spin: 0 });
+        }
         sfx.shoot('floppy');
       }
     } else if (G.kind === 'rocket') {
       if (firing && P.fireCd <= 0) {
         P.fireCd = G.every * oc;
         P.fireAnim = 0.2;
-        this.projs.push({ kind: 'rocket', x: P.x + dx * 0.3 - dy * 0.12, y: P.y + dy * 0.3 + dx * 0.12, z: eyeZ - 0.12, vx: dx * G.speed, vy: dy * G.speed, vz: 0, life: G.life, r: 0.2, dmg: G.direct, knock: 0 });
+        for (const off of this.spread()) {
+          const b = P.a + off;
+          this.projs.push({ kind: 'rocket', x: P.x + dx * 0.3 - dy * 0.12, y: P.y + dy * 0.3 + dx * 0.12, z: eyeZ - 0.12, vx: Math.cos(b) * G.speed, vy: Math.sin(b) * G.speed, vz: 0, life: G.life, r: 0.2, dmg: G.direct, knock: 0 });
+        }
         sfx.shoot('rocket');
         this.shake = Math.min(1, this.shake + 0.15);
       }
@@ -496,6 +522,17 @@ export class Sim {
         const hy = P.y + dy * bestT;
         if (Math.random() < 0.7) this.puff(hx - dx * 0.1, hy - dy * 0.1, eyeZ - 0.1, Math.random() < 0.5 ? '#ff3b3b' : '#fff4d6', 2);
         if (best) this.hurtZombie(best, G.dps * dt, dx, dy, 0.3);
+        // Multitasking: the beam punches through the whole line.
+        if (this.buffs.multi > 0) {
+          for (const z of this.zombies.slice()) {
+            if (z === best) continue;
+            const rx = z.x - P.x;
+            const ry = z.y - P.y;
+            const t = rx * dx + ry * dy;
+            if (t > 0 && t < wallD && Math.abs(rx * dy - ry * dx) < ZRAD[z.kind] * 1.15) this.hurtZombie(z, G.dps * dt, dx, dy, 0.3);
+          }
+          if (best) this.laser.d = wallD;
+        }
         if (P.fireCd <= 0) {
           sfx.shoot('laser');
           P.fireCd = 0.07;
@@ -738,7 +775,7 @@ export class Sim {
     const P = this.player;
     const m = this.map;
     for (const z of this.zombies) {
-      z.anim += dt * (z.kind === 'runner' ? 7 : z.kind === 'boss' ? 4 : z.kind === 'crawler' ? 6 : z.kind === 'bloater' ? 3 : 4.2) * (z.spawnT > 0 ? 0 : 1);
+      z.anim += dt * (this.buffs.freeze > 0 ? 0.3 : 1) * (z.kind === 'runner' ? 7 : z.kind === 'boss' ? 4 : z.kind === 'crawler' ? 6 : z.kind === 'bloater' ? 3 : 4.2) * (z.spawnT > 0 ? 0 : 1);
       z.hurtT = Math.max(0, z.hurtT - dt);
       z.spawnT = Math.max(0, z.spawnT - dt);
       z.cd = Math.max(0, z.cd - dt);
@@ -805,7 +842,7 @@ export class Sim {
         gy = ngy;
       }
 
-      let speed = z.speed;
+      let speed = z.speed * (this.buffs.freeze > 0 ? 0.3 : 1);
       if (z.spawnT > 0) speed = 0;
       if (z.state === 'attack') speed *= 0.15;
 
@@ -913,7 +950,7 @@ export class Sim {
 
   hurtZombie(z, dmg, nx, ny, knock) {
     if (z.dead) return;
-    z.hp -= dmg;
+    z.hp -= dmg * this.dmgMul;
     z.hurtT = 0.08;
     this.hitT = 0.12;
     const k = (knock * 6) / ZMASS[z.kind];
@@ -941,6 +978,7 @@ export class Sim {
       sfx.combo(COMBO_CALLS.indexOf(call));
     }
     this.lv.kills++;
+    this.gainXp(base.score);
     sfx.die();
     this.corpses.push({ kind: z.kind, x: z.x, y: z.y, t: 0, look: z.look, sc: z.sc });
     if (z.kind === 'bloater') this.pop(z);
@@ -965,6 +1003,44 @@ export class Sim {
     if (roll < (P.hp < 50 ? 0.09 : 0.04)) this.dropPickup(z.x, z.y, 'health');
     else if (roll < 0.115) this.dropPickup(z.x, z.y, 'armor');
     else if (roll < 0.14) this.dropPickup(z.x, z.y, 'overclock');
+    else if (roll < 0.165 + (z.kind === 'brute' ? 0.25 : 0)) this.dropPickup(z.x, z.y, pickOne(['patch', 'multi', 'freeze', 'multi', 'patch', 'cad']));
+  }
+
+  // Angle offsets for each shot: one normally, a fan of three while Multitasking.
+  spread() {
+    return this.buffs.multi > 0 ? [0, -0.2, 0.2] : [0];
+  }
+
+  gainXp(n) {
+    this.xp += n;
+    const r = Math.min(99, rankFor(this.xp));
+    if (r > this.rank) {
+      this.rank = r;
+      this.dmgMul = dmgMulFor(r);
+      this.lvlUp = { rank: r, t: 2.2 };
+      this.flash = { color: '#f6c945', t: 0.15, amt: 0.25 };
+      sfx.levelUp();
+      this.emit('levelup', { rank: r });
+    }
+  }
+
+  xpProgress() {
+    const a = xpForRank(this.rank);
+    const b = xpForRank(this.rank + 1);
+    return Math.min(1, (this.xp - a) / Math.max(1, b - a));
+  }
+
+  // Ctrl+Alt+Del: end every zombie in sight. Bosses only take a chunk.
+  nuke() {
+    const P = this.player;
+    for (const z of this.zombies.slice()) {
+      if (Math.hypot(z.x - P.x, z.y - P.y) > 14) continue;
+      if (z.kind === 'boss') this.hurtZombie(z, (z.max * 0.15) / this.dmgMul, 0, 0, 0);
+      else this.hurtZombie(z, 99999, 0, 0, 0);
+    }
+    this.shake = 1;
+    this.flash = { color: '#0000aa', t: 0.35, amt: 0.7 };
+    sfx.bsod();
   }
 
   dropPickup(x, y, kind) {
@@ -991,10 +1067,25 @@ export class Sim {
           P.armor = Math.min(100, P.armor + 50);
           this.toast('+50 ARMOR', 'Y2K compliant');
           this.flash = { color: '#f6c945', t: 0.12, amt: 0.2 };
-        } else {
+        } else if (p.kind === 'overclock') {
           P.overclock = 10;
           this.toast('OVERCLOCKED', '10 seconds of turbo');
           this.flash = { color: '#3de0e0', t: 0.12, amt: 0.2 };
+        } else if (p.kind === 'patch') {
+          this.buffs.patch = 8;
+          this.toast('Y2K PATCH INSTALLED', 'Invincible for 8 seconds');
+          this.flash = { color: '#7ac943', t: 0.15, amt: 0.25 };
+        } else if (p.kind === 'multi') {
+          this.buffs.multi = 10;
+          this.toast('MULTITASKING', 'Triple shot for 10 seconds');
+          this.flash = { color: '#ff8a2a', t: 0.12, amt: 0.2 };
+        } else if (p.kind === 'freeze') {
+          this.buffs.freeze = 7;
+          this.toast('SCREENSAVER ON', 'The horde slows to a crawl');
+          this.flash = { color: '#8fd8ff', t: 0.2, amt: 0.3 };
+        } else if (p.kind === 'cad') {
+          this.toast('CTRL+ALT+DEL', 'End task: everything');
+          this.nuke();
         }
         sfx.pickup();
         this.pickups.splice(i, 1);

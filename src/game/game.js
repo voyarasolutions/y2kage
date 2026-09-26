@@ -5,6 +5,7 @@ import { buildTextures } from '../gfx/textures.js';
 import { buildSprites } from '../gfx/sprites.js';
 import { buildHorde } from '../gfx/horde.js';
 import { settings, saveSettings, SENS_STEPS } from '../core/settings.js';
+import { heroXp, saveHeroXp } from '../data/progress.js';
 import { World } from '../world/world.js';
 import { Sim, EYE, ZRAD, ZHEIGHT } from './sim.js';
 import { Input } from '../core/input.js';
@@ -150,6 +151,7 @@ export class Game {
 
   // ------------------------------------------------------------ flow
   toSelect() {
+    this.saveXp();
     this.input.unlock();
     if (this.mapIdx !== 0) this.loadWorld(0, 1);
     this.sim = null;
@@ -176,11 +178,12 @@ export class Game {
   }
 
   startLevel(n) {
+    this.saveXp();
     this.levelN = n;
     const cfg = levelConfig(n);
     const mapIdx = Math.min(this.maps.length - 1, Math.floor((n - 1) / 10));
     this.loadWorld(mapIdx, n);
-    this.sim = new Sim(this.map, cfg, this.hero, n);
+    this.sim = new Sim(this.map, cfg, this.hero, n, heroXp(this.hero.id));
     this.levelStartScore = this.runScore;
     this.setMode('play');
     const d = Math.floor((n - 1) / 10);
@@ -327,6 +330,7 @@ export class Game {
   }
 
   toTitle() {
+    this.saveXp();
     this.sim = null;
     if (this.mapIdx !== 0) this.loadWorld(0, 1);
     this.setMode('title');
@@ -386,8 +390,13 @@ export class Game {
     this.updateBursts(dt);
   }
 
+  saveXp() {
+    if (this.sim && this.hero) saveHeroXp(this.hero.id, this.sim.xp);
+  }
+
   handleEvents() {
     for (const e of this.sim.events.splice(0)) {
+      if (e.type === 'levelup' || e.type === 'dead' || e.type === 'clear') this.saveXp();
       if (e.type === 'dead') {
         this.deadStats = { level: this.levelN, kills: this.sim.lv.kills, score: this.runScore + this.sim.score, hero: this.hero.name };
         this.bestScore = Math.max(this.bestScore, this.runScore + this.sim.score);
@@ -522,7 +531,7 @@ export class Game {
     for (const p of sim.pickups) {
       if (p.t < 3 && Math.floor(p.t * 8) % 2) continue;
       const tex = S.pickups[p.kind];
-      const w = p.kind === 'health' ? 0.22 : 0.3;
+      const w = p.kind === 'health' ? 0.22 : p.kind === 'cad' ? 0.4 : 0.3;
       const hh = (w * tex.image.height) / tex.image.width;
       W3.sprite(tex, p.x, 0.1 + Math.sin(this.t * 3 + p.ph) * 0.05, p.y, w, hh);
       W3.decal(S.shadow, p.x, p.y, 0.4, 0, 0.3);
@@ -618,6 +627,12 @@ export class Game {
     HUD.drawHurt(g, sim, this.t);
     HUD.drawTopHud(g, sim, this.t);
     HUD.drawBossBar(g, sim, this.t);
+    if (m === 'play' || m === 'paused') {
+      HUD.drawBuffFx(g, sim, this.S, this.t);
+      HUD.drawBuffs(g, sim, this.S, this.t);
+      HUD.drawXpBar(g, sim, this.t);
+    }
+    if (m === 'play') HUD.drawLevelUp(g, sim, this.t);
     if (m === 'play') HUD.drawCombo(g, sim, this.t, 2.2);
     if (m === 'play') HUD.drawBanner(g, sim, this.t);
     HUD.drawToast(g, sim, this.input.touch.on);

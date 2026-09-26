@@ -309,3 +309,58 @@ export function drawCombo(g, sim, t, window) {
     g.globalAlpha = 1;
   }
 }
+
+// Hero XP bar just above the taskbar, with the level on the left.
+export function drawXpBar(g, sim, t) {
+  const y = H - TASKBAR_H - 3;
+  rect(g, 0, y, W, 3, PAL.ink);
+  rect(g, 0, y + 1, Math.round(W * sim.xpProgress()), 1, sim.lvlUp && Math.floor(t * 10) % 2 ? PAL.white : PAL.gold);
+  text(g, `LV ${sim.rank}`, 3, y - 9, { font: 'small', color: PAL.gold, outline: PAL.ink });
+}
+
+// Active powerups under the score: icon plus a draining bar.
+export function drawBuffs(g, sim, S, t) {
+  const list = [];
+  for (const k of ['patch', 'multi', 'freeze']) if (sim.buffs[k] > 0) list.push([k, sim.buffs[k], { patch: 8, multi: 10, freeze: 7 }[k]]);
+  if (sim.player.overclock > 0) list.push(['overclock', sim.player.overclock, 10]);
+  list.forEach(([k, left, max], i) => {
+    if (left < 2 && Math.floor(t * 8) % 2) return;
+    const x = 5 + i * 22;
+    const icon = S.buffIcons[k];
+    g.drawImage(icon.c, x, 17, 16, Math.round((16 * icon.h) / icon.w));
+    rect(g, x, 34, 18, 2, PAL.ink);
+    rect(g, x, 34, Math.round(18 * (left / max)), 2, k === 'patch' ? PAL.lime : k === 'freeze' ? PAL.cyan : PAL.tangerine);
+  });
+}
+
+export function drawLevelUp(g, sim, t) {
+  const L = sim.lvlUp;
+  if (!L) return;
+  const age = 2.2 - L.t;
+  g.globalAlpha = Math.min(1, L.t / 0.4);
+  const y = 78 - Math.round(Math.max(0, 0.2 - age) * 60);
+  text(g, 'LEVEL UP!', W / 2, y, { font: 'big', color: Math.floor(t * 10) % 2 ? PAL.gold : PAL.cream, outline: PAL.ink, align: 'center', scale: 2 });
+  text(g, `LV ${L.rank}   DAMAGE +${Math.round((sim.dmgMul - 1) * 100)}%`, W / 2, y + 20, { font: 'small', color: PAL.cyan, outline: PAL.ink, align: 'center' });
+  g.globalAlpha = 1;
+}
+
+// Powerup overlays: flying toasters for the screensaver, a green frame while patched.
+export function drawBuffFx(g, sim, S, t) {
+  if (sim.buffs.freeze > 0) {
+    g.globalAlpha = Math.min(0.85, sim.buffs.freeze);
+    for (let k = 0; k < 6; k++) {
+      const p = (t * 0.12 + k / 6) % 1;
+      const x = W + 20 - p * (W + 60) + (k % 2) * 30;
+      const y = -20 + p * (H * 0.9) + k * 14;
+      g.drawImage(S.toasters[Math.floor(t * 6 + k) % 2].c, Math.round(x), Math.round(y));
+    }
+    g.globalAlpha = 1;
+  }
+  if (sim.buffs.patch > 0 && (sim.buffs.patch > 2 || Math.floor(t * 8) % 2)) {
+    const c = '#7ac94388';
+    rect(g, 0, 0, W, 2, c);
+    rect(g, 0, H - TASKBAR_H - 2, W, 2, c);
+    rect(g, 0, 0, 2, H - TASKBAR_H, c);
+    rect(g, W - 2, 0, 2, H - TASKBAR_H, c);
+  }
+}

@@ -5,6 +5,7 @@ import { W, H, TAU } from '../core/util.js';
 import { text, textCanvas, textWidth, wrap } from '../core/pixelfont.js';
 import { bevel, rect, button, progress, window98, iconInfo, iconError, startFlag, titleBar } from './win98.js';
 import { HEROES } from '../data/heroes.js';
+import { heroXp, rankFor, dmgMulFor } from '../data/progress.js';
 import { clockFor, DISTRICTS, TOTAL_LEVELS } from '../data/levels.js';
 
 // ---------------------------------------------------------------- chrome logo
@@ -247,16 +248,19 @@ const HOWTO = [
   '',
   'Each hero has a ride and a weapon of their own.',
   'Water fries Corrupted zombies. Every 10th level: boss.',
+  'Kills earn XP. Every LEVEL UP makes that hero hit harder.',
+  'Powerups: FIX disk invincible, x3 triple shot,',
+  'toaster slow-mo, C-A-D ends every zombie in sight.',
 ];
 
 export function drawHowto(g, ui, t) {
-  const w = 300;
-  const h = 170;
+  const w = 340;
+  const h = 196;
   const x = W / 2 - w / 2;
-  const y = 16;
+  const y = 6;
   const inner = window98(g, x, y, w, h, 'README.TXT - Notepad');
   // Menu bar.
-  ['File', 'Edit', 'Search', 'Help'].forEach((m, i) => text(g, m, inner.x + 2 + i * 30, inner.y, { font: 'small', color: PAL.ink }));
+  ['File', 'Edit', 'Search', 'Help'].forEach((m, i) => text(g, m, inner.x + 2 + [0, 30, 60, 100][i], inner.y, { font: 'small', color: PAL.ink }));
   bevel(g, inner.x, inner.y + 10, inner.w, inner.h - 28, true, PAL.white);
   HOWTO.forEach((l, i) => text(g, l, inner.x + 4, inner.y + 14 + i * 9, { font: 'small', color: PAL.ink }));
   const b = { x: inner.x + inner.w - 60, y: inner.y + inner.h - 15, w: 58, h: 14 };
@@ -302,6 +306,7 @@ export function drawSelect(g, ui, t, S) {
     for (let k = y + 6; k < y + 74; k += 2) rect(g, x + 6, k, cw - 12, 1, '#00000030');
     text(g, hero.name, x + cw / 2, y + 79, { font: 'big', color: PAL.white, outline: fl.dark, align: 'center' });
     text(g, String(i + 1), x + cw - 8, y + 7, { font: 'small', color: fl.light, align: 'center' });
+    text(g, `LV${rankFor(heroXp(hero.id))}`, x + 8, y + 7, { font: 'small', color: PAL.gold, outline: PAL.ink });
     if (sel) {
       rect(g, x - 2, y - 2, cw + 4, 1, PAL.white);
       rect(g, x - 2, y + h + 1, cw + 4, 1, PAL.white);
@@ -321,7 +326,8 @@ export function drawSelect(g, ui, t, S) {
   const dw = 240;
   const dx = 8;
   const dy = 120;
-  const inner = window98(g, dx, dy, dw, 84, `${hero.name} "${hero.nick}"`);
+  const rank = rankFor(heroXp(hero.id));
+  const inner = window98(g, dx, dy, dw, 84, `${hero.name} "${hero.nick}"  LV ${rank}${rank > 1 ? ` +${Math.round((dmgMulFor(rank) - 1) * 100)}% DMG` : ''}`);
   bevel(g, inner.x + 1, inner.y + 1, 36, 36, true, FLAVOURS[i].dark);
   g.drawImage(S.portraits[i].c, inner.x + 3, inner.y + 3);
   g.drawImage(S.icons[hero.move.type].c, inner.x + 40, inner.y + 1);

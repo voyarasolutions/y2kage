@@ -101,6 +101,10 @@ export const sfx = {
     if (sfxBus) sfxBus.gain.value = 0.9 * fx;
     if (musicBus) musicBus.gain.value = 0.4 * music;
   },
+  levelUp() {
+    [523, 659, 784, 1046, 1318].forEach((f, i) => tone(f, 0.12, 'square', 0.12, null, i * 0.07));
+    tone(1568, 0.4, 'triangle', 0.12, null, 0.35);
+  },
   // Rising arpeggio, one step higher for every combo tier.
   combo(tier) {
     const root = 523 * Math.pow(2, tier / 6);

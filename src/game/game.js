@@ -493,6 +493,7 @@ export class Game {
       else if (p.kind === 'rocket') W3.sprite(S.flare[Math.floor(this.t * 20) % 2], p.x, p.z - 0.14, p.y, 0.28, 0.28);
     }
     for (const q of sim.particles) W3.particle(q.x, q.z, q.y, q.color);
+    W3.ambient(this.t, P.x, P.y);
     if (sim.laser) {
       const d = sim.laser.d;
       const fx2 = Math.cos(P.a);

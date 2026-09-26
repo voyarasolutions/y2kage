@@ -2,7 +2,7 @@
 // jumbotrons, subway tile, server racks. Lighting is baked into vertex colours from streetlamps,
 // neon and fluorescents (like the sector lighting of the old shooters), then fog fades it to night.
 import * as THREE from 'three';
-import { TPU, drawJumbo, drawRack } from '../gfx/textures.js';
+import { TPU, drawJumbo, drawRack, NEON_WORDS } from '../gfx/textures.js';
 import { PAL, PARTY, rgb } from '../core/palette.js';
 import { hash2, mulberry32, TAU } from '../core/util.js';
 
@@ -18,8 +18,9 @@ const WALLS = {
   G: { h: [1.75, 1.75], bands: [[0, 'pillar', 1.75]] },
   R: { h: [1.5, 1.5], bands: [[0, 'rack', 1.5]] },
   D: { h: [1.6, 1.6], bands: [[0, 'dataWall', 1.5]] },
+  T: { h: [1.4, 1.4], bands: [[0, 'train', 1.4]] },
 };
-const TEX_W = { brick: 2, brickUpper: 4, shop: 8, shopUpper: 4, poster: 4, posterUpper: 4, jumbo: 3, tower: 2, glass: 2, tile: 2, pillar: 1, rack: 2, dataWall: 2 };
+const TEX_W = { brick: 2, brickUpper: 4, shop: 8, shopUpper: 4, poster: 4, posterUpper: 4, jumbo: 3, tower: 2, glass: 2, tile: 2, pillar: 1, rack: 2, dataWall: 2, train: 4 };
 const FLOOR_TEX = { street: ['street', 2], walk: ['walk', 1], stripe: ['stripe', 2], platform: ['platform', 1], tracks: ['tracks', 1], edge: ['edge', 1], raised: ['raised', 1], cable: ['cable', 1], roof: ['roof', 1], stage: ['stage', 1] };
 
 const INDOOR = {
@@ -110,10 +111,19 @@ export class World {
     const B = new GeoBuilder();
     this.buildWalls(B, map);
     this.buildFloor(B, map);
+    if (!indoor) this.buildCurbs(B, map);
     B.build(this.T, g);
     this.buildProps(g, map);
+    this.buildDecor(g, map);
     this.buildLamps(g, map);
-    if (!indoor) this.buildSky(g, map);
+    this.beams = [];
+    this.neonFlicker = [];
+    if (!indoor) {
+      this.buildSky(g, map);
+      this.buildNeon(g, map);
+      this.buildSearchlights(g, map);
+    } else if (map.name === 'Subway Platform') this.buildSubway(g, map);
+    else this.buildServerRoom(g, map);
     if (map.name === 'The Ball Drop') this.buildBall(g, map);
     this.jumboRuns = map.walls.some((w, i) => map.wallChar[i] === 'J');
     this.scene.add(g);
@@ -407,6 +417,223 @@ export class World {
     }
   }
 
+  // Fullbright material (neon, lit signs): ignores baked light, still fogs.
+  glow(key) {
+    this.glows = this.glows || {};
+    if (!this.glows[key]) {
+      this.glows[key] = new THREE.MeshBasicMaterial({ map: this.T[key], fog: true });
+      this.glows[key].userData.keep = true;
+    }
+    return this.glows[key];
+  }
+
+  // Low-poly lump (trash bags), shaded by the baked light.
+  lump(r, sy, key, x, z, seed) {
+    const g = new THREE.IcosahedronGeometry(r, 0);
+    g.scale(1, sy, 1);
+    g.translate(0, r * sy * 0.8, 0);
+    g.rotateY(seed * TAU);
+    const pos = g.attributes.position;
+    const nrm = g.attributes.normal;
+    const col = [];
+    for (let i = 0; i < pos.count; i++) {
+      const l = this.lightAt(x + pos.getX(i), pos.getY(i), z + pos.getZ(i), nrm.getX(i), nrm.getY(i), nrm.getZ(i));
+      col.push(l[0], l[1], l[2]);
+    }
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    const m = new THREE.Mesh(g, this.mat(key));
+    m.position.set(x, 0, z);
+    return m;
+  }
+
+  buildDecor(group, map) {
+    this.vents = [];
+    for (const d of map.decor || []) {
+      const { x, y: z, rot } = d;
+      const r = hash2(x * 31, z * 17);
+      const fwd = (k) => [x + Math.sin(rot) * k, z + Math.cos(rot) * k];
+      if (d.kind === 'hydrant') {
+        group.add(this.cylinder(0.11, 0.13, 0.42, 'red', 'red', x, z));
+        group.add(this.box(0.3, 0.07, 0.07, 'red', x, 0.26, z, rot + Math.PI / 2));
+        group.add(this.box(0.12, 0.08, 0.12, 'gold', x, 0.42, z, rot));
+      } else if (d.kind === 'payphone') {
+        group.add(this.box(0.06, 1.3, 0.06, 'steel', x, 0, z, rot));
+        group.add(this.box(0.42, 0.6, 0.2, ['steel', 'steel', 'blue', 'steel', 'payphone', 'steel'], ...[fwd(0.06)[0]], 0.72, fwd(0.06)[1], rot));
+        group.add(this.box(0.5, 0.08, 0.28, 'blue', fwd(0.06)[0], 1.32, fwd(0.06)[1], rot));
+      } else if (d.kind === 'mailbox') {
+        group.add(this.box(0.46, 0.72, 0.4, ['blue', 'blue', 'blue', 'blue', 'mailbox', 'blue'], x, 0.08, z, rot));
+        for (const s of [-0.18, 0.18]) group.add(this.box(0.05, 0.1, 0.36, 'iron', x + Math.cos(rot) * s, 0, z - Math.sin(rot) * s, rot));
+      } else if (d.kind === 'endSign') {
+        const m = this.box(0.5, 0.72, 0.06, ['wood', 'wood', 'wood', 'wood', 'endSign', 'endSign'], x, 0, z, rot + (r - 0.5) * 0.6);
+        group.add(m);
+      } else if (d.kind === 'bags') {
+        const n = 2 + Math.floor(r * 3);
+        for (let k = 0; k < n; k++) {
+          const a = k * 2.1 + r * 5;
+          group.add(this.lump(0.18 + ((k * 7) % 3) * 0.03, 0.75, 'bag', x + Math.cos(a) * 0.18, z + Math.sin(a) * 0.18, r + k));
+        }
+      } else if (d.kind === 'manhole') {
+        const m = new THREE.Mesh(this.decalGeo, new THREE.MeshBasicMaterial({ map: this.T.manhole, transparent: true, alphaTest: 0.5, fog: true, color: new THREE.Color(...this.lightAt(x, 0, z, 0, 1, 0)) }));
+        m.scale.set(0.9, 1, 0.9);
+        m.position.set(x, 0.012, z);
+        group.add(m);
+        this.vents.push({ x, z, seed: r });
+      } else if (d.kind === 'crtPile') {
+        const keys = ['crtBlue', 'crtOff', 'crtGreen'];
+        const n = 2 + Math.floor(r * 2);
+        for (let k = 0; k < n; k++) {
+          const s = 0.34;
+          const ox = k === 2 ? 0 : (k - 0.5) * 0.36;
+          const y = k === 2 ? s : 0;
+          group.add(this.box(s, s, s, ['beige', 'beige', 'beige', 'beige', keys[(k + Math.floor(r * 3)) % 3], 'beige'], x + Math.cos(rot) * ox, y, z - Math.sin(rot) * ox, rot + (k - 1) * 0.25));
+        }
+      } else if (d.kind === 'desk') {
+        group.add(this.box(0.9, 0.05, 0.5, 'wood', x, 0.68, z, rot));
+        for (const s of [-0.4, 0.4]) group.add(this.box(0.05, 0.68, 0.44, 'darkMetal', x + Math.cos(rot) * s, 0, z - Math.sin(rot) * s, rot));
+        group.add(this.box(0.34, 0.32, 0.32, ['beige', 'beige', 'beige', 'beige', r < 0.5 ? 'crtBlue' : 'crtGreen', 'beige'], x, 0.73, z, rot));
+        group.add(this.box(0.4, 0.03, 0.14, 'beige', fwd(0.2)[0], 0.73, fwd(0.2)[1], rot));
+      } else if (d.kind === 'extinguisher') {
+        group.add(this.cylinder(0.07, 0.07, 0.42, 'red', 'darkMetal', x, z));
+      } else if (d.kind === 'ac') {
+        group.add(this.box(0.8, 0.62, 0.6, ['acSide', 'acSide', 'acTop', 'iron', 'acSide', 'acSide'], x, 0, z, rot));
+      } else if (d.kind === 'speakers') {
+        group.add(this.box(0.56, 0.9, 0.46, ['iron', 'iron', 'iron', 'iron', 'speaker', 'iron'], x, 0, z, rot));
+        group.add(this.box(0.5, 0.8, 0.42, ['iron', 'iron', 'iron', 'iron', 'speaker', 'iron'], x, 0.9, z, rot + 0.1));
+      } else if (d.kind === 'vending') {
+        const mats = ['red', 'red', 'red', 'red', 'vending', 'red'].map((k) => (k === 'vending' ? this.glow(k) : this.mat(k)));
+        const m = this.box(0.6, 1.25, 0.5, 'red', x, 0, z, rot);
+        m.material = mats;
+        group.add(m);
+      }
+    }
+  }
+
+  // Neon blade signs sticking out of the storefronts, a few of them on the blink.
+  buildNeon(group, map) {
+    this.neonFlicker = [];
+    let n = 0;
+    for (let y = 1; y < map.h - 1; y++) {
+      for (let x = 1; x < map.w - 1; x++) {
+        const i = y * map.w + x;
+        if (!map.walls[i] || !'SP'.includes(map.wallChar[i]) || hash2(x * 5 + 1, y * 3 + 2) > 0.3) continue;
+        for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const j = (y + oy) * map.w + x + ox;
+          if (map.walls[j] || map.grid[y + oy][x + ox] !== ':') continue;
+          const [word] = NEON_WORDS[(x * 3 + y * 5) % NEON_WORDS.length];
+          const key = 'neon' + word;
+          const tex = this.T[key];
+          const hgt = (tex.image.height / 12) * 0.42;
+          // The sign's broad faces run perpendicular to the wall.
+          const rot = ox !== 0 ? 0 : Math.PI / 2;
+          const px = x + 0.5 + ox * 0.62;
+          const pz = y + 0.5 + oy * 0.62;
+          const g = new THREE.BoxGeometry(0.34, hgt * 0.8, 0.05);
+          g.translate(0, hgt / 2, 0);
+          const mat = this.glow(key);
+          const side = this.mat('iron');
+          const m = new THREE.Mesh(g, [side, side, side, side, mat, mat]);
+          m.position.set(px, 1.7, pz);
+          m.rotation.y = rot + Math.PI / 2;
+          group.add(m);
+          group.add(this.box(0.24, 0.04, 0.04, 'iron', x + 0.5 + ox * 0.5, 1.7 + hgt - 0.1, y + 0.5 + oy * 0.5, rot));
+          if (n++ % 3 === 0) this.neonFlicker.push(mat);
+          break;
+        }
+      }
+    }
+  }
+
+  // Curbs where the sidewalk meets the street.
+  buildCurbs(B, map) {
+    const street = (x, y) => !map.walls[y * map.w + x] && map.grid[y][x] !== ':';
+    const H = 0.07;
+    for (let y = 1; y < map.h - 1; y++) {
+      for (let x = 1; x < map.w - 1; x++) {
+        if (map.walls[y * map.w + x] || map.grid[y][x] !== ':') continue;
+        for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          if (!street(x + ox, y + oy)) continue;
+          // Edge on the street side of this cell.
+          const ex = ox === 1 ? x + 1 : ox === -1 ? x : null;
+          const ez = oy === 1 ? y + 1 : oy === -1 ? y : null;
+          const a = ex !== null ? [ex, ez ?? y] : [x, ez];
+          const b = ex !== null ? [ex, y + 1] : [x + 1, ez];
+          const c = this.lightAt(a[0] + ox * 0.1, 0.05, a[1] + oy * 0.1, ox, 0, oy).map((v) => v * 1.25);
+          const top = this.lightAt(a[0], 0.1, a[1], 0, 1, 0).map((v) => v * 1.35);
+          B.quad('edge', [[a[0], 0, a[1]], [b[0], 0, b[1]], [b[0], H, b[1]], [a[0], H, a[1]]], [[0, 0], [1, 0], [1, 0.1], [0, 0.1]], [c, c, c, c]);
+          B.quad('edge', [[b[0], 0, b[1]], [a[0], 0, a[1]], [a[0], H, a[1]], [b[0], H, b[1]]], [[0, 0], [1, 0], [1, 0.1], [0, 0.1]], [c, c, c, c]);
+          const ix = -ox * 0.12;
+          const iz = -oy * 0.12;
+          B.quad('edge', [[a[0], H, a[1]], [b[0], H, b[1]], [b[0] + ix, H, b[1] + iz], [a[0] + ix, H, a[1] + iz]], [[0, 0], [1, 0], [1, 0.2], [0, 0.2]], [top, top, top, top]);
+          B.quad('edge', [[a[0] + ix, H, a[1] + iz], [b[0] + ix, H, b[1] + iz], [b[0], H, b[1]], [a[0], H, a[1]]], [[0, 0], [1, 0], [1, 0.2], [0, 0.2]], [top, top, top, top]);
+        }
+      }
+    }
+  }
+
+  // Searchlights sweeping the sky behind the skyline.
+  buildSearchlights(group, map) {
+    this.beams = [];
+    const g = new THREE.CylinderGeometry(4, 0.4, 70, 10, 1, true);
+    g.translate(0, 35, 0);
+    const spots = [[-14, -10], [map.w + 14, -8], [map.w / 2, map.h + 16]];
+    spots.forEach(([x, z], k) => {
+      const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: k === 1 ? 0xffd8f0 : 0xd8f0ff, transparent: true, opacity: 0.07, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide }));
+      m.position.set(x, -2, z);
+      m.userData.ph = k * 2.1;
+      this.beams.push(m);
+      group.add(m);
+    });
+  }
+
+  // Subway: overhead pipes, hanging line signs.
+  buildSubway(group, map) {
+    const c = this.indoor.ceil;
+    for (const z of [3.7, 7.5, 11.3]) {
+      const m = this.box(map.w - 2, 0.1, 0.1, 'darkMetal', map.w / 2, c - 0.16, z, 0);
+      group.add(m);
+    }
+    group.add(this.box(map.w - 2, 0.06, 0.06, 'red', map.w / 2, c - 0.26, 3.9, 0));
+    for (let x = 6.5; x < map.w - 2; x += 6) {
+      for (const [z, key] of [[3.6, 'signDown'], [11.4, 'signUp']]) {
+        group.add(this.box(0.02, 0.2, 0.02, 'iron', x - 0.5, c - 0.2, z, 0));
+        group.add(this.box(0.02, 0.2, 0.02, 'iron', x + 0.5, c - 0.2, z, 0));
+        const s = this.box(1.3, 0.3, 0.04, 'iron', x, c - 0.5, z, 0);
+        s.material = [this.mat('iron'), this.mat('iron'), this.mat('iron'), this.mat('iron'), this.glow(key), this.glow(key)];
+        group.add(s);
+      }
+    }
+  }
+
+  // Server room: cable trays over the aisles, a slow red beacon.
+  buildServerRoom(group, map) {
+    const c = this.indoor.ceil;
+    for (const z of [3.5, 15.5, 6.5, 12.5]) group.add(this.box(map.w - 3, 0.05, 0.4, ['darkMetal', 'darkMetal', 'cable', 'darkMetal', 'darkMetal', 'darkMetal'], map.w / 2, c - 0.2, z, 0));
+    for (const x of [4, 14, 24]) for (const z of [3.5, 15.5]) group.add(this.box(0.03, 0.15, 0.03, 'iron', x, c - 0.15, z, 0));
+  }
+
+  // Stateless ambient particles: steam from the manholes, confetti drifting down outdoors.
+  ambient(t, cx, cz) {
+    for (const v of this.vents || []) {
+      for (let k = 0; k < 7; k++) {
+        const f = (t * 0.45 + k / 7 + v.seed) % 1;
+        const w = Math.sin(t * 1.3 + k * 1.7 + v.seed * 9) * 0.12 * f;
+        this.particle(v.x + w + Math.sin(k * 2.3) * 0.12 * f, f * 1.8, v.z + Math.cos(k * 3.1) * 0.12 * f, f < 0.5 ? '#c8c8d8' : '#8a8aa0');
+      }
+    }
+    if (this.indoor) return;
+    const R = 16;
+    for (let k = 0; k < 180; k++) {
+      const sx = hash2(k, 11) * R * 2;
+      const sz = hash2(k, 29) * R * 2;
+      const sp = 0.35 + hash2(k, 7) * 0.4;
+      const y = 7 - ((t * sp + hash2(k, 3) * 7) % 7);
+      // Wrap the flakes into a box that follows the camera.
+      const x = cx - R + ((sx - cx + R * 64) % (R * 2)) + Math.sin(t * 2 + k) * 0.15;
+      const z = cz - R + ((sz - cz + R * 64) % (R * 2)) + Math.cos(t * 1.7 + k) * 0.15;
+      this.particle(x, y, z, PARTY[k % PARTY.length]);
+    }
+  }
+
   buildLamps(group, map) {
     if (this.indoor) return;
     for (const s of this.lampSpots) {
@@ -619,6 +846,16 @@ export class World {
       }
     }
     if (this.ball) this.ball.rotation.y += dt * 0.4;
+    for (const b of this.beams) {
+      const a = this.t * 0.35 + b.userData.ph;
+      b.rotation.set(Math.sin(a) * 0.45, 0, Math.cos(a * 0.8) * 0.35 - 0.1);
+    }
+    // Neon on the blink: mostly on, now and then a stutter.
+    this.neonFlicker.forEach((m, k) => {
+      const ph = (this.t * 0.7 + k * 0.37) % 1;
+      const off = ph > 0.9 && Math.floor(this.t * 20) % 2;
+      m.color.setScalar(off ? 0.3 : 1);
+    });
   }
 }
 

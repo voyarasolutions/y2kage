@@ -1,6 +1,8 @@
+import { decorFor } from './decor.js';
+
 // Arena maps, one per district (levels 1-10, 11-20, ...).
 // Walls: # brick, S storefront, P posters, J jumbotron, L ball tower, M subway tile, G pillar,
-//        R server rack, D datacentre wall, X glass tower.
+//        R server rack, D datacentre wall, X glass tower, T parked subway train.
 // Floor: . base, : sidewalk/platform, = stripes (crosswalk, tracks, cables), _ platform edge.
 // Marks: @ player start, z zombie spawn. Props (solid): t taxi, o trash can, n news box,
 //        x barricade, b bench, c server cabinet.
@@ -65,8 +67,8 @@ export const MAPS = [
     floors: { '.': 'platform', ':': 'platform', '=': 'tracks', _: 'edge' },
     grid: [
       'MMMMMMMMMMMMMMMMMMMMMMMMMMMMMM',
-      'Mz==========================zM',
-      'M============================M',
+      'Mz==TTTTTTTTTTTTTTTTTTTTTT==zM',
+      'M===TTTTTTTTTTTTTTTTTTTTTT===M',
       'M____________________________M',
       'M...G.....G.....G.....G....z.M',
       'M.........b.........b........M',
@@ -134,7 +136,7 @@ export const MAPS = [
   },
 ];
 
-const WALLS = '#SPJLMGRDX';
+const WALLS = '#SPJLMGRDXT';
 const PROPS = { t: 0.85, o: 0.35, n: 0.35, x: 0.7, b: 0.55, c: 0.45 };
 export const PROP_KIND = { t: 'taxi', o: 'trash', n: 'newsbox', x: 'barricade', b: 'bench', c: 'serverbox' };
 export const PROP_SIZE = { t: [2.1, 1.1], o: [0.6, 0.8], n: [0.6, 0.95], x: [1.5, 0.85], b: [1.4, 0.7], c: [0.75, 1.05] };
@@ -173,5 +175,7 @@ export function parseMap(m) {
   for (let y = 0; y < h; y++) {
     if (!walls[y * w] || !walls[y * w + w - 1]) throw new Error(`${m.name}: open border at row ${y}`);
   }
-  return { ...m, w, h, walls, wallChar, floorKind, spawns, props, start };
+  const map = { ...m, w, h, walls, wallChar, floorKind, spawns, props, start };
+  map.decor = decorFor(map);
+  return map;
 }

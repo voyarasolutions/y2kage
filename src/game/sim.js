@@ -42,6 +42,8 @@ export class Sim {
       }
       return { x: p.x, y: p.y, r: p.r };
     });
+    // Set dressing is solid to bump into but never blocks a pathfinding cell.
+    for (const d of map.decor || []) if (d.r) this.props.push({ x: d.x, y: d.y, r: d.r });
     this.flow = new Int16Array(map.w * map.h);
     this.flowQ = new Int32Array(map.w * map.h);
     this.flowCell = -1;

@@ -516,6 +516,174 @@ function plainSkin(col, dark) {
   return p;
 }
 
+// ---------------------------------------------------------------- street furniture and set dressing
+function payphone() {
+  const p = new Pix(16, 24).fill('#8a909e');
+  p.rect(0, 0, 16, 2, '#1a5ab0').rect(0, 22, 16, 2, '#4a505e');
+  micro(p, 'TEL', 2, 0, PAL.white);
+  p.rect(2, 4, 5, 12, '#1a1a20').rect(3, 5, 3, 10, '#2a2a30');
+  for (let y = 0; y < 4; y++) for (let x = 0; x < 3; x++) p.px(9 + x * 2, 5 + y * 3, '#e8e8f0');
+  p.rect(9, 17, 5, 2, '#2a2a30').px(10, 17, PAL.gold);
+  return p;
+}
+
+function mailbox() {
+  const p = new Pix(16, 24).fill('#1a4a9a');
+  p.rect(0, 0, 16, 1, '#4a7ad0').rect(0, 23, 16, 1, '#0a2050');
+  p.rect(2, 4, 12, 3, '#0a2050').rect(3, 5, 10, 1, '#2a2a30');
+  micro(p, 'US', 2, 9, PAL.white);
+  micro(p, 'MAIL', 0, 15, PAL.white);
+  p.rect(12, 9, 3, 3, PAL.red);
+  return p;
+}
+
+function endSign() {
+  const p = new Pix(24, 32).fill('#f0e8d0');
+  p.rect(0, 0, 24, 1, '#ffffff').rect(0, 31, 24, 1, '#a09878').rect(0, 0, 1, 32, '#a09878').rect(23, 0, 1, 32, '#a09878');
+  micro(p, 'THE', 6, 2, PAL.ink);
+  micro(p, 'END', 6, 8, PAL.red);
+  micro(p, 'IS', 8, 14, PAL.ink);
+  micro(p, 'NIGH', 4, 20, PAL.red);
+  micro(p, 'Y2K', 6, 26, '#1a4a9a');
+  return p;
+}
+
+function crtFront(scr) {
+  const p = new Pix(16, 16).fill('#d8d0b0');
+  p.rect(0, 0, 16, 1, '#f0ead0').rect(15, 0, 1, 16, '#a09878').rect(0, 15, 16, 1, '#a09878');
+  p.rect(2, 2, 12, 9, '#2a2a30').rect(3, 3, 10, 7, scr);
+  p.px(4, 4, '#ffffff88');
+  p.rect(3, 12, 4, 1, '#a09878').px(12, 12, PAL.lime);
+  return p;
+}
+
+function beige() {
+  const p = new Pix(8, 8).fill('#c8c0a0');
+  p.rect(0, 0, 8, 1, '#e0d8b8').rect(0, 7, 8, 1, '#a09878');
+  return p;
+}
+
+function acSide(rnd) {
+  const p = new Pix(24, 16).fill('#9aa0ac');
+  for (let y = 2; y < 14; y += 2) p.rect(2, y, 20, 1, '#5a606c');
+  p.rect(0, 0, 24, 1, '#c8ccd6').rect(0, 15, 24, 1, '#4a505a');
+  p.speckle(0, 0, 24, 16, '#7a5a3a', 0.04, rnd);
+  return p;
+}
+
+function acTop() {
+  const p = new Pix(16, 16).fill('#8a909c');
+  p.oval(8, 8, 6, 6, '#3a3e48').oval(8, 8, 5, 5, '#22242c');
+  p.line(3, 8, 13, 8, '#6a707c').line(8, 3, 8, 13, '#6a707c').line(4, 4, 12, 12, '#5a606c').line(12, 4, 4, 12, '#5a606c');
+  p.oval(8, 8, 1, 1, '#9aa0ac');
+  return p;
+}
+
+function speaker() {
+  const p = new Pix(20, 32).fill('#1a1a20');
+  p.rect(0, 0, 20, 1, '#3a3a44').rect(0, 0, 1, 32, '#2a2a34');
+  p.oval(10, 9, 6, 6, '#2e2e38').oval(10, 9, 4, 4, '#101014').oval(10, 9, 1, 1, '#5a5a66');
+  p.oval(10, 23, 5, 5, '#2e2e38').oval(10, 23, 3, 3, '#101014');
+  p.rect(2, 30, 16, 1, PAL.pink);
+  micro(p, 'Y2K', 5, 1, '#5a5a66');
+  return p;
+}
+
+function vending() {
+  const p = new Pix(24, 48).fill(PAL.strawberry);
+  p.rect(0, 0, 24, 1, PAL.pinkLight).rect(23, 0, 1, 48, PAL.strawberryDark);
+  p.rect(2, 2, 20, 8, PAL.cream);
+  micro(p, 'VOLT', 4, 3, PAL.strawberryDark);
+  p.rect(2, 12, 14, 24, '#2a3a5a');
+  for (let y = 0; y < 4; y++) for (let x = 0; x < 3; x++) p.rect(3 + x * 5, 13 + y * 6, 3, 4, [PAL.strawberry, PAL.gold, PAL.lime, PAL.cyan][(x + y) % 4]);
+  p.rect(2, 12, 14, 1, '#8fb8ff');
+  p.rect(17, 14, 4, 6, '#2a2a30').px(18, 15, PAL.lime).rect(17, 22, 4, 2, '#1a1a20');
+  p.rect(3, 39, 12, 5, '#1a1a20');
+  return p;
+}
+
+function trainSide(rnd) {
+  // A parked R-train: brushed steel, a red stripe, windows lit and full of something moving.
+  const p = new Pix(128, 45).fill('#9aa0ac');
+  for (let x = 0; x < 128; x += 3) p.rect(x, 0, 1, 45, '#8a909c');
+  p.rect(0, 0, 128, 2, '#c8ccd6').rect(0, 43, 128, 2, '#2a2a30');
+  p.rect(0, 34, 128, 3, PAL.strawberry).rect(0, 34, 128, 1, PAL.pinkLight);
+  // Doors at the car ends, windows between.
+  for (const dx of [4, 104]) {
+    p.rect(dx, 6, 20, 34, '#7a808c').rect(dx + 9, 6, 2, 34, '#2a2a30');
+    p.rect(dx + 2, 9, 6, 12, '#f8f0c8').rect(dx + 12, 9, 6, 12, '#f8f0c8');
+  }
+  for (let k = 0; k < 4; k++) {
+    const x = 30 + k * 18;
+    p.rect(x, 9, 14, 12, '#2a2a30').rect(x + 1, 10, 12, 10, '#f8f0c8');
+    p.rect(x + 1, 10, 12, 2, '#fffae0');
+    // Silhouettes pressed to the glass.
+    if (k % 2 === 0) p.oval(x + 5, 16, 2, 3, '#56722e').rect(x + 3, 18, 5, 3, '#56722e').px(x + 4, 15, PAL.eye).px(x + 6, 15, PAL.eye);
+    else p.oval(x + 8, 17, 2, 2, '#4a5a3a').rect(x + 6, 19, 5, 2, '#4a5a3a');
+  }
+  micro(p, 'N', 52, 25, PAL.white);
+  p.oval(58, 27, 3, 3, PAL.gold);
+  micro(p, 'W', 57, 25, PAL.ink);
+  p.speckle(0, 0, 128, 44, '#6a707c', 0.02, rnd);
+  micro(p, 'Y2K', 80, 26, PAL.pink);
+  p.rect(78, 24, 16, 1, PAL.pink);
+  return p;
+}
+
+function subSign(word) {
+  const p = new Pix(48, 12).fill('#101014');
+  p.rect(0, 0, 48, 1, '#3a3a44').rect(0, 11, 48, 1, '#000000');
+  micro(p, word, 4, 4, PAL.white);
+  p.oval(42, 6, 3, 3, PAL.lime);
+  micro(p, '4', 41, 4, PAL.ink);
+  return p;
+}
+
+function manhole() {
+  const p = new Pix(32, 32);
+  p.oval(16, 16, 14, 14, '#1a1822').oval(16, 16, 12, 12, '#3a3644');
+  for (let k = -10; k <= 10; k += 4) p.rect(6, 16 + k, 20, 1, '#2a2632');
+  p.oval(16, 16, 4, 4, '#4a4654');
+  micro(p, 'NYC', 11, 14, '#5a5664');
+  return p;
+}
+
+function neonSign(word, col, bg) {
+  // A vertical blade sign: letters stacked top to bottom in neon.
+  const n = word.length;
+  const p = new Pix(12, 8 + n * 7).fill(bg);
+  p.rect(0, 0, 12, 1, col).rect(0, p.h - 1, 12, 1, col).rect(0, 0, 1, p.h, col).rect(11, 0, 1, p.h, col);
+  [...word].forEach((ch, i) => micro(p, ch, 4, 5 + i * 7, '#ffffff'));
+  // Glow halo around each letter stroke.
+  const img = p.g.getImageData(0, 0, p.w, p.h);
+  const d = img.data;
+  const out = p.g.getImageData(0, 0, p.w, p.h);
+  const [r, g, b] = [parseInt(col.slice(1, 3), 16), parseInt(col.slice(3, 5), 16), parseInt(col.slice(5, 7), 16)];
+  for (let y = 1; y < p.h - 1; y++) {
+    for (let x = 1; x < p.w - 1; x++) {
+      const k = (y * p.w + x) * 4;
+      if (d[k] === 255 && d[k + 1] === 255) continue;
+      const near = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([ox, oy]) => d[((y + oy) * p.w + x + ox) * 4] === 255 && d[((y + oy) * p.w + x + ox) * 4 + 1] === 255);
+      if (near) {
+        out.data[k] = r;
+        out.data[k + 1] = g;
+        out.data[k + 2] = b;
+      }
+    }
+  }
+  p.g.putImageData(out, 0, 0);
+  return p;
+}
+
+function trashBag(rnd) {
+  const p = new Pix(16, 16).fill('#1e2420');
+  p.speckle(0, 0, 16, 16, '#2e3a32', 0.2, rnd);
+  p.rect(3, 3, 3, 1, '#5a6a60').px(4, 2, '#7a8a80').rect(10, 9, 2, 1, '#4a5a50');
+  return p;
+}
+
+export const NEON_WORDS = [['EAT', '#ff2e88'], ['BAR', '#3de0e0'], ['HOTEL', '#f6c945'], ['PIZZA', '#ff8a2a'], ['VIDEO', '#a67bd8'], ['ARCADE', '#7ac943'], ['DELI', '#ff2e88'], ['TIX', '#3de0e0']];
+
 export function buildTextures() {
   const rnd = mulberry32(1999);
   const T = {};
@@ -564,6 +732,25 @@ export function buildTextures() {
   mk('red', plainSkin(PAL.strawberry, PAL.strawberryDark));
   mk('darkMetal', plainSkin('#3a3e4a', '#22242c'));
   mk('gold', plainSkin(PAL.gold, PAL.goldDark));
+  mk('payphone', payphone(), false);
+  mk('mailbox', mailbox(), false);
+  mk('endSign', endSign(), false);
+  mk('crtBlue', crtFront(PAL.bsod), false);
+  mk('crtGreen', crtFront('#0a3a1a'), false);
+  mk('crtOff', crtFront('#1a1a22'), false);
+  mk('beige', beige());
+  mk('acSide', acSide(rnd), false);
+  mk('acTop', acTop(), false);
+  mk('speaker', speaker(), false);
+  mk('vending', vending(), false);
+  mk('train', trainSide(rnd));
+  mk('signUp', subSign('UPTOWN'), false);
+  mk('signDown', subSign('DOWNTOWN'), false);
+  mk('manhole', manhole(), false);
+  mk('bag', trashBag(rnd));
+  mk('blue', plainSkin('#1a4a9a', '#0a2050'));
+  mk('steel', plainSkin('#8a909c', '#5a606c'));
+  NEON_WORDS.forEach(([w, c]) => mk('neon' + w, neonSign(w, c, '#140c1c'), false));
   T.skies = ['Times Square', 'Broadway', 'Subway', 'Bank', 'Ball Drop'].map((d) => {
     const t = toTex(skyPanorama(d));
     t.wrapT = THREE.ClampToEdgeWrapping;

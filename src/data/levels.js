@@ -9,6 +9,8 @@ export const ENEMIES = {
   shambler: { name: 'Party Shambler', hp: 30, speed: 52, damage: 10, score: 10, radius: 14, unlock: 1 },
   runner: { name: 'Raver', hp: 18, speed: 118, damage: 8, score: 15, radius: 12, unlock: 3 },
   brute: { name: 'Bouncer', hp: 150, speed: 36, damage: 24, score: 40, radius: 21, unlock: 6 },
+  bloater: { name: 'Bloater', hp: 70, speed: 34, damage: 14, score: 25, radius: 18, unlock: 7 },
+  crawler: { name: 'Crawler', hp: 22, speed: 70, damage: 9, score: 15, radius: 12, unlock: 14 },
   glitch: { name: 'Corrupted', hp: 42, speed: 66, damage: 12, score: 30, radius: 14, unlock: 10 },
   boss: { name: 'The Millennium Bug', hp: 1400, speed: 42, damage: 34, score: 500, radius: 38, unlock: 10 },
 }
@@ -53,6 +55,8 @@ function weightsFor(n) {
   if (n >= ENEMIES.runner.unlock) w.runner = Math.min(9, 2 + (n - 3) * 0.6);
   if (n >= ENEMIES.brute.unlock) w.brute = Math.min(4.5, 1 + (n - 6) * 0.12);
   if (n >= ENEMIES.glitch.unlock) w.glitch = Math.min(6, 1 + (n - 10) * 0.18);
+  if (n >= ENEMIES.bloater.unlock) w.bloater = Math.min(4, 1 + (n - 7) * 0.12);
+  if (n >= ENEMIES.crawler.unlock) w.crawler = Math.min(5, 1 + (n - 14) * 0.2);
   return w;
 }
 

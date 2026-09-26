@@ -7,9 +7,16 @@ import { sfx } from '../audio/sfx.js';
 
 export const EYE = 0.62;
 const GRAV = 16;
-export const ZRAD = { shambler: 0.3, runner: 0.26, brute: 0.45, glitch: 0.3, boss: 0.85 };
-export const ZHEIGHT = { shambler: 1.0, runner: 1.0, brute: 1.45, glitch: 1.0, boss: 1.95 };
-const ZMASS = { shambler: 1, runner: 0.8, brute: 2.5, glitch: 1, boss: 8 };
+export const ZRAD = { shambler: 0.3, runner: 0.26, brute: 0.45, glitch: 0.3, boss: 0.85, crawler: 0.28, bloater: 0.42 };
+export const ZHEIGHT = { shambler: 1.0, runner: 1.0, brute: 1.45, glitch: 1.0, boss: 1.95, crawler: 0.45, bloater: 1.3 };
+const NEW_TIPS = {
+  runner: 'Fast, and glowing.',
+  brute: 'Soaks damage. Not on the list.',
+  bloater: 'Pops on death. Keep back!',
+  glitch: 'Teleports. Weak to water.',
+  crawler: 'Low and quick. Watch your feet.',
+};
+const ZMASS = { shambler: 1, runner: 0.8, brute: 2.5, glitch: 1, boss: 8, crawler: 0.7, bloater: 1.6 };
 
 export class Sim {
   constructor(map, cfg, hero, levelN) {
@@ -612,6 +619,26 @@ export class Sim {
     }
   }
 
+  // A bloater bursts in a shower of confetti and goo, hurting anything standing too close, you included.
+  pop(z) {
+    const R = 1.7;
+    sfx.explode();
+    this.shake = Math.min(1, this.shake + 0.3);
+    this.splats.push({ x: z.x, y: z.y, t: 14, big: true, rot: rand(0, TAU) });
+    for (let i = 0; i < 70; i++) {
+      const a = rand(0, TAU);
+      const s = rand(1.5, 4.5);
+      this.particles.push({ x: z.x, y: z.y, z: rand(0.4, 1.1), vx: Math.cos(a) * s, vy: Math.sin(a) * s, vz: rand(0, 3.5), life: rand(0.5, 1.2), color: i % 3 ? PARTY[i % PARTY.length] : '#9be04a' });
+    }
+    for (const o of this.zombies.slice()) {
+      const d = Math.hypot(o.x - z.x, o.y - z.y);
+      if (d < R + ZRAD[o.kind]) this.hurtZombie(o, 45, (o.x - z.x) / (d || 1), (o.y - z.y) / (d || 1), 1.5);
+    }
+    const P = this.player;
+    if (Math.hypot(P.x - z.x, P.y - z.y) < R - 0.2 && P.z < 0.6) this.hurtPlayer(14 * this.cfg.damageMul);
+    this.emit('pop');
+  }
+
   puff(x, y, z, color, n) {
     for (let i = 0; i < n; i++) {
       this.particles.push({ x, y, z, vx: rand(-1.2, 1.2), vy: rand(-1.2, 1.2), vz: rand(0, 2), life: rand(0.2, 0.45), color });
@@ -631,9 +658,16 @@ export class Sim {
       hp: base.hp * cfg.hpMul, max: base.hp * cfg.hpMul,
       speed: Math.min(kind === 'runner' ? 4.2 : 3.6, (base.speed / 40) * cfg.speedMul * rand(0.88, 1.12)),
       dmg: base.damage * cfg.damageMul, state: 'walk', atkT: 0, cd: 0.5, kx: 0, ky: 0, hurtT: 0,
+      look: Math.floor(Math.random() * 1000), sc: kind === 'boss' ? 1 : rand(0.92, 1.08),
       anim: rand(0, 4), spawnT: 0.6, blinkT: rand(2, 3.5), chargeT: rand(4, 6), chargeLeft: 0, groanT: rand(2, 9), wob: rand(0, TAU),
     };
     this.zombies.push(z);
+    // First sighting of a new type gets a heads-up.
+    const tip = NEW_TIPS[kind];
+    if (tip && this.levelN === base.unlock && !(this.announced ||= new Set()).has(kind)) {
+      this.announced.add(kind);
+      this.toast(`NEW: ${base.name.toUpperCase()}`, tip);
+    }
     for (let i = 0; i < 16; i++) this.particles.push({ x: z.x + rand(-0.3, 0.3), y: z.y + rand(-0.3, 0.3), z: rand(0, 1), vx: 0, vy: 0, vz: rand(-0.5, 0.5), life: rand(0.2, 0.6), color: i % 2 ? '#3de0e0' : '#ff2e88', float: true });
     if (kind === 'boss') {
       this.boss = z;
@@ -676,7 +710,7 @@ export class Sim {
     const P = this.player;
     const m = this.map;
     for (const z of this.zombies) {
-      z.anim += dt * (z.kind === 'runner' ? 7 : z.kind === 'boss' ? 4 : 4.2) * (z.spawnT > 0 ? 0 : 1);
+      z.anim += dt * (z.kind === 'runner' ? 7 : z.kind === 'boss' ? 4 : z.kind === 'crawler' ? 6 : z.kind === 'bloater' ? 3 : 4.2) * (z.spawnT > 0 ? 0 : 1);
       z.hurtT = Math.max(0, z.hurtT - dt);
       z.spawnT = Math.max(0, z.spawnT - dt);
       z.cd = Math.max(0, z.cd - dt);
@@ -867,7 +901,8 @@ export class Sim {
     this.score += base.score * (1 + Math.floor(this.levelN / 10));
     this.lv.kills++;
     sfx.die();
-    this.corpses.push({ kind: z.kind, x: z.x, y: z.y, t: 0 });
+    this.corpses.push({ kind: z.kind, x: z.x, y: z.y, t: 0, look: z.look, sc: z.sc });
+    if (z.kind === 'bloater') this.pop(z);
     this.splats.push({ x: z.x, y: z.y, t: 14, big: z.kind === 'boss' || z.kind === 'brute', rot: rand(0, TAU) });
     if (this.splats.length > 40) this.splats.shift();
     const n = z.kind === 'boss' ? 90 : 20;

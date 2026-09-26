@@ -2,6 +2,7 @@
 import { Pipeline } from '../gfx/pipeline.js';
 import { buildTextures } from '../gfx/textures.js';
 import { buildSprites } from '../gfx/sprites.js';
+import { buildHorde } from '../gfx/horde.js';
 import { World } from '../world/world.js';
 import { Sim, EYE, ZRAD, ZHEIGHT } from './sim.js';
 import { Input } from '../core/input.js';
@@ -24,6 +25,7 @@ export class Game {
     this.pipe = new Pipeline(glCanvas);
     this.T = buildTextures();
     this.S = buildSprites();
+    this.S.horde = buildHorde();
     this.world = new World(this.T, this.S);
     this.maps = MAPS.map(parseMap);
     this.cv = uiCanvas;
@@ -445,21 +447,26 @@ export class Game {
     const cam = W3.camera;
     cam.updateMatrixWorld();
     // Zombies.
+    const dIdx = Math.min(4, Math.floor((this.levelN - 1) / 10));
+    const look = (z) => {
+      const list = S.horde[z.kind]?.[dIdx];
+      return list ? list[z.look % list.length] : S.zombies[z.kind];
+    };
     for (const z of sim.zombies) {
-      const Z = S.zombies[z.kind];
+      const Z = look(z);
       let tex;
       if (z.hurtT > 0 && Math.floor(this.t * 16) % 2 === 0) tex = Z.flash[0];
       else if (z.state === 'attack') tex = Z.atk[z.atkT > 0.18 ? 0 : 1];
       else if (z.state === 'windup') tex = Z.atk[1];
       else tex = Z.walk[Math.floor(z.anim) % 4];
-      const h = ZHEIGHT[z.kind];
+      const h = ZHEIGHT[z.kind] * (Z.hmul || 1) * (z.sc || 1);
       const grow = z.spawnT > 0 ? 1 - z.spawnT / 0.6 : 1;
       W3.sprite(tex, z.x, 0, z.y, h * Z.aspect, h * grow);
       W3.decal(S.shadow, z.x, z.y, ZRAD[z.kind] * 2.6, 0, 0.45);
     }
     for (const c of sim.corpses) {
-      const Z = S.zombies[c.kind];
-      const h = ZHEIGHT[c.kind];
+      const Z = look(c);
+      const h = ZHEIGHT[c.kind] * (Z.hmul || 1) * (c.sc || 1);
       W3.sprite(Z.die[Math.min(2, Math.floor(c.t / 0.17))], c.x, 0, c.y, h * Z.aspect, h);
     }
     for (const s of sim.splats) W3.decal(s.big ? S.gooBig : S.goo, s.x, s.y, s.big ? 1.6 : 0.9, s.rot, Math.min(1, s.t / 2));

@@ -36,6 +36,14 @@ function legs(p, o, f) {
   p.rect(lx + legW - 1, hipY + 1, 1, lf - hipY - 2, o.pantsD);
   p.rect(rx + legW - 1, hipY + 1, 1, rf - hipY - 2, o.pantsD);
   p.rect(cx - legGap, hipY, legGap * 2, 3, o.pants);
+  if (o.shorts) {
+    // Shorts or a skirt: bare (rotting) shins below.
+    p.rect(lx, hipY + o.shorts, legW, lf - hipY - 1 - o.shorts, o.legSkin || o.skin);
+    p.rect(rx, hipY + o.shorts, legW, rf - hipY - 1 - o.shorts, o.legSkin || o.skin);
+    p.rect(lx + legW - 1, hipY + o.shorts, 1, lf - hipY - 1 - o.shorts, o.skinD);
+    p.rect(rx + legW - 1, hipY + o.shorts, 1, rf - hipY - 1 - o.shorts, o.skinD);
+    if (o.socks) p.rect(lx, lf - 5, legW, 3, o.socks).rect(rx, rf - 5, legW, 3, o.socks);
+  }
   p.rect(lx - 1, lf - 2, legW + 1, 2, o.shoes);
   p.rect(rx, rf - 2, legW + 1, 2, o.shoes);
   if (o.rip) {
@@ -223,13 +231,26 @@ const GLITCH = {
 };
 
 // Corrupted zombies wear a CRT monitor where a head should be.
-function crtHead(p, cx, hy, f, rnd) {
+function crtHead(p, cx, hy, f, rnd, screen = 'bsod') {
   p.rect(cx - 7, hy - 6, 14, 12, '#d8d0b0');
   p.rect(cx - 7, hy - 6, 14, 1, '#f0ead0');
   p.rect(cx + 6, hy - 6, 1, 12, '#a09878');
-  p.rect(cx - 6, hy - 5, 11, 8, PAL.bsod);
+  p.rect(cx - 6, hy - 5, 11, 8, screen === 'bsod' ? PAL.bsod : screen === 'prompt' ? '#050505' : screen === '404' ? '#f0f0f0' : screen === 'hourglass' ? PAL.winTeal : '#000000');
   if (f.atk) {
-    micro(p, 'ERR', cx - 6, hy - 4, PAL.white);
+    micro(p, 'ERR', cx - 6, hy - 4, screen === '404' ? PAL.red : PAL.white);
+  } else if (screen === 'prompt') {
+    micro(p, 'C:', cx - 6, hy - 4, '#40ff60');
+    if (f.walk % 2) p.rect(cx + 2, hy + 0, 2, 1, '#40ff60');
+  } else if (screen === '404') {
+    micro(p, '404', cx - 6, hy - 3, PAL.ink);
+  } else if (screen === 'hourglass') {
+    p.rect(cx - 3, hy - 4, 5, 1, PAL.white).rect(cx - 3, hy + 2, 5, 1, PAL.white);
+    p.rect(cx - 2, hy - 3, 3, 1, PAL.gold).px(cx - 1, hy - 2, PAL.gold).px(cx - 1, hy - 1, PAL.gold).rect(cx - 2, hy + 1, 3, 1, PAL.gold);
+    p.px(cx - 2 + (f.walk % 3), hy, PAL.gold);
+  } else if (screen === 'bars') {
+    const bars = [PAL.white, PAL.gold, PAL.cyan, PAL.lime, PAL.pink, PAL.red, PAL.bondi, PAL.ink];
+    bars.forEach((c, k) => p.rect(cx - 6 + Math.floor((k * 11) / 8), hy - 5, 2, 6, c));
+    p.rect(cx - 6, hy + 1, 11, 2, '#202020');
   } else {
     p.px(cx - 3, hy - 3, PAL.white).px(cx + 1, hy - 3, PAL.white);
     p.rect(cx - 3, hy, 5, 1, PAL.white).px(cx - 4, hy + 1, PAL.white).px(cx + 2, hy + 1, PAL.white);
@@ -341,6 +362,8 @@ function deathFrames(src) {
   }
   return out;
 }
+
+export { humanoid, SHAMBLER, RUNNER, BRUTE, GLITCH, SKIN, crtHead, glitchify, deathFrames, tex };
 
 function zombieSet(kind) {
   const rnd = mulberry32(kind.length * 31);

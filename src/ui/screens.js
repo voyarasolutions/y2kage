@@ -296,7 +296,7 @@ export function drawSelect(g, ui, t, S) {
     rect(g, x + 6, y + 56, cw - 12, 18, sel ? '#2a2048' : '#181830');
     for (let k = 0; k < 6; k++) rect(g, x + 8 + k * 9, y + 46 + ((k * 7) % 11), 7, 28 - ((k * 7) % 11), sel ? '#141030' : '#0c0c1c');
     rect(g, x + 6, y + 68, cw - 12, 6, sel ? fl.dark : '#10101a');
-    const body = S.heroBodies[i][sel ? Math.floor(t * 2.5) % 2 : 0];
+    const body = S.heroBodies[i][sel ? Math.floor(Math.abs(t) * 2.5) & 1 : 0];
     g.drawImage(body.c, Math.round(x + cw / 2 - body.w / 2), y + 74 - body.h + 2);
     for (let k = y + 6; k < y + 74; k += 2) rect(g, x + 6, k, cw - 12, 1, '#00000030');
     text(g, hero.name, x + cw / 2, y + 79, { font: 'big', color: PAL.white, outline: fl.dark, align: 'center' });

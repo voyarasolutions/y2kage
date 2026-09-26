@@ -9,6 +9,18 @@ export const EYE = 0.62;
 const GRAV = 16;
 export const ZRAD = { shambler: 0.3, runner: 0.26, brute: 0.45, glitch: 0.3, boss: 0.85, crawler: 0.28, bloater: 0.42 };
 export const ZHEIGHT = { shambler: 1.0, runner: 1.0, brute: 1.45, glitch: 1.0, boss: 1.95, crawler: 0.45, bloater: 1.3 };
+const COMBO_WINDOW = 2.2;
+const COMBO_CALLS = [
+  { n: 5, text: 'BOOYAH!' },
+  { n: 10, text: 'ALL THAT!' },
+  { n: 15, text: 'DA BOMB!' },
+  { n: 25, text: 'OFF THE HOOK!' },
+  { n: 40, text: 'PHAT!!' },
+  { n: 60, text: 'MILLENNIUM!!' },
+];
+export function comboMult(n) {
+  return n >= 40 ? 3 : n >= 25 ? 2.5 : n >= 15 ? 2 : n >= 5 ? 1.5 : 1;
+}
 const NEW_TIPS = {
   runner: 'Fast, and glowing.',
   brute: 'Soaks damage. Not on the list.',
@@ -66,7 +78,12 @@ export class Sim {
     this.flash = null;
     this.glitchT = 0;
     this.score = 0;
-    this.lv = { phase: 'intro', t: 3.4, wave: -1, queue: [], spawnT: 0, time: 0, kills: 0 };
+    this.lv = { phase: 'intro', t: 3.4, wave: -1, queue: [], spawnT: 0, time: 0, kills: 0, bestCombo: 0 };
+    // Chain kills inside the window to build a combo and a score multiplier.
+    this.combo = { n: 0, t: 0 };
+    this.comboCall = null;
+    this.popups = [];
+    this.hitT = 0;
     this.banner = { kind: 'level', t: 3.4, dur: 3.4 };
   }
 
@@ -173,6 +190,15 @@ export class Sim {
       this.banner.t -= dt;
       if (this.banner.t <= 0) this.banner = null;
     }
+    this.combo.t -= dt;
+    if (this.combo.t <= 0) this.combo.n = 0;
+    if (this.comboCall && (this.comboCall.t -= dt) <= 0) this.comboCall = null;
+    this.hitT = Math.max(0, this.hitT - dt);
+    for (const p of this.popups) {
+      p.t -= dt;
+      p.z += dt * 0.6;
+    }
+    this.popups = this.popups.filter((p) => p.t > 0);
     if (this.toastMsg) {
       this.toastMsg.t -= dt;
       if (this.toastMsg.t <= 0) this.toastMsg = null;
@@ -889,6 +915,7 @@ export class Sim {
     if (z.dead) return;
     z.hp -= dmg;
     z.hurtT = 0.08;
+    this.hitT = 0.12;
     const k = (knock * 6) / ZMASS[z.kind];
     z.kx += nx * k;
     z.ky += ny * k;
@@ -900,7 +927,19 @@ export class Sim {
     z.dead = true;
     this.zombies.splice(this.zombies.indexOf(z), 1);
     const base = ENEMIES[z.kind];
-    this.score += base.score * (1 + Math.floor(this.levelN / 10));
+    const C = this.combo;
+    C.n = C.t > 0 ? C.n + 1 : 1;
+    C.t = COMBO_WINDOW;
+    this.lv.bestCombo = Math.max(this.lv.bestCombo, C.n);
+    const mult = comboMult(C.n);
+    const gain = Math.round(base.score * (1 + Math.floor(this.levelN / 10)) * mult);
+    this.score += gain;
+    this.popups.push({ x: z.x, y: z.y, z: ZHEIGHT[z.kind] * 0.8, t: 0.9, text: `+${gain}`, big: mult > 1 });
+    const call = COMBO_CALLS.find((c) => c.n === C.n);
+    if (call) {
+      this.comboCall = { text: call.text, mult, t: 1.6 };
+      sfx.combo(COMBO_CALLS.indexOf(call));
+    }
     this.lv.kills++;
     sfx.die();
     this.corpses.push({ kind: z.kind, x: z.x, y: z.y, t: 0, look: z.look, sc: z.sc });

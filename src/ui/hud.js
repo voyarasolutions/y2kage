@@ -1,6 +1,7 @@
 // In-game HUD: a Windows 98 taskbar along the bottom (health, armor, ride and weapon meters, the
 // system-tray clock counting down to midnight), dialog-box banners and tray tooltips.
-import { PAL } from '../core/palette.js';
+import { comboMult as comboMultOf } from '../game/sim.js';
+import { PAL, PARTY } from '../core/palette.js';
 import { W, H } from '../core/util.js';
 import { text, textWidth, wrap } from '../core/pixelfont.js';
 import { bevel, rect, progress, meter, window98, tooltip, iconError, iconInfo, iconWarn, startFlag } from './win98.js';
@@ -9,10 +10,16 @@ import { ENEMIES } from '../data/levels.js';
 
 export const TASKBAR_H = 16;
 
-export function drawCrosshair(g, kind, over) {
+export function drawCrosshair(g, kind, over, hit = 0) {
   const cx = W / 2;
   const cy = H / 2 - 8;
   const col = over ? PAL.red : kind === 'laser' ? PAL.red : PAL.cream;
+  if (hit > 0) {
+    // Hitmarker: four diagonal ticks around the crosshair.
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      for (let k = 3; k < 6; k++) rect(g, cx + sx * k, cy + sy * k, 1, 1, PAL.white);
+    }
+  }
   rect(g, cx - 4, cy, 3, 1, PAL.ink);
   rect(g, cx + 2, cy, 3, 1, PAL.ink);
   rect(g, cx, cy - 4, 1, 3, PAL.ink);
@@ -268,3 +275,37 @@ export function drawGlitch(g, amt) {
 }
 
 export { ENEMIES, levelConfig };
+
+// Floating score numbers where zombies fall (positions already projected to the screen).
+export function drawPopups(g, pops) {
+  for (const p of pops) {
+    const a = Math.min(1, p.t / 0.3);
+    g.globalAlpha = a;
+    text(g, p.text, Math.round(p.sx), Math.round(p.sy), { font: p.big ? 'big' : 'small', color: p.big ? PAL.gold : PAL.cream, outline: PAL.ink, align: 'center' });
+  }
+  g.globalAlpha = 1;
+}
+
+// Combo counter under the level readout, and the big 90s shout-out when you hit a tier.
+export function drawCombo(g, sim, t, window) {
+  const C = sim.combo;
+  if (C.n >= 2 && C.t > 0) {
+    const mult = comboMultOf(C.n);
+    const x = W - 5;
+    text(g, `${C.n} HIT COMBO`, x, 26, { font: 'small', color: PAL.gold, outline: PAL.ink, align: 'right' });
+    if (mult > 1) text(g, `x${mult}`, x, 35, { font: 'big', color: PARTY[Math.floor(t * 8) % PARTY.length], outline: PAL.ink, align: 'right' });
+    const bw = 44;
+    rect(g, x - bw, mult > 1 ? 45 : 35, bw, 2, PAL.ink);
+    rect(g, x - bw, mult > 1 ? 45 : 35, Math.round(bw * Math.max(0, C.t / window)), 2, PAL.gold);
+  }
+  const call = sim.comboCall;
+  if (call) {
+    const age = 1.6 - call.t;
+    const s = age < 0.12 ? 3 : 2;
+    const y = 50 - Math.round(Math.max(0, 0.25 - age) * 40);
+    g.globalAlpha = Math.min(1, call.t / 0.3);
+    text(g, call.text, W / 2, y, { font: 'big', color: PARTY[Math.floor(t * 12) % PARTY.length], outline: PAL.ink, align: 'center', scale: s });
+    text(g, `x${call.mult} SCORE`, W / 2, y + 8 * s + 3, { font: 'small', color: PAL.cream, outline: PAL.ink, align: 'center' });
+    g.globalAlpha = 1;
+  }
+}

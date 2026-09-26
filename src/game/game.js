@@ -1,8 +1,10 @@
 // The whole program: boot sequence, menus, the run through 50 levels, and rendering each frame.
+import * as THREE from 'three';
 import { Pipeline } from '../gfx/pipeline.js';
 import { buildTextures } from '../gfx/textures.js';
 import { buildSprites } from '../gfx/sprites.js';
 import { buildHorde } from '../gfx/horde.js';
+import { settings, saveSettings, SENS_STEPS } from '../core/settings.js';
 import { World } from '../world/world.js';
 import { Sim, EYE, ZRAD, ZHEIGHT } from './sim.js';
 import { Input } from '../core/input.js';
@@ -18,7 +20,7 @@ import { hit } from '../ui/win98.js';
 import * as HUD from '../ui/hud.js';
 import * as SCR from '../ui/screens.js';
 
-const MENU_COUNT = { title: 3, paused: 3, clear: 2, dead: 2 };
+const MENU_COUNT = { title: 4, paused: 4, clear: 2, dead: 2 };
 
 export class Game {
   constructor(glCanvas, uiCanvas) {
@@ -62,10 +64,55 @@ export class Game {
         return null;
       },
     });
+    this.options = false;
+    this.applySettings();
     const skip = new URLSearchParams(location.search).get('skip');
     if (skip) this.setMode(skip);
     this.last = performance.now();
     requestAnimationFrame((t) => this.frame(t));
+  }
+
+  // ------------------------------------------------------------ options
+  applySettings() {
+    sfx.setVolumes(settings.music / 10, settings.sfx / 10);
+    document.getElementById('stage')?.classList.toggle('scan', !!settings.scanlines);
+  }
+
+  openOptions() {
+    this.options = true;
+    this.optFocus = 0;
+  }
+
+  closeOptions() {
+    this.options = false;
+    saveSettings();
+    sfx.click();
+  }
+
+  optAdjust(i, d) {
+    if (i === 0) {
+      const k = SENS_STEPS.indexOf(settings.sens);
+      settings.sens = SENS_STEPS[Math.max(0, Math.min(SENS_STEPS.length - 1, (k < 0 ? 3 : k) + d))];
+    }
+    if (i === 1) settings.music = Math.max(0, Math.min(10, settings.music + d));
+    if (i === 2) settings.sfx = Math.max(0, Math.min(10, settings.sfx + d));
+    if (i === 3) settings.scanlines = !settings.scanlines;
+    if (i === 4) settings.glitch = !settings.glitch;
+    this.applySettings();
+    saveSettings();
+    sfx.click();
+  }
+
+  optionsKey(code) {
+    const n = 6;
+    if (code === 'Escape' || code === 'KeyP') return this.closeOptions();
+    if (code === 'ArrowDown' || code === 'KeyS' || code === 'Tab') this.optFocus = (this.optFocus + 1) % n;
+    if (code === 'ArrowUp' || code === 'KeyW') this.optFocus = (this.optFocus + n - 1) % n;
+    if (this.optFocus < 5) {
+      if (code === 'ArrowLeft' || code === 'KeyA') this.optAdjust(this.optFocus, -1);
+      if (code === 'ArrowRight' || code === 'KeyD') this.optAdjust(this.optFocus, 1);
+      if ((code === 'Enter' || code === 'Space') && this.optFocus >= 3) this.optAdjust(this.optFocus, 1);
+    } else if (code === 'Enter' || code === 'Space') this.closeOptions();
   }
 
   // ------------------------------------------------------------ helpers
@@ -145,7 +192,7 @@ export class Game {
     const s = this.sim;
     this.runScore += s.score;
     const n = this.levelN;
-    this.clearStats = { level: n, kills: s.lv.kills, time: s.lv.time, levelScore: s.score, score: this.runScore };
+    this.clearStats = { level: n, kills: s.lv.kills, time: s.lv.time, levelScore: s.score, score: this.runScore, combo: s.lv.bestCombo };
     if (n + 1 > this.best && n < TOTAL_LEVELS) {
       this.best = n + 1;
       store.set('best', this.best);
@@ -191,6 +238,7 @@ export class Game {
   onKey(code) {
     sfx.unlock();
     if (code === 'KeyM') return this.toggleMute();
+    if (this.options) return this.optionsKey(code);
     const m = this.mode;
     if (m === 'power') return this.powerOn();
     if (m === 'crt') return;
@@ -324,7 +372,7 @@ export class Game {
     if (m === 'dialup' && this.modeT > (this.dialLen || 5.2)) this.setMode('title');
     if (m === 'play') {
       const inp = this.input.state();
-      this.sim.player.a += inp.look * 0.0026;
+      this.sim.player.a += inp.look * 0.0026 * settings.sens;
       this.sim.update(dt, inp);
       this.handleEvents();
       if (this.sim && this.mode === 'play') {
@@ -423,6 +471,7 @@ export class Game {
     if (m === 'power' || m === 'crt' || m === 'bios') fx.fade = 0;
     if (m === 'dialup' || m === 'howto') fx.fade = 0.4;
     if (m === 'dead') fx.fade = 0;
+    if (!settings.glitch) fx.glitch = 0;
     this.pipe.render(W3.scene, W3.camera, fx);
     this.drawUI(g);
   }
@@ -531,6 +580,17 @@ export class Game {
   }
 
   drawUI(g) {
+    this.drawScreen(g);
+    if (this.options) {
+      this.buttons = [];
+      const keep = this.focus;
+      this.focus = this.optFocus;
+      SCR.drawOptions(g, this, this.t, settings);
+      this.focus = keep;
+    }
+  }
+
+  drawScreen(g) {
     g.clearRect(0, 0, W, H);
     this.buttons = [];
     const m = this.mode;
@@ -552,18 +612,33 @@ export class Game {
     const heroIdx = HEROES.findIndex((h) => h.id === this.hero.id);
     if (m === 'play' || m === 'paused') {
       this.weapon.draw(g, sim, heroIdx, this.t);
-      HUD.drawCrosshair(g, sim.hero.gun.kind, this.aimingAtZombie(sim));
+      HUD.drawCrosshair(g, sim.hero.gun.kind, this.aimingAtZombie(sim), sim.hitT);
+      HUD.drawPopups(g, this.projectPopups(sim));
     }
     HUD.drawHurt(g, sim, this.t);
     HUD.drawTopHud(g, sim, this.t);
     HUD.drawBossBar(g, sim, this.t);
+    if (m === 'play') HUD.drawCombo(g, sim, this.t, 2.2);
     if (m === 'play') HUD.drawBanner(g, sim, this.t);
     HUD.drawToast(g, sim, this.input.touch.on);
     HUD.drawTaskbar(g, sim, this.S, heroIdx, this.t);
     if (m === 'play') HUD.drawTouch(g, this.input, sim.hero);
-    if (sim.glitchT > 0) HUD.drawGlitch(g, sim.glitchT);
+    if (sim.glitchT > 0 && settings.glitch) HUD.drawGlitch(g, sim.glitchT);
     if (m === 'paused') SCR.drawPause(g, ui, this.t);
     if (m === 'clear') SCR.drawClear(g, ui, this.t, this.clearStats);
+  }
+
+  // World-space score popups to screen space.
+  projectPopups(sim) {
+    const cam = this.world.camera;
+    const v = this._pv || (this._pv = new THREE.Vector3());
+    const out = [];
+    for (const p of sim.popups) {
+      v.set(p.x, p.z, p.y).project(cam);
+      if (v.z > 1 || Math.abs(v.x) > 1.1 || Math.abs(v.y) > 1.1) continue;
+      out.push({ sx: ((v.x + 1) / 2) * W, sy: ((1 - v.y) / 2) * H, text: p.text, t: p.t, big: p.big });
+    }
+    return out;
   }
 
   aimingAtZombie(sim) {

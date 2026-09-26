@@ -29,6 +29,8 @@
       #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
       #ui { touch-action: none; cursor: default; outline: none; }
       #ui.play { cursor: none; }
+      /* Optional CRT overlay: scanlines and a soft vignette. */
+      #stage.scan::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.16) 0, rgba(0, 0, 0, 0.16) 1px, transparent 1px, transparent 3px), radial-gradient(ellipse at center, transparent 62%, rgba(0, 0, 0, 0.38) 100%); }
       #fail { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; background: #0000aa; font: 16px monospace; padding: 16px; text-align: center; }
       #fail[hidden] { display: none; }
     </style>

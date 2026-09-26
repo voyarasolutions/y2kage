@@ -199,11 +199,12 @@ export function drawTitle(g, ui, t) {
 
   const w = 128;
   const x = W / 2 - w / 2;
-  const y = 108;
-  const inner = window98(g, x, y, w, 72, 'Y2KAGE.EXE');
+  const y = 100;
+  const inner = window98(g, x, y, w, 89, 'Y2KAGE.EXE');
   const items = [
     ['Start Game', () => ui.game.toSelect()],
     ['How to Play', () => ui.game.setMode('howto')],
+    ['Options', () => ui.game.openOptions()],
     [`Sound: ${ui.game.muted() ? 'Off' : 'On'}`, () => ui.game.toggleMute()],
   ];
   items.forEach(([label, on], i) => {
@@ -212,7 +213,7 @@ export function drawTitle(g, ui, t) {
     ui.addButton(b, on, i);
   });
   const best = ui.game.best;
-  if (best > 1) text(g, `Furthest: level ${best}  ${clockFor(best).label}`, W / 2, y + 76, { font: 'small', color: PAL.gold, outline: PAL.ink, align: 'center' });
+  if (best > 1) text(g, `Furthest: level ${best}  ${clockFor(best).label}`, W / 2, y + 91, { font: 'small', color: PAL.gold, outline: PAL.ink, align: 'center' });
 
   // News ticker along the bottom.
   const ty = H - 12;
@@ -363,11 +364,11 @@ export function drawPause(g, ui, t) {
   rect(g, 0, 0, W, H, '#00000077');
   const w = 180;
   const x = W / 2 - w / 2;
-  const inner = window98(g, x, 50, w, 98, 'Y2KAGE.EXE is paused');
+  const inner = window98(g, x, 44, w, 115, 'Y2KAGE.EXE is paused');
   iconInfo(g, inner.x + 4, inner.y + 4);
   text(g, 'Take a breather.', inner.x + 22, inner.y + 4, { font: 'small', color: PAL.ink });
   text(g, 'The zombies will wait.', inner.x + 22, inner.y + 13, { font: 'small', color: PAL.ink });
-  const items = [['Resume', () => ui.game.resume()], [`Sound: ${ui.game.muted() ? 'Off' : 'On'}`, () => ui.game.toggleMute()], ['Quit to Menu', () => ui.game.toSelect()]];
+  const items = [['Resume', () => ui.game.resume()], ['Options', () => ui.game.openOptions()], [`Sound: ${ui.game.muted() ? 'Off' : 'On'}`, () => ui.game.toggleMute()], ['Quit to Menu', () => ui.game.toSelect()]];
   items.forEach(([label, on], i) => {
     const b = { x: inner.x + 22, y: inner.y + 26 + i * 17, w: inner.w - 44, h: 14 };
     button(g, b.x, b.y, b.w, b.h, label, { focus: ui.focus === i });
@@ -378,19 +379,19 @@ export function drawPause(g, ui, t) {
 export function drawClear(g, ui, t, stats) {
   const w = 220;
   const x = W / 2 - w / 2;
-  const inner = window98(g, x, 34, w, 124, `Level ${stats.level} complete`);
+  const inner = window98(g, x, 30, w, 134, `Level ${stats.level} complete`);
   iconInfo(g, inner.x + 4, inner.y + 4);
   text(g, `${clockFor(stats.level).label} SURVIVED`, inner.x + 22, inner.y + 4, { font: 'big', color: PAL.winNavy });
-  const rows = [['Zombies deleted', stats.kills], ['Time', `${Math.floor(stats.time / 60)}:${String(Math.floor(stats.time % 60)).padStart(2, '0')}`], ['Level score', stats.levelScore], ['Total score', stats.score]];
+  const rows = [['Zombies deleted', stats.kills], ['Time', `${Math.floor(stats.time / 60)}:${String(Math.floor(stats.time % 60)).padStart(2, '0')}`], ['Best combo', `${stats.combo || 0} hits`], ['Level score', stats.levelScore], ['Total score', stats.score]];
   rows.forEach(([k, v], i) => {
     text(g, k, inner.x + 22, inner.y + 20 + i * 10, { font: 'small', color: PAL.ink });
     text(g, String(v), inner.x + inner.w - 6, inner.y + 20 + i * 10, { font: 'small', color: PAL.ink, align: 'right' });
   });
   const next = Math.min(TOTAL_LEVELS, stats.level + 1);
-  text(g, `Next: ${clockFor(next).label}, ${DISTRICTS[Math.min(4, Math.floor((next - 1) / 10))].name}`, inner.x + 22, inner.y + 64, { font: 'small', color: PAL.strawberryDark });
+  text(g, `Next: ${clockFor(next).label}, ${DISTRICTS[Math.min(4, Math.floor((next - 1) / 10))].name}`, inner.x + 22, inner.y + 73, { font: 'small', color: PAL.strawberryDark });
   const items = [['Next Level', () => ui.game.nextLevel()], ['Menu', () => ui.game.toSelect()]];
   items.forEach(([label, on], i) => {
-    const b = { x: inner.x + 22 + i * 88, y: inner.y + 80, w: 80, h: 16 };
+    const b = { x: inner.x + 22 + i * 88, y: inner.y + 88, w: 80, h: 16 };
     button(g, b.x, b.y, b.w, b.h, label, { focus: ui.focus === i });
     ui.addButton(b, on, i);
   });
@@ -460,3 +461,46 @@ export function drawEnding(g, ui, t, stats) {
 }
 
 export { TAU, PARTY };
+
+// ---------------------------------------------------------------- options (Control Panel)
+export function drawOptions(g, ui, t, S) {
+  const game = ui.game;
+  rect(g, 0, 0, W, H, '#00000088');
+  const w = 220;
+  const x = W / 2 - w / 2;
+  const inner = window98(g, x, 30, w, 150, 'Control Panel - Y2Kage');
+  const rows = [
+    ['Mouse look', `${S.sens.toFixed(2)}x`, 'step'],
+    ['Music', S.music, 'bar'],
+    ['Sound FX', S.sfx, 'bar'],
+    ['CRT scanlines', S.scanlines ? 'On' : 'Off', 'toggle'],
+    ['Glitch effects', S.glitch ? 'On' : 'Off', 'toggle'],
+  ];
+  rows.forEach(([label, val, kind], i) => {
+    const y = inner.y + 4 + i * 18;
+    const focus = ui.focus === i;
+    if (focus) rect(g, inner.x + 2, y - 2, inner.w - 4, 16, PAL.winNavy);
+    text(g, label, inner.x + 6, y + 2, { font: 'small', color: focus ? PAL.white : PAL.ink });
+    const cx = inner.x + 110;
+    if (kind === 'toggle') {
+      const b = { x: cx, y: y - 1, w: 90, h: 13 };
+      button(g, b.x, b.y, b.w, b.h, val, {});
+      ui.addButton(b, () => game.optAdjust(i, 1), 100 + i);
+      return;
+    }
+    const bl = { x: cx, y: y - 1, w: 13, h: 13 };
+    const br = { x: cx + 77, y: y - 1, w: 13, h: 13 };
+    button(g, bl.x, bl.y, bl.w, bl.h, '<', {});
+    button(g, br.x, br.y, br.w, br.h, '>', {});
+    ui.addButton(bl, () => game.optAdjust(i, -1), 110 + i);
+    ui.addButton(br, () => game.optAdjust(i, 1), 120 + i);
+    bevel(g, cx + 15, y - 1, 60, 13, true, PAL.white);
+    if (kind === 'bar') {
+      for (let k = 0; k < 10; k++) rect(g, cx + 18 + k * 5.5, y + 2, 4, 7, k < val ? PAL.winNavy : '#d0d0d0');
+    } else text(g, val, cx + 45, y + 2, { font: 'small', color: PAL.ink, align: 'center' });
+  });
+  const done = { x: inner.x + inner.w / 2 - 40, y: inner.y + inner.h - 20, w: 80, h: 16 };
+  button(g, done.x, done.y, done.w, done.h, 'OK', { focus: ui.focus === rows.length });
+  ui.addButton(done, () => game.closeOptions(), rows.length);
+  text(g, 'ARROWS adjust  ESC close', W / 2, H - 20, { font: 'small', color: PAL.cream, outline: PAL.ink, align: 'center' });
+}

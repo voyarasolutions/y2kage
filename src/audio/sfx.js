@@ -6,6 +6,7 @@ let sfxBus = null;
 let musicBus = null;
 let noiseBuf = null;
 let muted = false;
+let vol = { music: 0.8, sfx: 1 };
 try {
   muted = localStorage.getItem('y2kage16.muted') === '1';
 } catch (e) {}
@@ -19,10 +20,10 @@ function ensure() {
   master.gain.value = muted ? 0 : 0.5;
   master.connect(ctx.destination);
   sfxBus = ctx.createGain();
-  sfxBus.gain.value = 0.9;
+  sfxBus.gain.value = 0.9 * vol.sfx;
   sfxBus.connect(master);
   musicBus = ctx.createGain();
-  musicBus.gain.value = 0.32;
+  musicBus.gain.value = 0.4 * vol.music;
   musicBus.connect(master);
   noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 1, ctx.sampleRate);
   const d = noiseBuf.getChannelData(0);
@@ -94,6 +95,16 @@ export const sfx = {
   unlock() {
     if (!ensure()) return;
     if (ctx.state === 'suspended') ctx.resume();
+  },
+  setVolumes(music, fx) {
+    vol = { music, sfx: fx };
+    if (sfxBus) sfxBus.gain.value = 0.9 * fx;
+    if (musicBus) musicBus.gain.value = 0.4 * music;
+  },
+  // Rising arpeggio, one step higher for every combo tier.
+  combo(tier) {
+    const root = 523 * Math.pow(2, tier / 6);
+    [1, 1.26, 1.5, 2].forEach((m, i) => tone(root * m, 0.09, 'square', 0.1, null, i * 0.05));
   },
   get muted() {
     return muted;

@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { Pix, micro, microWidth, sevenSeg } from './pix.js';
 import { PAL, FLAVOURS } from '../core/palette.js';
 import { mulberry32 } from '../core/util.js';
+import { LOOKS, portrait, heroBody } from './heroart.js';
 
 // ---------------------------------------------------------------- humanoid zombie base
 function legs(p, o, f) {
@@ -467,48 +468,8 @@ function shadowBlob() {
 }
 
 // ---------------------------------------------------------------- hero portraits (select screen)
-export const SKINS = ['#d99a6c', '#8a5a3a', '#f0c8a0', '#c08050', '#e8b890'];
-
-export function portrait(i) {
-  const fl = FLAVOURS[i];
-  const skin = SKINS[i];
-  const skinD = ['#a8704a', '#5e3a22', '#c89a70', '#8a5430', '#b88a60'][i];
-  const p = new Pix(32, 32);
-  // Shoulders in the hero's iMac colour.
-  p.oval(16, 32, 13, 7, fl.base).oval(14, 31, 10, 5, fl.light);
-  p.rect(13, 24, 6, 4, skin);
-  // Face.
-  p.oval(16, 16, 7, 8, skin);
-  p.rect(20, 12, 2, 10, skinD);
-  p.px(13, 16, PAL.ink).px(19, 16, PAL.ink).px(13, 15, PAL.white);
-  p.rect(14, 20, 4, 1, skinD);
-  const hair = ['#4a2a1a', '#1a1010', '#7a3fb0', '#c89a4a', '#2a1a10'][i];
-  if (i === 0) {
-    // Tina: space buns, butterfly clip.
-    p.oval(16, 10, 8, 4, hair).rect(9, 10, 2, 8, hair);
-    p.oval(8, 7, 3, 3, hair).oval(24, 7, 3, 3, hair);
-    p.px(11, 9, PAL.pink).px(12, 8, PAL.cyan);
-  } else if (i === 1) {
-    // Marcus: backwards cap and headphones.
-    p.oval(16, 10, 8, 4, fl.base).rect(8, 9, 16, 3, fl.base).rect(6, 11, 4, 2, fl.dark);
-    p.rect(7, 13, 3, 6, '#2a2a2a').rect(23, 13, 3, 6, '#2a2a2a').rect(8, 6, 16, 1, '#2a2a2a');
-  } else if (i === 2) {
-    // Dot: purple bob and round glasses.
-    p.oval(16, 11, 9, 6, hair).rect(7, 11, 3, 10, hair).rect(22, 11, 3, 10, hair);
-    p.rect(11, 15, 4, 3, PAL.ink).rect(17, 15, 4, 3, PAL.ink).rect(12, 16, 2, 1, '#8fdcf0').rect(18, 16, 2, 1, '#8fdcf0');
-    p.rect(15, 16, 2, 1, PAL.ink);
-  } else if (i === 3) {
-    // Gus: frosted tips.
-    for (let k = 0; k < 8; k++) p.rect(9 + k * 2, 5 + (k % 2), 2, 5 - (k % 2), k % 2 ? '#f6e0a0' : hair);
-    p.rect(9, 9, 15, 2, '#6a4a2a');
-  } else {
-    // Kev: bowl cut and a headset mic.
-    p.oval(16, 11, 8, 5, hair).rect(8, 11, 16, 3, hair);
-    p.rect(8, 14, 2, 6, '#2a2a2a').line(9, 19, 13, 21, '#2a2a2a').px(13, 21, PAL.red);
-  }
-  p.outline(PAL.ink);
-  return p;
-}
+export const SKINS = LOOKS.map((l) => l.skin.base);
+export { portrait };
 
 // ---------------------------------------------------------------- 16px icons
 export function icon(name) {
@@ -584,6 +545,7 @@ export function buildSprites() {
   S.gooBig = tex(goo(true));
   S.shadow = tex(shadowBlob());
   S.portraits = [0, 1, 2, 3, 4].map(portrait);
+  S.heroBodies = [0, 1, 2, 3, 4].map((i) => [heroBody(i, 0), heroBody(i, 1)]);
   S.icons = {};
   for (const k of ['skate', 'board', 'slinky', 'pogo', 'scooter', 'soaker', 'yoyo', 'floppy', 'rocket', 'laser', 'heart', 'shield']) S.icons[k] = icon(k);
   return S;

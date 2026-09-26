@@ -282,22 +282,25 @@ export function drawSelect(g, ui, t, S) {
     const fl = FLAVOURS[i];
     const sel = hero.id === game.heroId;
     const x = x0 + i * (cw + gap);
-    const y = 20 + (sel ? 0 : 5);
-    const h = 90;
-    // Translucent iMac shell: coloured frame, lighter stripes, a screen with the portrait.
+    const y = 19 + (sel ? 0 : 4);
+    const h = 94;
+    // Translucent iMac shell: coloured frame, lighter stripes, a screen with the hero standing on their ride.
     rect(g, x + 2, y + 2, cw, h, '#00000066');
     rect(g, x, y, cw, h, fl.dark);
     rect(g, x + 1, y + 1, cw - 2, h - 2, fl.base);
     for (let k = 3; k < h - 2; k += 4) rect(g, x + 1, y + k, cw - 2, 1, fl.light + '66');
     rect(g, x + 1, y + 1, cw - 2, 2, fl.light);
-    rect(g, x + 6, y + 6, cw - 12, 42, '#ececec');
-    rect(g, x + 8, y + 8, cw - 16, 38, sel ? '#203050' : '#101828');
-    g.drawImage(S.portraits[i].c, x + cw / 2 - 16, y + 12);
-    text(g, hero.name, x + cw / 2, y + 51, { font: 'big', color: PAL.white, outline: fl.dark, align: 'center' });
-    g.drawImage(S.icons[hero.move.type].c, x + 8, y + 61);
-    g.drawImage(S.icons[hero.gun.kind].c, x + cw - 24, y + 61);
-    text(g, String(i + 1), x + cw / 2, y + 66, { font: 'small', color: fl.light, align: 'center' });
-    statPips(g, x + 22, y + 80, hero.stats.speed, PAL.white);
+    rect(g, x + 4, y + 4, cw - 8, 72, '#ececec');
+    rect(g, x + 6, y + 6, cw - 12, 68, sel ? '#203050' : '#101828');
+    // Screen: a little night skyline behind them, scanlines over the top.
+    rect(g, x + 6, y + 56, cw - 12, 18, sel ? '#2a2048' : '#181830');
+    for (let k = 0; k < 6; k++) rect(g, x + 8 + k * 9, y + 46 + ((k * 7) % 11), 7, 28 - ((k * 7) % 11), sel ? '#141030' : '#0c0c1c');
+    rect(g, x + 6, y + 68, cw - 12, 6, sel ? fl.dark : '#10101a');
+    const body = S.heroBodies[i][sel ? Math.floor(t * 2.5) % 2 : 0];
+    g.drawImage(body.c, Math.round(x + cw / 2 - body.w / 2), y + 74 - body.h + 2);
+    for (let k = y + 6; k < y + 74; k += 2) rect(g, x + 6, k, cw - 12, 1, '#00000030');
+    text(g, hero.name, x + cw / 2, y + 79, { font: 'big', color: PAL.white, outline: fl.dark, align: 'center' });
+    text(g, String(i + 1), x + cw - 8, y + 7, { font: 'small', color: fl.light, align: 'center' });
     if (sel) {
       rect(g, x - 2, y - 2, cw + 4, 1, PAL.white);
       rect(g, x - 2, y + h + 1, cw + 4, 1, PAL.white);
@@ -316,17 +319,21 @@ export function drawSelect(g, ui, t, S) {
   const i = HEROES.indexOf(hero);
   const dw = 240;
   const dx = 8;
-  const dy = 118;
+  const dy = 120;
   const inner = window98(g, dx, dy, dw, 84, `${hero.name} "${hero.nick}"`);
-  text(g, `RIDE: ${hero.ride.toUpperCase()}`, inner.x + 2, inner.y + 1, { font: 'small', color: PAL.winNavy });
-  text(g, `WEAPON: ${hero.weapon.toUpperCase()}`, inner.x + 2, inner.y + 10, { font: 'small', color: PAL.strawberryDark });
-  text(g, hero.controls.toUpperCase(), inner.x + 2, inner.y + 19, { font: 'small', color: PAL.winShadow });
-  wrap(hero.blurb, inner.w - 6).slice(0, 4).forEach((l, k) => text(g, l, inner.x + 2, inner.y + 30 + k * 8, { font: 'small', color: PAL.ink }));
+  bevel(g, inner.x + 1, inner.y + 1, 36, 36, true, FLAVOURS[i].dark);
+  g.drawImage(S.portraits[i].c, inner.x + 3, inner.y + 3);
+  g.drawImage(S.icons[hero.move.type].c, inner.x + 40, inner.y + 1);
+  text(g, hero.ride.toUpperCase(), inner.x + 58, inner.y + 5, { font: 'small', color: PAL.winNavy });
+  g.drawImage(S.icons[hero.gun.kind].c, inner.x + 40, inner.y + 18);
+  text(g, hero.weapon.toUpperCase(), inner.x + 58, inner.y + 22, { font: 'small', color: PAL.strawberryDark });
   const stats = [['SPD', hero.stats.speed], ['PWR', hero.stats.power], ['RNG', hero.stats.range]];
   stats.forEach(([k, v], j) => {
-    text(g, k, inner.x + inner.w - 58, inner.y + 1 + j * 9, { font: 'small', color: PAL.ink });
-    statPips(g, inner.x + inner.w - 34, inner.y + 2 + j * 9, v, FLAVOURS[i].dark);
+    text(g, k, inner.x + inner.w - 58, inner.y + 2 + j * 9, { font: 'small', color: PAL.ink });
+    statPips(g, inner.x + inner.w - 34, inner.y + 3 + j * 9, v, FLAVOURS[i].dark);
   });
+  text(g, hero.controls.toUpperCase(), inner.x + inner.w - 3, inner.y + 30, { font: 'small', color: PAL.winShadow, align: 'right' });
+  wrap(hero.blurb, inner.w - 6).slice(0, 3).forEach((l, k) => text(g, l, inner.x + 2, inner.y + 40 + k * 8, { font: 'small', color: PAL.ink }));
 
   // Level picker and go button.
   const px = 254;

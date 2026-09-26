@@ -1,0 +1,9 @@
+{
+  "appId": "com.y2kage.game",
+  "appName": "Y2Kage",
+  "webDir": "dist",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#0d0b1e"
+  }
+}

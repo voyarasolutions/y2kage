@@ -1,0 +1,270 @@
+// In-game HUD: a Windows 98 taskbar along the bottom (health, armor, ride and weapon meters, the
+// system-tray clock counting down to midnight), dialog-box banners and tray tooltips.
+import { PAL } from '../core/palette.js';
+import { W, H } from '../core/util.js';
+import { text, textWidth, wrap } from '../core/pixelfont.js';
+import { bevel, rect, progress, meter, window98, tooltip, iconError, iconInfo, iconWarn, startFlag } from './win98.js';
+import { clockFor, levelConfig } from '../data/levels.js';
+import { ENEMIES } from '../data/levels.js';
+
+export const TASKBAR_H = 16;
+
+export function drawCrosshair(g, kind, over) {
+  const cx = W / 2;
+  const cy = H / 2 - 8;
+  const col = over ? PAL.red : kind === 'laser' ? PAL.red : PAL.cream;
+  rect(g, cx - 4, cy, 3, 1, PAL.ink);
+  rect(g, cx + 2, cy, 3, 1, PAL.ink);
+  rect(g, cx, cy - 4, 1, 3, PAL.ink);
+  rect(g, cx, cy + 2, 1, 3, PAL.ink);
+  rect(g, cx - 3, cy, 2, 1, col);
+  rect(g, cx + 2, cy, 2, 1, col);
+  rect(g, cx, cy - 3, 1, 2, col);
+  rect(g, cx, cy + 2, 1, 2, col);
+}
+
+function weaponMeter(g, sim, x, y, S) {
+  const P = sim.player;
+  const G = sim.hero.gun;
+  const M = sim.hero.move;
+  g.drawImage(S.icons[G.kind].c, x, y - 1);
+  let label = '';
+  let frac = 1;
+  let col = PAL.cyan;
+  if (G.kind === 'soaker') {
+    label = 'H2O';
+    frac = P.tank / G.tank;
+    col = '#4ab8ff';
+  } else if (G.kind === 'laser') {
+    label = P.overheated ? 'HOT!' : 'HEAT';
+    frac = P.heat / 100;
+    col = P.overheated ? PAL.red : P.heat > 70 ? PAL.tangerine : PAL.gold;
+  } else if (G.kind === 'yoyo') {
+    label = 'X2';
+    frac = 1 - sim.projs.filter((p) => p.kind === 'yoyo').length / 2;
+    col = PAL.pink;
+  } else if (G.kind === 'floppy') {
+    label = 'DISK';
+    frac = 1 - Math.max(0, P.fireCd) / G.every;
+  } else if (G.kind === 'rocket') {
+    label = 'LOAD';
+    frac = 1 - Math.max(0, P.fireCd) / G.every;
+    col = PAL.strawberry;
+  }
+  meter(g, x + 17, y + 3, 30, 7, frac, col);
+  let rx = x + 52;
+  g.drawImage(S.icons[M.type].c, rx, y - 1);
+  rx += 17;
+  if (M.type === 'scooter') {
+    for (let i = 0; i < M.charges; i++) {
+      bevel(g, rx + i * 7, y + 2, 6, 9, i >= P.charges, i < P.charges ? PAL.lime : PAL.winFace);
+    }
+  } else if (M.type === 'board') {
+    meter(g, rx, y + 3, 24, 7, 1 - P.boostCd / M.boostCd, PAL.tangerine);
+  } else if (M.type === 'slinky') {
+    meter(g, rx, y + 3, 24, 7, P.charge, PAL.grape);
+  } else if (M.type === 'pogo') {
+    meter(g, rx, y + 3, 24, 7, P.onGround ? 1 : Math.max(0, 1 - P.z / 1.2), PAL.strawberry);
+  } else {
+    meter(g, rx, y + 3, 24, 7, Math.min(1, P.speed / M.max), PAL.bondi);
+  }
+  return label;
+}
+
+export function drawTaskbar(g, sim, S, heroIdx, t) {
+  const y = H - TASKBAR_H;
+  const P = sim.player;
+  rect(g, 0, y, W, TASKBAR_H, PAL.winFace);
+  rect(g, 0, y, W, 1, PAL.winLight);
+  rect(g, 0, y + 1, W, 1, PAL.white);
+  // Start button carries the hero's name.
+  bevel(g, 2, y + 3, 52, 12);
+  startFlag(g, 5, y + 5);
+  text(g, sim.hero.name, 14, y + 6, { font: 'small', color: PAL.ink });
+  rect(g, 57, y + 3, 1, 12, PAL.winShadow);
+  rect(g, 58, y + 3, 1, 12, PAL.white);
+  // Health and armor.
+  g.drawImage(S.icons.heart.c, 60, y + 1);
+  const hpCol = P.hp > 50 ? PAL.winNavy : P.hp > 25 ? PAL.tangerineDark : PAL.red;
+  progress(g, 76, y + 4, 54, 10, P.hp / 100, hpCol);
+  text(g, String(Math.ceil(P.hp)), 133, y + 6, { font: 'small', color: P.hp <= 25 && Math.floor(t * 4) % 2 ? PAL.red : PAL.ink });
+  g.drawImage(S.icons.shield.c, 150, y + 1);
+  progress(g, 166, y + 4, 34, 10, P.armor / 100, PAL.goldDark);
+  weaponMeter(g, sim, 205, y + 3, S);
+  // Tray: sunken box with the speaker, overclock chip and the countdown clock.
+  const tw = 72;
+  const tx = W - tw - 2;
+  bevel(g, tx, y + 3, tw, 12, true);
+  if (P.overclock > 0 && (P.overclock > 2 || Math.floor(t * 6) % 2)) {
+    rect(g, tx + 4, y + 6, 7, 7, '#1a6a3a');
+    rect(g, tx + 6, y + 8, 3, 3, PAL.cyan);
+  }
+  const c = clockFor(sim.levelN);
+  // The seconds tick while you fight; a level lasts "one minute" to midnight.
+  const secs = Math.min(59, Math.floor(sim.lv.time));
+  const colon = Math.floor(t * 2) % 2 ? ':' : ' ';
+  text(g, `11${colon}${String(c.m).padStart(2, '0')} PM`, tx + tw - 4, y + 6, { font: 'small', color: PAL.ink, align: 'right' });
+  return secs;
+}
+
+export function drawTopHud(g, sim, t) {
+  const L = sim.lv;
+  // Score, chunky and gold.
+  text(g, String(sim.totalScore).padStart(7, '0'), 5, 5, { font: 'big', color: PAL.gold, outline: PAL.ink });
+  // Wave status.
+  if (L.phase === 'wave') {
+    const s = `WAVE ${L.wave + 1}/${sim.cfg.waves.length}`;
+    const r = `${sim.remaining()} LEFT`;
+    text(g, s, W / 2, 5, { font: 'big', color: PAL.cream, outline: PAL.ink, align: 'center' });
+    text(g, r, W / 2, 15, { font: 'small', color: PAL.cyan, outline: PAL.ink, align: 'center' });
+  }
+  text(g, `LVL ${sim.levelN}`, W - 5, 5, { font: 'big', color: PAL.cream, outline: PAL.ink, align: 'right' });
+  text(g, sim.map.name.toUpperCase(), W - 5, 15, { font: 'small', color: PAL.pinkLight, outline: PAL.ink, align: 'right' });
+}
+
+export function drawBossBar(g, sim, t) {
+  const z = sim.boss;
+  if (!z) return;
+  const w = 180;
+  const x = W / 2 - w / 2;
+  const y = 26;
+  const inner = window98(g, x, y, w, 38, 'Deleting MILLENNIUM.BUG');
+  text(g, 'The Millennium Bug', inner.x + 2, inner.y + 1, { font: 'small', color: PAL.ink });
+  progress(g, inner.x + 2, inner.y + 10, inner.w - 4, 10, 1 - z.hp / z.max, PAL.winNavy);
+}
+
+// Centre-screen dialog banners for level start, waves and the boss.
+export function drawBanner(g, sim, t) {
+  const b = sim.banner;
+  if (!b) return;
+  const age = b.dur - b.t;
+  const pop = Math.min(1, age / 0.12);
+  if (pop < 1 && Math.floor(age * 60) % 2) return;
+  const cfg = sim.cfg;
+  if (b.kind === 'level') {
+    const w = 236;
+    const lines = wrap(cfg.radio, w - 34);
+    const h = 58 + lines.length * 9;
+    const x = Math.round(W / 2 - w / 2);
+    const y = 44;
+    const inner = window98(g, x, y, w, h, `Y2KAGE.EXE - Level ${sim.levelN} of 50`);
+    iconInfo(g, inner.x + 4, inner.y + 3);
+    text(g, `${cfg.clock.label}  ${sim.map.name.toUpperCase()}`, inner.x + 22, inner.y + 3, { font: 'big', color: PAL.winNavy });
+    text(g, `${cfg.waves.length} waves. ${cfg.clock.minutesLeft} min to midnight.${cfg.isBoss ? ' BOSS LEVEL.' : ''}`, inner.x + 22, inner.y + 14, { font: 'small', color: cfg.isBoss ? PAL.strawberryDark : PAL.ink });
+    rect(g, inner.x + 22, inner.y + 24, inner.w - 26, 1, PAL.winShadow);
+    rect(g, inner.x + 22, inner.y + 25, inner.w - 26, 1, PAL.white);
+    lines.forEach((l, i) => text(g, l, inner.x + 22, inner.y + 29 + i * 9, { font: 'small', color: PAL.winDark }));
+  } else if (b.kind === 'wave') {
+    const L = sim.lv;
+    const w = 170;
+    const x = Math.round(W / 2 - w / 2);
+    const inner = window98(g, x, 50, w, 40, 'Incoming');
+    iconWarn(g, inner.x + 4, inner.y + 3);
+    text(g, `WAVE ${L.wave + 1} OF ${cfg.waves.length}`, inner.x + 22, inner.y + 3, { font: 'big', color: PAL.ink });
+    text(g, `${L.total} zombies inbound`, inner.x + 22, inner.y + 13, { font: 'small', color: PAL.winDark });
+  } else if (b.kind === 'cleared') {
+    const w = 170;
+    const x = Math.round(W / 2 - w / 2);
+    const inner = window98(g, x, 50, w, 40, 'Wave cleared');
+    iconInfo(g, inner.x + 4, inner.y + 3);
+    text(g, 'WAVE CLEARED', inner.x + 22, inner.y + 3, { font: 'big', color: PAL.winNavy });
+    const left = cfg.waves.length - sim.lv.wave - 1;
+    text(g, `${left} more wave${left === 1 ? '' : 's'} this minute`, inner.x + 22, inner.y + 13, { font: 'small', color: PAL.winDark });
+  } else if (b.kind === 'boss') {
+    const w = 210;
+    const x = Math.round(W / 2 - w / 2);
+    const blink = Math.floor(t * 8) % 2;
+    const inner = window98(g, x, 48, w, 46, 'Y2K.EXE - Fatal error', { active: !!blink });
+    iconError(g, inner.x + 4, inner.y + 3);
+    text(g, 'MILLENNIUM BUG', inner.x + 22, inner.y + 3, { font: 'big', color: PAL.strawberryDark });
+    text(g, 'It thinks it is 1900. Delete it.', inner.x + 22, inner.y + 14, { font: 'small', color: PAL.ink });
+  }
+}
+
+export function drawToast(g, sim, touch) {
+  const m = sim.toastMsg;
+  if (!m) return;
+  const w = Math.max(textWidth(m.title, 'big'), textWidth(m.sub, 'small')) + 12;
+  // On phones the tray corner belongs to the thumbs, so the balloon moves up top.
+  const x = touch ? Math.round(W / 2 - w / 2) : W - w - 6;
+  const y = touch ? 30 : H - TASKBAR_H - 30;
+  tooltip(g, x, y, w, 24);
+  // Balloon tail pointing at the tray.
+  if (touch) {
+    text(g, m.title, x + 6, y + 4, { font: 'big', color: PAL.ink });
+    text(g, m.sub, x + 6, y + 14, { font: 'small', color: PAL.winDark });
+    return;
+  }
+  rect(g, x + w - 20, y + 23, 6, 1, PAL.winTip);
+  rect(g, x + w - 18, y + 24, 3, 2, PAL.ink);
+  rect(g, x + w - 17, y + 24, 1, 1, PAL.winTip);
+  text(g, m.title, x + 6, y + 4, { font: 'big', color: PAL.ink });
+  text(g, m.sub, x + 6, y + 14, { font: 'small', color: PAL.winDark });
+}
+
+export function drawHurt(g, sim, t) {
+  const P = sim.player;
+  const low = P.hp < 30 && Math.floor(t * 3) % 2 === 0;
+  if (P.hurtT <= 0 && !low) return;
+  const a = Math.max(P.hurtT / 0.4, low ? 0.5 : 0);
+  g.fillStyle = PAL.red;
+  for (let k = 0; k < 10; k++) {
+    for (let i = 0; i < 10 - k; i++) {
+      if ((i + k) % 2) continue;
+      if (Math.random() > a) continue;
+      g.fillRect(i * 2, H - TASKBAR_H - 2 - k * 2, 2, 2);
+      g.fillRect(W - 2 - i * 2, H - TASKBAR_H - 2 - k * 2, 2, 2);
+      g.fillRect(i * 2, k * 2, 2, 2);
+      g.fillRect(W - 2 - i * 2, k * 2, 2, 2);
+    }
+  }
+}
+
+// On-screen buttons for phones and tablets.
+export const TOUCH = {
+  fire: { x: 336, y: 150, r: 22 },
+  jump: { x: 292, y: 176, r: 13 },
+  boost: { x: 352, y: 106, r: 12 },
+  pause: { x: 372, y: 28, r: 9 },
+};
+
+export function drawTouch(g, input, hero) {
+  if (!input.touch.on) return;
+  const ring = (b, label, on) => {
+    g.fillStyle = on ? '#ffffff55' : '#ffffff22';
+    for (let y = -b.r; y <= b.r; y++) {
+      const w = Math.round(Math.sqrt(b.r * b.r - y * y));
+      g.fillRect(b.x - w, b.y + y, w * 2, 1);
+    }
+    text(g, label, b.x, b.y - 3, { font: 'small', color: PAL.white, outline: PAL.ink, align: 'center' });
+  };
+  ring(TOUCH.fire, 'FIRE', input.touch.fire != null);
+  ring(TOUCH.jump, hero.move.type === 'scooter' ? 'DASH' : hero.move.type === 'slinky' ? 'LEAP' : 'JUMP', input.touch.jump != null);
+  if (hero.move.type === 'board' || hero.move.type === 'scooter') ring(TOUCH.boost, hero.move.type === 'board' ? 'KICK' : 'DASH', false);
+  ring(TOUCH.pause, 'II', false);
+  if (input.touch.mo) {
+    const m = input.touch.mo;
+    g.fillStyle = '#ffffff22';
+    g.fillRect(m.x - 24, m.y - 1, 48, 2);
+    g.fillRect(m.x - 1, m.y - 24, 2, 48);
+    const k = input.touch.knob || m;
+    g.fillStyle = '#ffffff66';
+    g.fillRect(k.x - 6, k.y - 6, 12, 12);
+  }
+}
+
+export function drawGlitch(g, amt) {
+  if (amt <= 0) return;
+  const n = Math.floor(6 + amt * 40);
+  for (let i = 0; i < n; i++) {
+    const y = Math.floor(Math.random() * H);
+    const h = 1 + Math.floor(Math.random() * 3);
+    const x = Math.floor(Math.random() * W);
+    const w = 8 + Math.floor(Math.random() * 60);
+    g.fillStyle = [PAL.cyan, PAL.pink, PAL.white, PAL.bsod][i % 4] + (i % 2 ? '99' : 'cc');
+    g.fillRect(x, y, w, h);
+  }
+  if (amt > 0.1) text(g, 'ERR 0x7CF', Math.random() * (W - 60), Math.random() * (H - 30), { font: 'small', color: PAL.white, shadow: PAL.bsod });
+}
+
+export { ENEMIES, levelConfig };

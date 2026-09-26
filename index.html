@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#000000" />
+    <title>Y2Kage</title>
+    <style>
+      @font-face { font-family: 'Press Start 2P'; src: url('./fonts/ps2p-latin.woff2') format('woff2'); font-display: block; }
+      @font-face { font-family: 'Silkscreen'; src: url('./fonts/silkscreen-latin.woff2') format('woff2'); font-display: block; }
+      :root { color-scheme: dark; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        background: #000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+        box-sizing: border-box;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+      }
+      /* The game draws on a 384x216 grid; the browser scales it up with hard pixel edges. */
+      #stage { position: relative; width: min(100vw, calc(100vh * 16 / 9)); aspect-ratio: 16 / 9; max-height: 100vh; background: #000; }
+      #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+      #ui { touch-action: none; cursor: default; outline: none; }
+      #ui.play { cursor: none; }
+      #fail { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; background: #0000aa; font: 16px monospace; padding: 16px; text-align: center; }
+      #fail[hidden] { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <canvas id="gl" width="384" height="216"></canvas>
+      <canvas id="ui" width="384" height="216" tabindex="0" aria-label="Y2Kage game"></canvas>
+      <div id="fail" hidden></div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

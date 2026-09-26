@@ -1,0 +1,221 @@
+// Synthesised sound (WebAudio): chip-style effects, the dial-up handshake, the BIOS beep.
+// No audio files. Audio unlocks on the first key, click or tap.
+let ctx = null;
+let master = null;
+let sfxBus = null;
+let musicBus = null;
+let noiseBuf = null;
+let muted = false;
+try {
+  muted = localStorage.getItem('y2kage16.muted') === '1';
+} catch (e) {}
+
+function ensure() {
+  if (ctx) return true;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return false;
+  ctx = new AC();
+  master = ctx.createGain();
+  master.gain.value = muted ? 0 : 0.5;
+  master.connect(ctx.destination);
+  sfxBus = ctx.createGain();
+  sfxBus.gain.value = 0.9;
+  sfxBus.connect(master);
+  musicBus = ctx.createGain();
+  musicBus.gain.value = 0.32;
+  musicBus.connect(master);
+  noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 1, ctx.sampleRate);
+  const d = noiseBuf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  return true;
+}
+
+export function audio() {
+  return ctx && ctx.state === 'running' ? { ctx, musicBus, noiseBuf } : null;
+}
+
+function env(g, t, a, peak, dur) {
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(peak, t + a);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+}
+
+function noise(dur, freq, q, peak, type = 'bandpass', delay = 0) {
+  if (!ctx || muted) return;
+  const t = ctx.currentTime + delay;
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuf;
+  const f = ctx.createBiquadFilter();
+  f.type = type;
+  f.frequency.value = freq;
+  f.Q.value = q;
+  const g = ctx.createGain();
+  env(g, t, 0.004, peak, dur);
+  src.connect(f).connect(g).connect(sfxBus);
+  src.start(t, Math.random() * 0.4);
+  src.stop(t + dur + 0.05);
+}
+
+function tone(freq, dur, type, peak, slideTo, delay = 0) {
+  if (!ctx || muted) return;
+  const t = ctx.currentTime + delay;
+  const o = ctx.createOscillator();
+  o.type = type;
+  o.frequency.setValueAtTime(freq, t);
+  if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+  const g = ctx.createGain();
+  env(g, t, 0.006, peak, dur);
+  o.connect(g).connect(sfxBus);
+  o.start(t);
+  o.stop(t + dur + 0.05);
+}
+
+// Two tones held together with a flat envelope (modem and phone sounds).
+function hold(freqs, start, dur, peak, type = 'sine') {
+  if (!ctx || muted) return;
+  const t = ctx.currentTime + start;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(peak, t + 0.01);
+  g.gain.setValueAtTime(peak, t + dur - 0.02);
+  g.gain.linearRampToValueAtTime(0, t + dur);
+  g.connect(sfxBus);
+  for (const f of freqs) {
+    const o = ctx.createOscillator();
+    o.type = type;
+    o.frequency.value = f;
+    o.connect(g);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  }
+}
+
+export const sfx = {
+  unlock() {
+    if (!ensure()) return;
+    if (ctx.state === 'suspended') ctx.resume();
+  },
+  get muted() {
+    return muted;
+  },
+  toggleMute() {
+    muted = !muted;
+    try {
+      localStorage.setItem('y2kage16.muted', muted ? '1' : '0');
+    } catch (e) {}
+    if (master) master.gain.value = muted ? 0 : 0.5;
+    return muted;
+  },
+  shoot(weapon) {
+    if (weapon === 'soaker') noise(0.09, 3800, 0.5, 0.1, 'highpass');
+    else if (weapon === 'yoyo') {
+      tone(500, 0.16, 'triangle', 0.12, 900);
+      noise(0.1, 1500, 2, 0.08);
+    } else if (weapon === 'floppy') {
+      tone(1200, 0.04, 'square', 0.08);
+      noise(0.12, 2400, 1.2, 0.14);
+    } else if (weapon === 'rocket') {
+      tone(400, 0.5, 'sawtooth', 0.07, 1800);
+      noise(0.35, 2000, 0.5, 0.2);
+    } else if (weapon === 'laser') tone(1400 + Math.random() * 300, 0.06, 'square', 0.03);
+  },
+  splash() {
+    noise(0.08, 2600, 1, 0.07);
+  },
+  explode() {
+    noise(0.7, 400, 0.4, 0.7, 'lowpass');
+    tone(90, 0.4, 'square', 0.2, 30);
+    [1500, 1900, 2300].forEach((f, i) => tone(f, 0.05, 'square', 0.04, null, 0.12 + i * 0.07));
+  },
+  jump() {
+    tone(300, 0.15, 'square', 0.08, 700);
+  },
+  land() {
+    noise(0.1, 300, 1, 0.2, 'lowpass');
+  },
+  spring() {
+    tone(200, 0.35, 'triangle', 0.18, 1200);
+  },
+  boing() {
+    tone(260, 0.12, 'triangle', 0.05, 420);
+  },
+  stomp() {
+    noise(0.5, 160, 0.4, 0.8, 'lowpass');
+    tone(70, 0.4, 'square', 0.25, 35);
+  },
+  overheat() {
+    [800, 600, 400].forEach((f, i) => tone(f, 0.12, 'square', 0.1, null, i * 0.1));
+  },
+  hit() {
+    noise(0.06, 500, 1.5, 0.25);
+  },
+  tick() {
+    tone(2200, 0.03, 'square', 0.05);
+  },
+  die() {
+    tone(180, 0.35, 'sawtooth', 0.15, 50);
+    noise(0.2, 300, 1, 0.25, 'lowpass');
+  },
+  groan() {
+    tone(90 + Math.random() * 40, 0.7, 'sawtooth', 0.04, 60);
+  },
+  bossRoar() {
+    tone(110, 0.9, 'sawtooth', 0.2, 55);
+    tone(116, 0.9, 'square', 0.1, 58);
+    noise(0.9, 250, 0.8, 0.3, 'lowpass');
+  },
+  hurt() {
+    tone(220, 0.2, 'square', 0.2, 110);
+  },
+  pickup() {
+    tone(660, 0.08, 'square', 0.14);
+    tone(990, 0.12, 'square', 0.14, null, 0.08);
+  },
+  dash() {
+    noise(0.15, 3000, 0.4, 0.18, 'highpass');
+  },
+  wave() {
+    [523, 659, 784].forEach((f, i) => tone(f, 0.18, 'square', 0.12, null, i * 0.1));
+  },
+  clear() {
+    [523, 659, 784, 1046, 784, 1046].forEach((f, i) => tone(f, 0.16, 'square', 0.13, null, i * 0.09));
+  },
+  boom() {
+    noise(0.9, 180, 0.5, 0.3, 'lowpass');
+  },
+  glitch() {
+    tone(1800 + Math.random() * 1200, 0.05, 'square', 0.05);
+  },
+  click() {
+    tone(1800, 0.02, 'square', 0.06);
+  },
+  select() {
+    tone(880, 0.05, 'square', 0.08);
+    tone(1320, 0.07, 'square', 0.08, null, 0.05);
+  },
+  key() {
+    noise(0.03, 3000, 2, 0.05);
+  },
+  postBeep() {
+    tone(1000, 0.18, 'square', 0.12);
+  },
+  // The Windows 98-ish "something went wrong" chord.
+  bsod() {
+    [196, 247, 294].forEach((f) => tone(f, 0.7, 'triangle', 0.14));
+    tone(98, 0.8, 'square', 0.08);
+  },
+  // A compressed 56k handshake: dial tone, DTMF dialing, answer tone, then the screech.
+  dialup() {
+    if (!ctx || muted) return 5.2;
+    hold([350, 440], 0, 0.7, 0.06);
+    const digits = [[697, 1209], [770, 1336], [852, 1477], [941, 1336], [697, 1336], [770, 1209], [852, 1209]];
+    digits.forEach((d, i) => hold(d, 0.8 + i * 0.12, 0.08, 0.07));
+    hold([2100], 1.75, 0.9, 0.05);
+    hold([1650, 1850], 2.7, 0.5, 0.035, 'square');
+    for (let i = 0; i < 14; i++) hold([980 + Math.random() * 1400], 3.2 + i * 0.07, 0.06, 0.03, 'square');
+    noise(1.2, 1800, 0.6, 0.08, 'bandpass', 3.4);
+    hold([1200, 2400], 4.1, 0.6, 0.03, 'sawtooth');
+    noise(0.6, 3000, 0.4, 0.06, 'highpass', 4.3);
+    return 5.2;
+  },
+};

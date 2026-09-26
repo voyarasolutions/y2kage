@@ -606,7 +606,7 @@ export class Sim {
 
       if (!dead) {
         for (const z of this.zombies) {
-          if (Math.hypot(z.x - p.x, z.y - p.y) < ZRAD[z.kind] + p.r && p.z < ZHEIGHT[z.kind] + 0.1) {
+          if (Math.hypot(z.x - p.x, z.y - p.y) < ZRAD[z.kind] + p.r && p.z < Math.max(0.72, ZHEIGHT[z.kind] + 0.1)) {
             const d = Math.hypot(p.vx, p.vy) || 1;
             let dmg = p.dmg * ocMul;
             if (p.kind === 'water' && z.kind === 'glitch') dmg *= 2.5;

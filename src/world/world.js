@@ -500,7 +500,7 @@ export class World {
         group.add(this.box(0.56, 0.9, 0.46, ['iron', 'iron', 'iron', 'iron', 'speaker', 'iron'], x, 0, z, rot));
         group.add(this.box(0.5, 0.8, 0.42, ['iron', 'iron', 'iron', 'iron', 'speaker', 'iron'], x, 0.9, z, rot + 0.1));
       } else if (d.kind === 'vending') {
-        const mats = ['red', 'red', 'red', 'red', 'vending', 'red'].map((k) => (k === 'vending' ? this.glow(k) : this.mat(k)));
+        const mats = ['darkMetal', 'darkMetal', 'red', 'iron', 'vending', 'vending'].map((k) => (k === 'vending' ? this.glow(k) : this.mat(k)));
         const m = this.box(0.6, 1.25, 0.5, 'red', x, 0, z, rot);
         m.material = mats;
         group.add(m);

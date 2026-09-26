@@ -12,7 +12,7 @@ export const HEROES = [
     controls: 'SPACE hop',
     stats: { speed: 5, power: 2, range: 3 },
     move: { type: 'skate', accel: 13, max: 5.6, friction: 1.3, strafe: 0.85, jump: 4.2 },
-    gun: { kind: 'soaker', every: 0.045, dmg: 7, speed: 13, spread: 0.05, life: 0.5, knock: 0.3, tank: 100, drain: 1.6, refill: 50 },
+    gun: { kind: 'soaker', every: 0.045, dmg: 8, speed: 13, spread: 0.05, life: 0.6, knock: 0.3, tank: 100, drain: 1.6, refill: 50 },
   },
   {
     id: 'marcus',

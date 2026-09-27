@@ -166,6 +166,94 @@ export class Pix {
     return this;
   }
 
+  // The same sprite at twice the resolution, with detail a straight 2x zoom can't give: Scale2x rounds
+  // off stair-stepped diagonals, the ink outline thins back to one (now finer) pixel, the silhouette
+  // picks up a light rim top-left and a shadow bottom-right, and eyes get a glint.
+  refine(ink = '#140c1c', glint = ['#fff36a', '#ff3b3b'], passes = 2) {
+    let w = this.w;
+    let h = this.h;
+    let s = new Uint32Array(this.g.getImageData(0, 0, w, h).data.buffer.slice(0));
+    // Scale2x (EPX), once per pass: each pixel becomes four, bending toward matching neighbours.
+    for (let n = 0; n < passes; n++) {
+      const at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : s[y * w + x]);
+      const W2 = w * 2;
+      const d2 = new Uint32Array(W2 * h * 2);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const P = s[y * w + x];
+          const A = at(x, y - 1);
+          const B = at(x + 1, y);
+          const C = at(x - 1, y);
+          const D = at(x, y + 1);
+          const i = y * 2 * W2 + x * 2;
+          d2[i] = C === A && C !== D && A !== B ? A : P;
+          d2[i + 1] = A === B && A !== C && B !== D ? B : P;
+          d2[i + W2] = D === C && D !== B && C !== A ? C : P;
+          d2[i + W2 + 1] = B === D && B !== A && D !== C ? D : P;
+        }
+      }
+      s = d2;
+      w *= 2;
+      h *= 2;
+    }
+    const W = w;
+    const H = h;
+    const K = 1 << passes;
+    const out = new Pix(W, H);
+    const img = out.g.createImageData(W, H);
+    const d = new Uint32Array(img.data.buffer);
+    d.set(s);
+    const pack = (r, g, b, a) => ((a << 24) | (b << 16) | (g << 8) | r) >>> 0;
+    const hexPack = (c) => pack(...[1, 3, 5].map((k) => parseInt(c.slice(k, k + 2), 16)), 255);
+    const INK = hexPack(ink);
+    const clear = (v) => v >>> 24 === 0;
+    const src = d.slice();
+    const S = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? 0 : src[y * W + x]);
+    const tint = (v, f) => {
+      const m = (c) => Math.max(0, Math.min(255, Math.round(f > 0 ? c + (255 - c) * f : c * (1 + f))));
+      return pack(m(v & 255), m((v >> 8) & 255), m((v >> 16) & 255), v >>> 24);
+    };
+    const N4 = [[0, -1], [-1, 0], [1, 0], [0, 1]];
+    const outer = (x, y) => {
+      const n = S(x, y);
+      return clear(n) || n === INK;
+    };
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        const v = src[i];
+        if (clear(v)) continue;
+        if (v === INK) {
+          // Inner part of the scaled-up outline: hand it to the fill next door, shaded dark.
+          if (N4.some(([ox, oy]) => clear(S(x + ox, y + oy)))) continue;
+          let fill = 0;
+          for (let k = 1; k <= K && !fill; k++) {
+            for (const [ox, oy] of N4) {
+              const n = S(x + ox * k, y + oy * k);
+              if (n !== INK && !clear(n)) fill = n;
+            }
+          }
+          if (fill) d[i] = tint(fill, -0.38);
+          continue;
+        }
+        // Rim light from the top-left, core shadow bottom-right, measured against the outline.
+        const r = K / 2 + 1;
+        if (outer(x, y - r) || outer(x - r, y)) d[i] = tint(v, 0.2);
+        else if (outer(x, y + r) || outer(x + r, y)) d[i] = tint(v, -0.22);
+      }
+    }
+    // Eye glints: the top-left pixel of each glowing eye goes white.
+    const glow = glint.map(hexPack);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const v = src[y * W + x];
+        if (glow.includes(v) && S(x - 1, y) !== v && S(x, y - 1) !== v) d[y * W + x] = pack(255, 255, 255, 255);
+      }
+    }
+    out.g.putImageData(img, 0, 0);
+    return out;
+  }
+
   mirror() {
     const out = new Pix(this.w, this.h);
     out.g.translate(this.w, 0);

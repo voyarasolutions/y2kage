@@ -698,7 +698,12 @@ export class World {
     this.pCol = new Float32Array(MAXP * 3);
     this.pGeo.setAttribute('position', new THREE.BufferAttribute(this.pPos, 3));
     this.pGeo.setAttribute('color', new THREE.BufferAttribute(this.pCol, 3));
-    this.points = new THREE.Points(this.pGeo, new THREE.PointsMaterial({ size: 0.07, vertexColors: true, sizeAttenuation: true, fog: true }));
+    const pMat = new THREE.PointsMaterial({ size: 0.07, vertexColors: true, sizeAttenuation: true, fog: true });
+    // Gore and confetti stay a few pixels wide, even right in your face, so they never read as broken tiles.
+    pMat.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader.replace('#include <logdepthbuf_vertex>', 'gl_PointSize = clamp(gl_PointSize, 1.0, 3.0);\n#include <logdepthbuf_vertex>');
+    };
+    this.points = new THREE.Points(this.pGeo, pMat);
     this.points.frustumCulled = false;
     this.scene.add(this.points);
     // Fireworks live in the sky, far away and unfogged.

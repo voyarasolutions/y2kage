@@ -340,8 +340,9 @@ function frameSet(make, confetti = false) {
     }
     return p;
   };
-  const walk = [0, 1, 2, 3].map((i) => deco(make({ walk: i, atk: 0 })));
-  const atk = [deco(make({ walk: 0, atk: 1 })), deco(make({ walk: 0, atk: 2 }))];
+  // Drawn on the low-res grid, then refined to four times the detail so they hold up at arm's length.
+  const walk = [0, 1, 2, 3].map((i) => deco(make({ walk: i, atk: 0 })).refine());
+  const atk = [deco(make({ walk: 0, atk: 1 })).refine(), deco(make({ walk: 0, atk: 2 })).refine()];
   const all = { walk, atk, flash: [walk[0].silhouette(PAL.white)], die: deathFrames(walk[0]) };
   const T = {};
   for (const k in all) T[k] = all[k].map(tex);

@@ -711,10 +711,10 @@ export class World {
     this.fireworks.frustumCulled = false;
     this.fireworks.renderOrder = -5;
     this.scene.add(this.fireworks);
-    // Lines: laser beams and yo-yo strings.
+    // Lines: laser beams, yo-yo strings and boss shockwaves.
     this.lGeo = new THREE.BufferGeometry();
-    this.lPos = new Float32Array(64 * 3);
-    this.lCol = new Float32Array(64 * 3);
+    this.lPos = new Float32Array(1024 * 3);
+    this.lCol = new Float32Array(1024 * 3);
     this.lGeo.setAttribute('position', new THREE.BufferAttribute(this.lPos, 3));
     this.lGeo.setAttribute('color', new THREE.BufferAttribute(this.lCol, 3));
     this.lines = new THREE.LineSegments(this.lGeo, new THREE.LineBasicMaterial({ vertexColors: true, fog: false }));
@@ -794,7 +794,7 @@ export class World {
   }
 
   line(a, b, color) {
-    if (this.lCount >= 62) return;
+    if (this.lCount >= 1022) return;
     const c = colCache(color);
     for (const p of [a, b]) {
       const i = this.lCount++ * 3;

@@ -13,11 +13,20 @@ Runs in any modern browser, supports online co-op for up to four players, and sh
 | ![Hero select](docs/screenshots/hero-select.png) | ![Broadway horde](docs/screenshots/broadway-horde.png) |
 | ![Tidal Wave special](docs/screenshots/special-tidal-wave.png) | ![Online co-op](docs/screenshots/coop.png) |
 | ![Subway platform](docs/screenshots/subway.png) | ![Game over](docs/screenshots/bsod.png) |
+| ![The Frontman's shockwave](docs/screenshots/boss-frontman.png) | ![The Mainframe firing packets](docs/screenshots/boss-mainframe.png) |
+| ![The Countdown](docs/screenshots/boss-countdown.png) | ![Picking an upgrade](docs/screenshots/upgrades.png) |
 
 ## Features
 
-- **50 levels, 5 districts.** Level *n* takes place at 11:(09+*n*) PM on December 31, 1999. The district changes every
-  ten levels, each ending in a boss fight with the Millennium Bug. Beat level 50 at 11:59 and the year rolls over.
+- **50 levels, 5 districts, 5 bosses.** Level *n* takes place at 11:(09+*n*) PM on December 31, 1999. The district
+  changes every ten levels, and each district ends in a fight with its own boss. Beat level 50 at 11:59 and the year
+  rolls over.
+- **Upgrades between levels.** Clear a level and install one of three random upgrades (fire rate, damage, max health,
+  regeneration, pickup range and more). They stack for the rest of the run.
+- **Trophies and unlockables.** 17 trophies. Beating bosses and other feats unlock Endless mode and cheats.
+- **Endless mode.** Pick any district you have reached and survive as many waves as you can; its boss returns every
+  fifth wave. Your best wave per district is saved.
+- **Gamepad support.** Plug in any standard controller (Xbox, PlayStation, Switch Pro) and play without the keyboard.
 - **Five heroes, five rides, five weapons.** Every hero moves differently and shoots differently, and each has a
   special move that charges over time and with kills (R or right-click).
 - **A 90s horde.** Party Shamblers, Ravers, Bouncers, Bloaters, Crawlers, CRT-headed Corrupted, and the Millennium Bug,
@@ -30,6 +39,56 @@ Runs in any modern browser, supports online co-op for up to four players, and sh
 - **Online co-op** for up to four players with room codes and join links.
 - **Full Y2K presentation.** Power-on BIOS screen, 56k dial-up handshake, Windows 98 taskbar HUD with the countdown in
   the system tray, a Blue Screen of Death when you die, a chiptune soundtrack and an Auld Lang Syne ending.
+
+## The bosses
+
+| Levels | Boss | What it does |
+|---|---|---|
+| 10 | **The Millennium Bug** | Telegraphed bull charges. Sidestep when it roars. |
+| 20 | **The Frontman** | A zombie boy-band lead. Sonic shockwaves roll along the street (jump or dash through them) and he calls in backup dancers. |
+| 30 | **The Conductor** | Burrows under the platform, tunnels toward you and erupts under your feet. Keep moving when the ground turns red. Brings crawlers up from the tracks. |
+| 40 | **The Mainframe** | A walking room-sized computer. Fires fans of data packets, teleports through static and spawns Corrupted. |
+| 50 | **The Countdown** | The Times Square ball itself. Charges, shockwaves, packets and minions, all at once. |
+
+Every boss gets faster below half health. From level 30 on, boss levels send two.
+
+## Upgrades
+
+After each cleared level, pick one of three. Each can stack up to five times.
+
+| Upgrade | Effect |
+|---|---|
+| Overclocked CPU | +15% damage |
+| Turbo Button | +15% fire rate |
+| Fresh Wheels | +10% ride speed |
+| Extra RAM | +25 max health |
+| Surge Protector | Start levels with +40 armor |
+| Defragmenter | Heal 1 health per second |
+| Broadband | Grab pickups from further away |
+| Lucky Floppy | +50% powerup drops |
+| Hyper-Threading | Special charges 30% faster |
+| HEADSHOT.EXE | +30% headshot damage |
+| Call Waiting | Combos last 1 second longer |
+| Volt Cola Tap | Heal 2 health per kill |
+| Long Distance | Powerups last 40% longer |
+
+Retrying a level puts your upgrades back to how they were when it started. Quitting to the menu ends the run. In
+online co-op every player picks their own.
+
+## Trophies and extras
+
+Open **Trophies** on the title screen to see them all. The ones that unlock something:
+
+| Trophy | Unlocks |
+|---|---|
+| Bug Squashed (beat level 10) | **Endless mode**, on the hero select screen (TAB) |
+| Encore Cancelled (beat level 20) | **Low Gravity** cheat |
+| End of the Line (beat level 30) | **Confetti Goo** cheat |
+| Pulled the Plug (beat level 40) | **Turbo Mode** cheat (whole game 25% faster) |
+| Happy New Year (beat level 50) | **One Hit Wonder** cheat (everything dies in one hit, you too) |
+| Head Hunter (25 headshot kills in a level) | **Big Heads** cheat |
+
+Cheats are switched on and off in the Trophy Case. In co-op the host's cheats apply to everyone.
 
 ## The roster
 
@@ -98,6 +157,7 @@ The app is locked to landscape. Fonts are bundled so it works offline.
 - `src/gfx/pipeline.js` renders the scene into a 384x216 target with nearest filtering, then a post pass quantises
   each channel with a 4x4 Bayer dither, adds Y2K glitch tearing and damage flashes. The browser upscales with hard edges.
 - `src/gfx/textures.js` paints every wall, floor, sky and prop skin at 32 texels per map unit.
+- `src/gfx/bosses.js` draws the four district bosses after the Millennium Bug, their data packets and burrow mound.
 - `src/gfx/sprites.js` draws the horde (party shamblers, ravers, bouncers, CRT-headed Corrupted, the Millennium Bug),
   projectiles, pickups, hero portraits and icons, all with 1px outlines.
 - `src/world/world.js` turns each ASCII map into buildings, storefronts, jumbotrons, subway tile and server racks, with
@@ -108,11 +168,19 @@ The app is locked to landscape. Fonts are bundled so it works offline.
 
 ## Layout
 
-- `src/data/`   levels (50-level wave design, level n = 11:(09+n) PM), maps (one arena per district), heroes
+- `src/data/`   levels (50-level wave design, level n = 11:(09+n) PM, bosses, Endless), maps (one arena per district),
+  heroes, upgrades, achievements (trophies, extras, cheats)
 - `src/game/`   `game.js` (modes, flow, rendering each frame) and `sim.js` (rides, weapons, flow-field zombie AI, waves)
 - `src/core/`   palette, pixel font (Press Start 2P and Silkscreen, thresholded to hard pixels), input, storage
 
 ## Controls
 
-WASD move, arrows or Q/E turn, mouse look up/down/around (click to lock); headshots do double damage, legs 60%, click fire, Space and Shift for ride tricks, R or right-click
-for the hero's special once its meter is full, P or Esc pause, M mute. On touch screens: left thumb moves, right thumb looks, with on-screen fire, jump and boost buttons.
+**Keyboard and mouse:** WASD move, arrows or Q/E turn, mouse look up/down/around (click to lock); headshots do double
+damage, legs 60%, click fire, Space and Shift for ride tricks, R or right-click for the hero's special once its meter
+is full, P or Esc pause, M mute.
+
+**Gamepad:** left stick moves, right stick aims, RT (or X) fires, A jumps, B or LB for the ride trick, Y or RB for the
+special, Start pauses. In menus the d-pad or left stick moves, A selects, B goes back, and X switches between the
+campaign and Endless on the hero select screen.
+
+**Touch:** left thumb moves, right thumb looks, with on-screen fire, jump and boost buttons.

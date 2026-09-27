@@ -94,8 +94,8 @@ export function drawTaskbar(g, sim, S, heroIdx, t) {
   rect(g, 58, y + 3, 1, 12, PAL.white);
   // Health and armor.
   g.drawImage(S.icons.heart.c, 60, y + 1);
-  const hpCol = P.hp > 50 ? PAL.winNavy : P.hp > 25 ? PAL.tangerineDark : PAL.red;
-  progress(g, 76, y + 4, 54, 10, P.hp / 100, hpCol);
+  const hpCol = P.hp > (P.maxHp || 100) / 2 ? PAL.winNavy : P.hp > 25 ? PAL.tangerineDark : PAL.red;
+  progress(g, 76, y + 4, 54, 10, Math.min(1, P.hp / (P.maxHp || 100)), hpCol);
   text(g, String(Math.ceil(P.hp)), 133, y + 6, { font: 'small', color: P.hp <= 25 && Math.floor(t * 4) % 2 ? PAL.red : PAL.ink });
   g.drawImage(S.icons.shield.c, 150, y + 1);
   progress(g, 166, y + 4, 34, 10, P.armor / 100, PAL.goldDark);
@@ -121,8 +121,9 @@ export function drawTopHud(g, sim, t) {
   // Score, chunky and gold.
   text(g, String(sim.totalScore).padStart(7, '0'), 5, 5, { font: 'big', color: PAL.gold, outline: PAL.ink });
   // Wave status.
+  const of = sim.endless ? '' : `/${sim.cfg.waves.length}`;
   if (L.phase === 'wave') {
-    const s = `WAVE ${L.wave + 1}/${sim.cfg.waves.length}`;
+    const s = `WAVE ${L.wave + 1}${of}`;
     const r = `${sim.remaining()} LEFT`;
     text(g, s, W / 2, 5, { font: 'big', color: PAL.cream, outline: PAL.ink, align: 'center' });
     text(g, r, W / 2, 15, { font: 'small', color: PAL.cyan, outline: PAL.ink, align: 'center' });
@@ -131,13 +132,13 @@ export function drawTopHud(g, sim, t) {
     const n = Math.max(1, Math.ceil(L.t));
     const pulse = L.t % 1 > 0.8;
     text(g, `NEXT WAVE IN ${n}`, W / 2, 5, { font: 'big', color: n <= 3 ? (pulse ? PAL.white : PAL.gold) : PAL.cream, outline: PAL.ink, align: 'center' });
-    text(g, `WAVE ${L.wave + 2}/${sim.cfg.waves.length} INCOMING`, W / 2, 15, { font: 'small', color: PAL.pinkLight, outline: PAL.ink, align: 'center' });
+    text(g, `WAVE ${L.wave + 2}${of} INCOMING${sim.endless && (L.wave + 2) % 5 === 0 ? ': BOSS' : ''}`, W / 2, 15, { font: 'small', color: PAL.pinkLight, outline: PAL.ink, align: 'center' });
     rect(g, W / 2 - 40, 24, 80, 2, PAL.ink);
     rect(g, W / 2 - 40, 24, Math.round(80 * Math.max(0, L.t) / 6), 2, PAL.gold);
   } else if (L.phase === 'outro') {
     text(g, 'LEVEL CLEAR!', W / 2, 5, { font: 'big', color: PARTY[Math.floor(t * 8) % PARTY.length], outline: PAL.ink, align: 'center' });
   }
-  text(g, `LVL ${sim.levelN}`, W - 5, 5, { font: 'big', color: PAL.cream, outline: PAL.ink, align: 'right' });
+  text(g, sim.endless ? 'ENDLESS' : `LVL ${sim.levelN}`, W - 5, 5, { font: 'big', color: PAL.cream, outline: PAL.ink, align: 'right' });
   text(g, sim.map.name.toUpperCase(), W - 5, 15, { font: 'small', color: PAL.pinkLight, outline: PAL.ink, align: 'right' });
 }
 
@@ -147,8 +148,10 @@ export function drawBossBar(g, sim, t) {
   const w = 180;
   const x = W / 2 - w / 2;
   const y = 26;
-  const inner = window98(g, x, y, w, 38, 'Deleting MILLENNIUM.BUG');
-  text(g, 'The Millennium Bug', inner.x + 2, inner.y + 1, { font: 'small', color: PAL.ink });
+  const B = sim.bossDef;
+  const inner = window98(g, x, y, w, 38, `Deleting ${B.file}`);
+  text(g, B.name, inner.x + 2, inner.y + 1, { font: 'small', color: PAL.ink });
+  if (z.hp < z.max * 0.5 && !sim.endless) text(g, 'ENRAGED', inner.x + inner.w - 2, inner.y + 1, { font: 'small', color: Math.floor(t * 4) % 2 ? PAL.red : PAL.strawberryDark, align: 'right' });
   progress(g, inner.x + 2, inner.y + 10, inner.w - 4, 10, 1 - z.hp / z.max, PAL.winNavy);
 }
 
@@ -166,10 +169,10 @@ export function drawBanner(g, sim, t) {
     const h = 58 + lines.length * 9;
     const x = Math.round(W / 2 - w / 2);
     const y = 44;
-    const inner = window98(g, x, y, w, h, `Y2KAGE.EXE - Level ${sim.levelN} of 50`);
+    const inner = window98(g, x, y, w, h, sim.endless ? 'Y2KAGE.EXE - Endless mode' : `Y2KAGE.EXE - Level ${sim.levelN} of 50`);
     iconInfo(g, inner.x + 4, inner.y + 3);
-    text(g, `${cfg.clock.label}  ${sim.map.name.toUpperCase()}`, inner.x + 22, inner.y + 3, { font: 'big', color: PAL.winNavy });
-    text(g, `${cfg.waves.length} waves. ${cfg.clock.minutesLeft} min to midnight.${cfg.isBoss ? ' BOSS LEVEL.' : ''}`, inner.x + 22, inner.y + 14, { font: 'small', color: cfg.isBoss ? PAL.strawberryDark : PAL.ink });
+    text(g, sim.endless ? `ENDLESS  ${sim.map.name.toUpperCase()}` : `${cfg.clock.label}  ${sim.map.name.toUpperCase()}`, inner.x + 22, inner.y + 3, { font: 'big', color: PAL.winNavy });
+    text(g, sim.endless ? `Waves forever. ${sim.bossDef.name} every 5th.` : `${cfg.waves.length} waves. ${cfg.clock.minutesLeft} min to midnight.${cfg.isBoss ? ' BOSS LEVEL.' : ''}`, inner.x + 22, inner.y + 14, { font: 'small', color: cfg.isBoss ? PAL.strawberryDark : PAL.ink });
     rect(g, inner.x + 22, inner.y + 24, inner.w - 26, 1, PAL.winShadow);
     rect(g, inner.x + 22, inner.y + 25, inner.w - 26, 1, PAL.white);
     lines.forEach((l, i) => text(g, l, inner.x + 22, inner.y + 29 + i * 9, { font: 'small', color: PAL.winDark }));
@@ -195,10 +198,11 @@ export function drawBanner(g, sim, t) {
     const w = 210;
     const x = Math.round(W / 2 - w / 2);
     const blink = Math.floor(t * 8) % 2;
-    const inner = window98(g, x, 48, w, 46, 'Y2K.EXE - Fatal error', { active: !!blink });
+    const B = sim.bossDef;
+    const inner = window98(g, x, 48, w, 46, `${B.file} - Fatal error`, { active: !!blink });
     iconError(g, inner.x + 4, inner.y + 3);
-    text(g, 'MILLENNIUM BUG', inner.x + 22, inner.y + 3, { font: 'big', color: PAL.strawberryDark });
-    text(g, 'It thinks it is 1900. Delete it.', inner.x + 22, inner.y + 14, { font: 'small', color: PAL.ink });
+    text(g, B.short, inner.x + 22, inner.y + 3, { font: 'big', color: PAL.strawberryDark });
+    text(g, B.tag, inner.x + 22, inner.y + 14, { font: 'small', color: PAL.ink });
   }
 }
 
@@ -422,7 +426,7 @@ export function drawTeam(g, sim, S, t) {
     g.globalAlpha = 1;
     text(g, P.name.slice(0, 10), x + 23, y + 1, { font: 'small', color: P.down ? PAL.red : PAL.cream, outline: PAL.ink });
     rect(g, x + 23, y + 11, 40, 4, PAL.ink);
-    rect(g, x + 23, y + 11, Math.round(40 * Math.max(0, P.hp) / 100), 4, P.hp > 50 ? PAL.lime : P.hp > 25 ? PAL.tangerine : PAL.red);
+    rect(g, x + 23, y + 11, Math.round(40 * Math.min(1, Math.max(0, P.hp) / (P.maxHp || 100))), 4, P.hp > 50 ? PAL.lime : P.hp > 25 ? PAL.tangerine : PAL.red);
     rect(g, x + 23, y + 16, Math.round(40 * P.sp / 100), 1, P.sp >= 100 ? PAL.gold : PAL.pink);
     if (P.down) text(g, 'REBOOTING', x + 23, y + 11, { font: 'small', color: PAL.white, outline: PAL.ink });
   });

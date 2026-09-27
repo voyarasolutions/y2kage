@@ -235,6 +235,27 @@ export const sfx = {
   boom() {
     noise(0.9, 180, 0.5, 0.3, 'lowpass');
   },
+  // Boss moves: a ground rumble before an eruption, a charging whine, a volley of packets.
+  rumble() {
+    noise(0.9, 90, 0.7, 0.35, 'lowpass');
+    tone(55, 0.9, 'sawtooth', 0.12, 40);
+  },
+  charge() {
+    tone(300, 0.5, 'square', 0.08, 1400);
+  },
+  zap() {
+    tone(1600, 0.18, 'square', 0.1, 400);
+    noise(0.12, 5000, 0.8, 0.08, 'highpass');
+  },
+  // Trophy earned: the classic three-note "tada".
+  achievement() {
+    [784, 988, 1175, 1568].forEach((f, i) => tone(f, i === 3 ? 0.5 : 0.12, 'square', 0.12, null, i * 0.1));
+    tone(2349, 0.4, 'triangle', 0.08, null, 0.4);
+  },
+  // Picking an upgrade.
+  upgrade() {
+    [659, 880, 1109, 1319].forEach((f, i) => tone(f, 0.1, 'triangle', 0.14, null, i * 0.05));
+  },
   glitch() {
     tone(1800 + Math.random() * 1200, 0.05, 'square', 0.05);
   },

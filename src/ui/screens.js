@@ -6,7 +6,10 @@ import { text, textCanvas, textWidth, wrap } from '../core/pixelfont.js';
 import { bevel, rect, button, progress, window98, iconInfo, iconError, startFlag, titleBar } from './win98.js';
 import { HEROES } from '../data/heroes.js';
 import { heroXp, rankFor, dmgMulFor } from '../data/progress.js';
-import { clockFor, DISTRICTS, TOTAL_LEVELS } from '../data/levels.js';
+import { clockFor, DISTRICTS, TOTAL_LEVELS, BOSSES } from '../data/levels.js';
+import { UPGRADES, upgradeById, stacks } from '../data/upgrades.js';
+import { ACHIEVEMENTS, EXTRAS, unlocked, extraUnlocked, cheats } from '../data/achievements.js';
+import { store } from '../core/util.js';
 
 // ---------------------------------------------------------------- chrome logo
 let chromeCache = null;
@@ -201,20 +204,23 @@ export function drawTitle(g, ui, t) {
   const w = 128;
   const x = W / 2 - w / 2;
   const y = 100;
-  const inner = window98(g, x, y, w, 89, 'Y2KAGE.EXE');
+  const inner = window98(g, x, y - 6, w, 97, 'Y2KAGE.EXE');
+  const got = Object.keys(unlocked()).length;
   const items = [
     ['Start Game', () => ui.game.toSelect()],
     ['Online Co-op', () => ui.game.setMode('mp')],
+    [`Trophies ${got}/${ACHIEVEMENTS.length}`, () => ui.game.setMode('trophies')],
     ['How to Play', () => ui.game.setMode('howto')],
     ['Options', () => ui.game.openOptions()],
   ];
   items.forEach(([label, on], i) => {
-    const b = { x: inner.x + 6, y: inner.y + 2 + i * 17, w: inner.w - 12, h: 14 };
+    const b = { x: inner.x + 6, y: inner.y + 1 + i * 15, w: inner.w - 12, h: 13 };
     button(g, b.x, b.y, b.w, b.h, label, { focus: ui.focus === i });
     ui.addButton(b, on, i);
   });
+  if (ui.game.input.pad.on) text(g, 'GAMEPAD READY', W - 4, 4, { font: 'small', color: PAL.lime, outline: PAL.ink, align: 'right' });
   const best = ui.game.best;
-  if (best > 1) text(g, `Furthest: level ${best}  ${clockFor(best).label}`, W / 2, y + 91, { font: 'small', color: PAL.gold, outline: PAL.ink, align: 'center' });
+  if (best > 1) text(g, `Furthest: level ${best}  ${clockFor(best).label}`, W / 2, y + 93, { font: 'small', color: PAL.gold, outline: PAL.ink, align: 'center' });
 
   // News ticker along the bottom.
   const ty = H - 12;
@@ -251,18 +257,21 @@ const HOWTO = [
   'Kills earn XP. Every LEVEL UP makes that hero hit harder.',
   'Powerups: FIX disk invincible, x3 triple shot,',
   'toaster slow-mo, C-A-D ends every zombie in sight.',
+  'Clear a level to pick an UPGRADE. They stack all run.',
+  'Every 10th level has a boss. Jump their shockwaves.',
+  'Trophies unlock Endless mode and cheats. Gamepads work.',
 ];
 
 export function drawHowto(g, ui, t) {
   const w = 340;
-  const h = 196;
+  const h = 210;
   const x = W / 2 - w / 2;
-  const y = 6;
+  const y = 3;
   const inner = window98(g, x, y, w, h, 'README.TXT - Notepad');
   // Menu bar.
   ['File', 'Edit', 'Search', 'Help'].forEach((m, i) => text(g, m, inner.x + 2 + [0, 30, 60, 100][i], inner.y, { font: 'small', color: PAL.ink }));
   bevel(g, inner.x, inner.y + 10, inner.w, inner.h - 28, true, PAL.white);
-  HOWTO.forEach((l, i) => text(g, l, inner.x + 4, inner.y + 14 + i * 9, { font: 'small', color: PAL.ink }));
+  HOWTO.forEach((l, i) => text(g, l, inner.x + 4, inner.y + 13 + i * 8, { font: 'small', color: PAL.ink }));
   const b = { x: inner.x + inner.w - 60, y: inner.y + inner.h - 15, w: 58, h: 14 };
   button(g, b.x, b.y, b.w, b.h, 'OK', { focus: true });
   ui.addButton(b, () => ui.game.setMode('title'), 0);
@@ -344,22 +353,40 @@ export function drawSelect(g, ui, t, S) {
 
   // Level picker and go button.
   const px = 254;
-  const pin = window98(g, px, dy, W - px - 6, 84, 'Start Level');
-  const n = game.pickLevel;
-  const c = clockFor(n);
-  const d = DISTRICTS[Math.min(DISTRICTS.length - 1, Math.floor((n - 1) / 10))];
+  const canEndless = extraUnlocked('endless');
+  const endless = canEndless && game.endlessOn;
+  const pin = window98(g, px, dy, W - px - 6, 84, endless ? 'Endless Mode' : 'Start Level');
   const bl = { x: pin.x + 2, y: pin.y + 2, w: 14, h: 14 };
   const br = { x: pin.x + pin.w - 16, y: pin.y + 2, w: 14, h: 14 };
-  button(g, bl.x, bl.y, bl.w, bl.h, '<', { disabled: n <= 1 });
-  button(g, br.x, br.y, br.w, br.h, '>', { disabled: n >= game.best });
+  if (endless) {
+    const di = game.pickDistrict;
+    button(g, bl.x, bl.y, bl.w, bl.h, '<', { disabled: di <= 0 });
+    button(g, br.x, br.y, br.w, br.h, '>', { disabled: di >= game.endlessMax() });
+    bevel(g, pin.x + 18, pin.y + 2, pin.w - 36, 14, true, PAL.white);
+    text(g, 'ENDLESS', pin.x + pin.w / 2, pin.y + 6, { font: 'big', color: PAL.strawberryDark, align: 'center' });
+    text(g, DISTRICTS[di].name.toUpperCase(), pin.x + pin.w / 2, pin.y + 20, { font: 'small', color: PAL.winNavy, align: 'center' });
+    const bestW = (store.get('endless', {}) || {})[di] || 0;
+    text(g, bestW ? `Best: wave ${bestW}` : 'No best yet', pin.x + pin.w / 2, pin.y + 29, { font: 'small', color: PAL.ink, align: 'center' });
+  } else {
+    const n = game.pickLevel;
+    const c = clockFor(n);
+    const d = DISTRICTS[Math.min(DISTRICTS.length - 1, Math.floor((n - 1) / 10))];
+    button(g, bl.x, bl.y, bl.w, bl.h, '<', { disabled: n <= 1 });
+    button(g, br.x, br.y, br.w, br.h, '>', { disabled: n >= game.best });
+    bevel(g, pin.x + 18, pin.y + 2, pin.w - 36, 14, true, PAL.white);
+    text(g, `LVL ${n}`, pin.x + pin.w / 2, pin.y + 6, { font: 'big', color: PAL.ink, align: 'center' });
+    text(g, c.label, pin.x + pin.w / 2, pin.y + 20, { font: 'small', color: PAL.winNavy, align: 'center' });
+    text(g, d.name.toUpperCase(), pin.x + pin.w / 2, pin.y + 29, { font: 'small', color: PAL.strawberryDark, align: 'center' });
+    if (n % 10 === 0 && !canEndless) text(g, 'BOSS LEVEL', pin.x + pin.w / 2, pin.y + 38, { font: 'small', color: PAL.red, align: 'center' });
+  }
   ui.addButton(bl, () => game.stepLevel(-1), 20);
   ui.addButton(br, () => game.stepLevel(1), 21);
-  bevel(g, pin.x + 18, pin.y + 2, pin.w - 36, 14, true, PAL.white);
-  text(g, `LVL ${n}`, pin.x + pin.w / 2, pin.y + 6, { font: 'big', color: PAL.ink, align: 'center' });
-  text(g, c.label, pin.x + pin.w / 2, pin.y + 20, { font: 'small', color: PAL.winNavy, align: 'center' });
-  text(g, d.name.toUpperCase(), pin.x + pin.w / 2, pin.y + 29, { font: 'small', color: PAL.strawberryDark, align: 'center' });
-  if (n % 10 === 0) text(g, 'BOSS LEVEL', pin.x + pin.w / 2, pin.y + 38, { font: 'small', color: PAL.red, align: 'center' });
-  const go = { x: pin.x + 4, y: pin.y + pin.h - 22, w: pin.w - 8, h: 18 };
+  if (canEndless) {
+    const eb = { x: pin.x + 4, y: pin.y + 37, w: pin.w - 8, h: 11 };
+    button(g, eb.x, eb.y, eb.w, eb.h, endless ? 'Campaign (TAB)' : 'Endless (TAB)', {});
+    ui.addButton(eb, () => game.toggleEndless(), 31);
+  }
+  const go = { x: pin.x + 4, y: pin.y + pin.h - 17, w: pin.w - 8, h: 15 };
   button(g, go.x, go.y, go.w, go.h, 'PLAY', { font: 'big', focus: true });
   ui.addButton(go, () => game.startRun(), 30);
   text(g, 'ARROWS pick  ENTER play  ESC back', W / 2, H - 11, { font: 'small', color: PAL.cream, outline: PAL.ink, align: 'center' });
@@ -380,34 +407,131 @@ export function drawPause(g, ui, t) {
     button(g, b.x, b.y, b.w, b.h, label, { focus: ui.focus === i });
     ui.addButton(b, on, i);
   });
+  drawUpgradeList(g, ui.game.runUps, W / 2, 164);
+}
+
+// A line of upgrade tags (name x stacks) centred at cx, wrapping onto more lines.
+function drawUpgradeList(g, list, cx, y) {
+  const st = stacks(list);
+  const ids = Object.keys(st);
+  if (!ids.length) return;
+  const tags = ids.map((id) => `${upgradeById(id).name}${st[id] > 1 ? ' x' + st[id] : ''}`);
+  const lines = wrap(tags.join('  +  '), W - 30);
+  text(g, 'UPGRADES THIS RUN', cx, y, { font: 'small', color: PAL.gold, outline: PAL.ink, align: 'center' });
+  lines.slice(0, 4).forEach((l, i) => text(g, l, cx, y + 9 + i * 9, { font: 'small', color: PAL.cream, outline: PAL.ink, align: 'center' }));
 }
 
 export function drawClear(g, ui, t, stats) {
-  const w = 220;
-  const x = W / 2 - w / 2;
-  const inner = window98(g, x, 30, w, 134, `Level ${stats.level} complete`);
-  iconInfo(g, inner.x + 4, inner.y + 4);
-  text(g, `${clockFor(stats.level).label} SURVIVED`, inner.x + 22, inner.y + 4, { font: 'big', color: PAL.winNavy });
-  const rows = [['Zombies deleted', stats.kills], ['Time', `${Math.floor(stats.time / 60)}:${String(Math.floor(stats.time % 60)).padStart(2, '0')}`], ['Best combo, headshots', `${stats.combo || 0} hits, ${stats.headshots || 0}`], ['Level score', stats.levelScore], ['Total score', stats.score]];
+  const game = ui.game;
+  const offerIds = game.upOffer || [];
+  const w = 312;
+  const h = offerIds.length ? 200 : 134;
+  const x = Math.round(W / 2 - w / 2);
+  const inner = window98(g, x, offerIds.length ? 2 : 30, w, h, `Level ${stats.level} complete`);
+  iconInfo(g, inner.x + 4, inner.y + 2);
+  text(g, `${clockFor(stats.level).label} SURVIVED`, inner.x + 22, inner.y + 2, { font: 'big', color: PAL.winNavy });
+  const tm = `${Math.floor(stats.time / 60)}:${String(Math.floor(stats.time % 60)).padStart(2, '0')}`;
+  const rows = [['Zombies deleted', stats.kills], ['Time', tm], ['Best combo', `${stats.combo || 0} hits`], ['Headshots', stats.headshots || 0], ['Level score', stats.levelScore], ['Total score', stats.score]];
+  const colW = Math.floor((inner.w - 26) / 2);
   rows.forEach(([k, v], i) => {
-    text(g, k, inner.x + 22, inner.y + 20 + i * 10, { font: 'small', color: PAL.ink });
-    text(g, String(v), inner.x + inner.w - 6, inner.y + 20 + i * 10, { font: 'small', color: PAL.ink, align: 'right' });
+    const cx = inner.x + 22 + (i % 2) * (colW + 4);
+    const cy = inner.y + 15 + Math.floor(i / 2) * 9;
+    text(g, k, cx, cy, { font: 'small', color: PAL.ink });
+    text(g, String(v), cx + colW - 4, cy, { font: 'small', color: PAL.winNavy, align: 'right' });
   });
   const next = Math.min(TOTAL_LEVELS, stats.level + 1);
-  text(g, `Next: ${clockFor(next).label}, ${DISTRICTS[Math.min(4, Math.floor((next - 1) / 10))].name}`, inner.x + 22, inner.y + 73, { font: 'small', color: PAL.strawberryDark });
-  if (ui.game.isGuest()) {
-    text(g, 'Waiting for the host...', inner.x + 22, inner.y + 92, { font: 'small', color: PAL.winNavy });
-    const b = { x: inner.x + inner.w - 62, y: inner.y + 88, w: 56, h: 16 };
-    button(g, b.x, b.y, b.w, b.h, 'Leave', { focus: true });
-    ui.addButton(b, () => ui.game.leaveOnline(), 5);
+  const nd = Math.min(4, Math.floor((next - 1) / 10));
+  const nextLine = `Next: ${clockFor(next).label}, ${DISTRICTS[nd].name}${next % 10 === 0 ? `. BOSS: ${BOSSES[nd].name}` : ''}`;
+  let y = inner.y + 44;
+  text(g, nextLine, inner.x + 22, y, { font: 'small', color: PAL.strawberryDark });
+  y += 11;
+  if (offerIds.length) {
+    // Three upgrade cards: pick one before moving on.
+    const picked = game.upPicked;
+    rect(g, inner.x, y, inner.w, 1, PAL.winShadow);
+    rect(g, inner.x, y + 1, inner.w, 1, PAL.white);
+    text(g, picked ? 'Upgrade installed. It lasts the rest of the run.' : 'INSTALL AN UPGRADE (pick one)', inner.x + inner.w / 2, y + 5, { font: 'small', color: picked ? PAL.winNavy : PAL.strawberryDark, align: 'center' });
+    const st = stacks(game.runUps);
+    const cw = Math.floor((inner.w - 16) / 3);
+    offerIds.forEach((id, i) => {
+      const u = upgradeById(id);
+      const cx = inner.x + 4 + i * (cw + 4);
+      const cy = y + 15;
+      const ch = 68;
+      const mine = picked === id;
+      const dim = picked && !mine;
+      const focus = !picked && (game.upFocus || 0) === i;
+      bevel(g, cx, cy, cw, ch, mine, dim ? '#a8a8a8' : PAL.winFace);
+      if (focus) {
+        rect(g, cx - 1, cy - 1, cw + 2, 1, PAL.ink);
+        rect(g, cx - 1, cy + ch, cw + 2, 1, PAL.ink);
+        rect(g, cx - 1, cy - 1, 1, ch + 2, PAL.ink);
+        rect(g, cx + cw, cy - 1, 1, ch + 2, PAL.ink);
+      }
+      rect(g, cx + 3, cy + 3, cw - 6, 13, dim ? PAL.winShadow : u.color);
+      upgradeGlyph(g, u, cx + 5, cy + 5, dim);
+      text(g, String(i + 1), cx + cw - 7, cy + 6, { font: 'small', color: PAL.ink });
+      wrap(u.name.toUpperCase(), cw - 8).slice(0, 2).forEach((l, k) => text(g, l, cx + cw / 2, cy + 20 + k * 9, { font: 'small', color: dim ? PAL.winShadow : PAL.ink, align: 'center' }));
+      wrap(u.desc, cw - 8).slice(0, 2).forEach((l, k) => text(g, l, cx + cw / 2, cy + 40 + k * 8, { font: 'small', color: dim ? PAL.winShadow : PAL.winNavy, align: 'center' }));
+      const have = st[id] || 0;
+      if (have) text(g, mine ? `NOW x${have}` : `HAVE x${have}`, cx + cw / 2, cy + ch - 10, { font: 'small', color: PAL.goldDark, align: 'center' });
+      if (!picked) ui.addButton({ x: cx, y: cy, w: cw, h: ch }, () => game.pickUpgrade(id), 40 + i);
+    });
+    y += 87;
+  }
+  if (game.isGuest()) {
+    text(g, 'Waiting for the host...', inner.x + 22, y + 4, { font: 'small', color: PAL.winNavy });
+    const b = { x: inner.x + inner.w - 62, y, w: 56, h: 16 };
+    button(g, b.x, b.y, b.w, b.h, 'Leave', { focus: !!game.upPicked || !offerIds.length });
+    ui.addButton(b, () => game.leaveOnline(), 5);
     return;
   }
-  const items = [['Next Level', () => ui.game.nextLevel()], [ui.game.net.active ? 'Lobby' : 'Menu', () => ui.game.toSelect()]];
+  const locked = offerIds.length && !game.upPicked;
+  const items = [['Next Level', () => !locked && game.nextLevel()], [game.net.active ? 'Lobby' : 'Menu', () => game.toSelect()]];
   items.forEach(([label, on], i) => {
-    const b = { x: inner.x + 22 + i * 88, y: inner.y + 88, w: 80, h: 16 };
-    button(g, b.x, b.y, b.w, b.h, label, { focus: ui.focus === i });
+    const b = { x: inner.x + inner.w / 2 - 84 + i * 88, y, w: 80, h: 16 };
+    button(g, b.x, b.y, b.w, b.h, label, { focus: !locked && ui.focus === i, disabled: i === 0 && locked });
     ui.addButton(b, on, i);
   });
+}
+
+// A tiny pictogram for each upgrade, drawn in the card's title strip.
+function upgradeGlyph(g, u, x, y, dim) {
+  const c = dim ? PAL.winFace : PAL.ink;
+  const l = dim ? PAL.winFace : PAL.white;
+  const id = u.id;
+  if (id === 'dmg') {
+    rect(g, x + 1, y + 1, 7, 7, c);
+    rect(g, x + 3, y + 3, 3, 3, l);
+    for (let k = 0; k < 3; k++) rect(g, x + 2 + k * 2, y, 1, 9, c);
+  } else if (id === 'rate') {
+    rect(g, x, y, 9, 9, c);
+    text(g, 'T', x + 2, y + 1, { font: 'small', color: l });
+  } else if (id === 'speed') {
+    rect(g, x, y + 3, 9, 3, c);
+    rect(g, x + 1, y + 7, 2, 2, c);
+    rect(g, x + 6, y + 7, 2, 2, c);
+  } else if (id === 'hp' || id === 'leech') {
+    rect(g, x + 1, y + 1, 3, 3, c);
+    rect(g, x + 5, y + 1, 3, 3, c);
+    rect(g, x, y + 2, 9, 3, c);
+    rect(g, x + 1, y + 5, 7, 1, c);
+    rect(g, x + 2, y + 6, 5, 1, c);
+    rect(g, x + 3, y + 7, 3, 1, c);
+  } else if (id === 'armor') {
+    rect(g, x + 1, y, 7, 5, c);
+    rect(g, x + 2, y + 5, 5, 2, c);
+    rect(g, x + 3, y + 7, 3, 2, c);
+  } else if (id === 'head') {
+    rect(g, x + 1, y, 7, 6, c);
+    rect(g, x + 2, y + 2, 2, 2, l);
+    rect(g, x + 5, y + 2, 2, 2, l);
+    rect(g, x + 2, y + 6, 5, 2, c);
+  } else {
+    const glyph = { regen: 'D', magnet: '~', luck: 'F', sp: '!', combo: 'C', buff: '+' }[id] || '?';
+    rect(g, x, y, 9, 9, c);
+    text(g, glyph, x + 2, y + 1, { font: 'small', color: l });
+  }
 }
 
 // ---------------------------------------------------------------- death: the Blue Screen
@@ -428,6 +552,12 @@ export function drawBsod(g, ui, t, stats) {
     '*  Press ESC to return to the menu. You will lose',
     '   any unsaved dignity.',
   ];
+  if (stats.endless) {
+    const e = stats.endless;
+    lines[3] = `Endless, ${e.district}: survived to wave ${e.wave}. Score ${stats.score}.`;
+    lines[4] = e.newBest ? '*** NEW BEST WAVE ***' : `Best in this district: wave ${e.best}.`;
+    lines[5] = '*  Press ENTER (or tap) to start Endless again.';
+  }
   const guest = ui.game.isGuest();
   if (guest) lines.splice(5, 3, '*  The whole crew crashed. Waiting for the host', '   to try again...');
   lines.forEach((l, i) => text(g, l, 26, 46 + i * 11, { font: 'small', color: PAL.white }));
@@ -647,4 +777,66 @@ export function drawNotice(g, ui, n) {
   const b = { x: inner.x + inner.w / 2 - 30, y: inner.y + 26, w: 60, h: 15 };
   button(g, b.x, b.y, b.w, b.h, 'OK', { focus: true });
   ui.addButton(b, () => ui.game.dismissNotice(), 99);
+}
+
+// ---------------------------------------------------------------- trophy case
+export function drawTrophies(g, ui, t) {
+  const game = ui.game;
+  rect(g, 0, 0, W, H, '#00000077');
+  const got = unlocked();
+  const n = Object.keys(got).length;
+  const inner = window98(g, 4, 3, W - 8, H - 6, `Trophy Case - ${n} of ${ACHIEVEMENTS.length}`);
+  // Trophies down the left.
+  const lw = 212;
+  bevel(g, inner.x, inner.y, lw, inner.h, true, PAL.white);
+  ACHIEVEMENTS.forEach((a, i) => {
+    const y = inner.y + 3 + i * 10;
+    const on = !!got[a.id];
+    rect(g, inner.x + 3, y, 7, 7, on ? PAL.gold : '#d0d0d0');
+    if (on) rect(g, inner.x + 5, y + 2, 3, 3, PAL.goldDark);
+    // Earned trophies show their name; the rest show what it takes.
+    text(g, on ? a.name : a.desc, inner.x + 13, y, { font: 'small', color: on ? PAL.winNavy : PAL.winShadow });
+    if (on && a.reward) text(g, 'EXTRA', inner.x + lw - 3, y, { font: 'small', color: PAL.goldDark, align: 'right' });
+  });
+  // Extras down the right.
+  const rx = inner.x + lw + 4;
+  const rw = inner.w - lw - 4;
+  text(g, 'EXTRAS', rx + rw / 2, inner.y + 1, { font: 'big', color: PAL.winNavy, align: 'center' });
+  const on = cheats();
+  const endless = EXTRAS[0];
+  const eu = extraUnlocked('endless');
+  text(g, eu ? 'Endless: on the' : 'Endless mode:', rx + 2, inner.y + 13, { font: 'small', color: eu ? PAL.ink : PAL.winShadow });
+  text(g, eu ? 'hero select screen' : 'beat level 10', rx + 2, inner.y + 21, { font: 'small', color: eu ? PAL.ink : PAL.winShadow });
+  void endless;
+  EXTRAS.slice(1).forEach((e, i) => {
+    const y = inner.y + 32 + i * 25;
+    const un = extraUnlocked(e.id);
+    const b = { x: rx, y, w: rw, h: 14 };
+    button(g, b.x, b.y, b.w, b.h, un ? `${e.name}: ${on[e.id] ? 'ON' : 'off'}` : '???', { focus: game.focus === i, color: un && on[e.id] ? PAL.strawberryDark : undefined, disabled: !un });
+    ui.addButton(b, () => game.flipCheat(e.id), i);
+    const how = un ? e.desc : `Unlock: ${ACHIEVEMENTS.find((a) => a.reward === e.id).name}`;
+    wrap(how, rw).slice(0, 1).forEach((l) => text(g, l, rx + rw / 2, y + 16, { font: 'small', color: PAL.winShadow, align: 'center' }));
+  });
+  const back = { x: rx, y: inner.y + inner.h - 15, w: rw, h: 14 };
+  button(g, back.x, back.y, back.w, back.h, 'Back', { focus: game.focus === EXTRAS.length - 1 });
+  ui.addButton(back, () => game.setMode('title'), EXTRAS.length - 1);
+}
+
+// "Achievement unlocked" balloon sliding down from the top.
+export function drawAchPop(g, a) {
+  const w = 190;
+  const h = a.reward ? 34 : 26;
+  const inT = Math.min(1, a.t / 0.25);
+  const outT = Math.max(0, (a.t - 3.6) / 0.4);
+  const y = Math.round(-h + (h + 4) * inT - (h + 4) * outT);
+  const x = Math.round(W / 2 - w / 2);
+  rect(g, x + 2, y + 2, w, h, '#00000066');
+  bevel(g, x, y, w, h, false, PAL.winTip);
+  rect(g, x + 4, y + 4, 16, 16, PAL.gold);
+  rect(g, x + 7, y + 7, 10, 7, PAL.goldDark);
+  rect(g, x + 10, y + 14, 4, 3, PAL.goldDark);
+  rect(g, x + 8, y + 17, 8, 2, PAL.goldDark);
+  text(g, 'TROPHY UNLOCKED', x + 25, y + 4, { font: 'small', color: PAL.strawberryDark });
+  text(g, a.name, x + 25, y + 13, { font: 'big', color: PAL.ink });
+  if (a.reward) text(g, `New extra: ${a.reward}`, x + 25, y + 24, { font: 'small', color: PAL.winNavy });
 }

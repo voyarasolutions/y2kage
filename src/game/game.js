@@ -4,8 +4,12 @@ import { Pipeline } from '../gfx/pipeline.js';
 import { buildTextures } from '../gfx/textures.js';
 import { buildSprites } from '../gfx/sprites.js';
 import { buildHorde } from '../gfx/horde.js';
+import { buildBosses, packetPix, moundPix } from '../gfx/bosses.js';
+import { tex as pixTex } from '../gfx/sprites.js';
 import { settings, saveSettings, SENS_STEPS } from '../core/settings.js';
-import { heroXp, saveHeroXp, heroSp, saveHeroSp } from '../data/progress.js';
+import { heroXp, saveHeroXp, heroSp, saveHeroSp, rankFor } from '../data/progress.js';
+import { offer, upgradeById } from '../data/upgrades.js';
+import { grant, achById, cheats, addStat, stat, markHeroCleared, extraUnlocked, EXTRAS, toggleCheat } from '../data/achievements.js';
 import { World } from '../world/world.js';
 import { Sim, EYE, ZRAD, ZHEIGHT, MAX_PITCH } from './sim.js';
 import { Input } from '../core/input.js';
@@ -13,7 +17,7 @@ import { W, H, TAU, rand, clamp, store, pickOne } from '../core/util.js';
 import { PAL, PARTY } from '../core/palette.js';
 import { MAPS, parseMap } from '../data/maps.js';
 import { HEROES, heroById } from '../data/heroes.js';
-import { levelConfig, clockFor, TOTAL_LEVELS } from '../data/levels.js';
+import { levelConfig, endlessConfig, clockFor, TOTAL_LEVELS, DISTRICTS } from '../data/levels.js';
 import { sfx } from '../audio/sfx.js';
 import { music } from '../audio/music.js';
 import { WeaponView } from '../ui/weapon.js';
@@ -22,7 +26,7 @@ import * as HUD from '../ui/hud.js';
 import * as SCR from '../ui/screens.js';
 import { Net } from '../net/net.js';
 
-const MENU_COUNT = { title: 4, paused: 4, clear: 2, dead: 2, mp: 3 };
+const MENU_COUNT = { title: 5, paused: 4, clear: 2, dead: 2, mp: 3 };
 
 export class Game {
   constructor(glCanvas, uiCanvas) {
@@ -30,6 +34,9 @@ export class Game {
     this.T = buildTextures();
     this.S = buildSprites();
     this.S.horde = buildHorde();
+    this.S.bosses = buildBosses(this.S.zombies.boss);
+    this.S.packet = [pixTex(packetPix(0)), pixTex(packetPix(1))];
+    this.S.mound = [0, 1, 2].map((f) => pixTex(moundPix(f)));
     this.world = new World(this.T, this.S);
     this.maps = MAPS.map(parseMap);
     this.cv = uiCanvas;
@@ -40,6 +47,12 @@ export class Game {
     this.bestScore = store.get('bestScore', 0);
     this.heroId = store.get('hero', 'tina');
     this.pickLevel = this.best;
+    // Upgrades picked this run, Endless mode, trophy pop-ups waiting to show.
+    this.runUps = [];
+    this.endless = false;
+    this.endlessOn = false;
+    this.pickDistrict = 0;
+    this.achQ = [];
     this.buttons = [];
     this.focus = 0;
     this.skyBursts = [];
@@ -138,7 +151,7 @@ export class Game {
     this.focus = 0;
     this.input.playing = m === 'play';
     this.cv.classList.toggle('play', m === 'play');
-    if (m === 'title' || m === 'select' || m === 'howto' || m === 'mp' || m === 'lobby') music.play('title');
+    if (m === 'title' || m === 'select' || m === 'howto' || m === 'mp' || m === 'lobby' || m === 'trophies') music.play('title');
     if (m === 'title' && this.pendingJoin) {
       this.joinCode = this.pendingJoin;
       this.pendingJoin = null;
@@ -180,7 +193,8 @@ export class Game {
   }
 
   stepLevel(d) {
-    this.pickLevel = clamp(this.pickLevel + d, 1, this.best);
+    if (this.endlessOn && extraUnlocked('endless')) this.pickDistrict = clamp(this.pickDistrict + d, 0, this.endlessMax());
+    else this.pickLevel = clamp(this.pickLevel + d, 1, this.best);
     sfx.click();
   }
 
@@ -188,13 +202,47 @@ export class Game {
     store.set('hero', this.heroId);
     this.hero = heroById(this.heroId);
     this.runScore = 0;
+    this.runUps = [];
     sfx.select();
+    if (this.endlessOn && extraUnlocked('endless')) return this.startEndless(this.pickDistrict);
     this.startLevel(this.pickLevel);
+  }
+
+  // Endless mode (solo): one district, waves until you drop.
+  startEndless(d) {
+    this.saveXp();
+    this.endless = true;
+    this.endlessD = d;
+    this.levelN = d * 10 + 1;
+    this.runScore = 0;
+    this.runUps = [];
+    this.levelStartUps = [];
+    const cfg = endlessConfig(d);
+    this.loadWorld(d, this.levelN);
+    this.sim = new Sim(this.map, cfg, [{ hero: this.hero, xp: heroXp(this.hero.id), sp: heroSp(this.hero.id), name: 'YOU', ups: [] }], this.levelN, { cheats: cheats() });
+    this.levelStartScore = 0;
+    this.setMode('play');
+    music.play('play', { transpose: [0, 2, -2, 3, 5][d], tempo: 1 + d * 0.04 });
+    this.input.lock();
+  }
+
+  // Endless districts you can pick: any you have reached in the campaign.
+  endlessMax() {
+    return Math.min(DISTRICTS.length - 1, Math.floor((this.best - 1) / 10));
+  }
+
+  toggleEndless() {
+    if (!extraUnlocked('endless')) return;
+    this.endlessOn = !this.endlessOn;
+    this.pickDistrict = clamp(this.pickDistrict, 0, this.endlessMax());
+    sfx.click();
   }
 
   startLevel(n) {
     this.saveXp();
+    this.endless = false;
     this.levelN = n;
+    this.levelStartUps = this.runUps.slice();
     const cfg = levelConfig(n);
     const mapIdx = Math.min(this.maps.length - 1, Math.floor((n - 1) / 10));
     this.loadWorld(mapIdx, n);
@@ -205,11 +253,12 @@ export class Game {
       const prev = this.sim?.players;
       if (prev && prev.length === party.length) party.forEach((p, i) => (p.sp = prev[i].spKind ? 0 : prev[i].sp));
       this.net.guests.forEach((g, i) => (g.slot = i + 1));
-      this.sim = new Sim(this.map, cfg, party.map((p) => ({ hero: heroById(p.heroId), xp: p.xp, sp: p.sp, name: p.name })), n, { mode: 'host', local: 0 });
+      const ch = cheats();
+      this.sim = new Sim(this.map, cfg, party.map((p) => ({ hero: heroById(p.heroId), xp: p.xp, sp: p.sp, name: p.name, ups: p.ups })), n, { mode: 'host', local: 0, cheats: ch });
       this.sim.out = [];
-      this.net.guests.forEach((g) => this.net.send({ t: 'start', level: n, party, you: g.slot }, g));
+      this.net.guests.forEach((g) => this.net.send({ t: 'start', level: n, party, you: g.slot, cheats: ch }, g));
       this.snapT = 0;
-    } else this.sim = new Sim(this.map, cfg, [{ hero: this.hero, xp: heroXp(this.hero.id), sp: heroSp(this.hero.id), name: 'YOU' }], n);
+    } else this.sim = new Sim(this.map, cfg, [{ hero: this.hero, xp: heroXp(this.hero.id), sp: heroSp(this.hero.id), name: 'YOU', ups: this.runUps }], n, { cheats: cheats() });
     this.levelStartScore = this.runScore;
     this.setMode('play');
     const d = Math.floor((n - 1) / 10);
@@ -233,6 +282,9 @@ export class Game {
     this.bestScore = Math.max(this.bestScore, this.runScore);
     store.set('bestScore', this.bestScore);
     this.pickLevel = Math.min(this.best, n + 1);
+    this.upOffer = n < TOTAL_LEVELS ? offer(this.runUps) : [];
+    this.upPicked = null;
+    this.checkClearAch(s, this.clearStats);
     this.input.unlock();
     sfx.clear();
     for (let i = 0; i < 6; i++) this.launchBurst();
@@ -246,6 +298,17 @@ export class Game {
     this.setMode('clear');
   }
 
+  // Take one of the three upgrades offered on the level-clear screen.
+  pickUpgrade(id) {
+    if (this.upPicked || !this.upOffer?.includes(id)) return;
+    this.upPicked = id;
+    this.runUps.push(id);
+    sfx.upgrade();
+    this.focus = 0;
+    if (this.net.role === 'guest') this.net.send({ t: 'ups', ups: this.runUps });
+    if (this.runUps.length >= 10) this.award('loaded');
+  }
+
   nextLevel() {
     if (this.net.role === 'guest') return;
     this.startLevel(Math.min(TOTAL_LEVELS, this.levelN + 1));
@@ -253,8 +316,50 @@ export class Game {
 
   retry() {
     if (this.net.role === 'guest') return;
+    if (this.endless) return this.startEndless(this.endlessD);
     this.runScore = this.levelStartScore;
+    this.runUps = (this.levelStartUps || []).slice();
     this.startLevel(this.levelN);
+  }
+
+  // ------------------------------------------------------------ trophies
+  award(id) {
+    if (!grant(id)) return;
+    const a = achById(id);
+    const reward = a.reward ? EXTRAS.find((e) => e.id === a.reward) : null;
+    this.achQ.push({ name: a.name, desc: a.desc, reward: reward ? reward.name : null, t: 0 });
+    sfx.achievement();
+  }
+
+  // Trophies judged when a level is cleared (from this player's side of the screen).
+  checkClearAch(sim, st) {
+    if (sim.cfg.isBoss) this.award(`boss${Math.min(5, Math.floor((st.level - 1) / 10) + 1)}`);
+    if (st.level >= TOTAL_LEVELS) this.award('boss5');
+    if (st.level >= 5 && !sim.localHurt) this.award('flawless');
+    if ((st.headshots || 0) >= 25) this.award('heads');
+    if ((st.combo || 0) >= 40) this.award('combo');
+    if (st.level >= 5 && st.time < 75) this.award('fast');
+    if (this.net.active) this.award('lan');
+    if (markHeroCleared(this.hero.id) >= 5) this.award('roster');
+    this.countKills(st.kills);
+    this.checkRank();
+  }
+
+  countKills(n) {
+    const k = addStat('kills', n || 0);
+    if (k >= 1000) this.award('kills1k');
+    if (k >= 10000) this.award('kills10k');
+  }
+
+  checkRank() {
+    if (this.hero && rankFor(Math.max(heroXp(this.hero.id), this.sim?.xp || 0)) >= 10) this.award('rank10');
+  }
+
+  // The Trophy Case: toggle an unlocked cheat.
+  flipCheat(id) {
+    if (!extraUnlocked(id)) return sfx.bsod();
+    toggleCheat(id);
+    sfx.click();
   }
 
   pause() {
@@ -289,7 +394,7 @@ export class Game {
     if (m === 'play') {
       if (code === 'Space') this.sim.pressJump();
       if (code === 'ShiftLeft' || code === 'ShiftRight') this.sim.pressBoost();
-      if (code === 'KeyR' || code === 'Special') this.sim.pressSpecial();
+      if ((code === 'KeyR' || code === 'Special') && this.sim.pressSpecial() && addStat('specials') >= 25) this.award('specials');
       if (code === 'KeyP' || code === 'Escape') this.pause();
       return;
     }
@@ -301,6 +406,17 @@ export class Game {
       if (code === 'Enter' || code === 'Escape' || code === 'Space') this.setMode('title');
       return;
     }
+    if (m === 'trophies') {
+      const n = EXTRAS.length - 1;
+      if (code === 'Escape' || code === 'Backspace') return this.setMode('title');
+      if (code === 'ArrowDown' || code === 'KeyS' || code === 'Tab') this.focus = (this.focus + 1) % (n + 1);
+      if (code === 'ArrowUp' || code === 'KeyW') this.focus = (this.focus + n) % (n + 1);
+      if (code === 'Enter' || code === 'Space') {
+        if (this.focus === n) return this.setMode('title');
+        this.flipCheat(EXTRAS[this.focus + 1].id);
+      }
+      return;
+    }
     if (m === 'select') {
       const i = HEROES.findIndex((h) => h.id === this.heroId);
       if (/^Digit[1-5]$/.test(code)) this.pickHero(HEROES[+code.slice(5) - 1].id);
@@ -309,7 +425,19 @@ export class Game {
       if (code === 'ArrowUp' || code === 'KeyW') this.stepLevel(1);
       if (code === 'ArrowDown' || code === 'KeyS') this.stepLevel(-1);
       if (code === 'Enter' || code === 'Space') this.startRun();
+      if (code === 'Tab' || code === 'KeyE') this.toggleEndless();
       if (code === 'Escape') this.setMode('title');
+      return;
+    }
+    if (m === 'clear' && this.upOffer?.length && !this.upPicked) {
+      // Pick an upgrade first: left/right move between the cards, Enter takes one.
+      const n = this.upOffer.length;
+      if (/^Digit[1-3]$/.test(code)) return this.pickUpgrade(this.upOffer[+code.slice(5) - 1]);
+      if (code === 'ArrowRight' || code === 'KeyD' || code === 'Tab' || code === 'ArrowDown') this.upFocus = ((this.upFocus || 0) + 1) % n;
+      if (code === 'ArrowLeft' || code === 'KeyA' || code === 'ArrowUp') this.upFocus = ((this.upFocus || 0) + n - 1) % n;
+      if (code === 'Enter' || code === 'Space') this.pickUpgrade(this.upOffer[this.upFocus || 0]);
+      if (code === 'Escape') this.toSelect();
+      sfx.click();
       return;
     }
     if (m === 'dead') {
@@ -476,8 +604,8 @@ export class Game {
 
   // Host: the lobby roster, host first then guests in join order.
   lobbyPlayers() {
-    const list = [{ name: 'P1', heroId: this.heroId, xp: heroXp(this.heroId), sp: heroSp(this.heroId) }];
-    this.net.guests.forEach((g, i) => list.push({ name: `P${i + 2}`, heroId: g.info?.heroId || 'tina', xp: g.info?.xp || 0, sp: g.info?.sp || 0 }));
+    const list = [{ name: 'P1', heroId: this.heroId, xp: heroXp(this.heroId), sp: heroSp(this.heroId), ups: this.runUps.slice() }];
+    this.net.guests.forEach((g, i) => list.push({ name: `P${i + 2}`, heroId: g.info?.heroId || 'tina', xp: g.info?.xp || 0, sp: g.info?.sp || 0, ups: (g.info?.ups || []).slice() }));
     return list;
   }
 
@@ -535,6 +663,8 @@ export class Game {
     if (this.net.role !== 'host') return;
     this.hero = heroById(this.heroId);
     this.runScore = 0;
+    this.runUps = [];
+    this.net.guests.forEach((g) => g.info && (g.info.ups = []));
     sfx.select();
     this.startLevel(this.lobby.level);
   }
@@ -554,8 +684,10 @@ export class Game {
 
   fromGuest(g, m) {
     if (m.t === 'hello' || m.t === 'pick') {
-      g.info = { heroId: heroById(m.hero).id, xp: Math.max(0, Number(m.xp) || 0), sp: Math.max(0, Math.min(100, Number(m.sp) || 0)) };
+      g.info = { heroId: heroById(m.hero).id, xp: Math.max(0, Number(m.xp) || 0), sp: Math.max(0, Math.min(100, Number(m.sp) || 0)), ups: g.info?.ups || [] };
       this.broadcastLobby();
+    } else if (m.t === 'ups') {
+      if (g.info && Array.isArray(m.ups)) g.info.ups = m.ups.filter((id) => upgradeById(id)).slice(0, 60);
     } else if (m.t === 'in') {
       if (this.sim && g.slot != null && Array.isArray(m.p) && Array.isArray(m.v)) this.sim.applyRemoteInput(g.slot, m);
     } else if (m.t === 'act') {
@@ -599,7 +731,10 @@ export class Game {
       this.levelN = m.level;
       const cfg = levelConfig(m.level);
       this.loadWorld(Math.min(this.maps.length - 1, Math.floor((m.level - 1) / 10)), m.level);
-      this.sim = new Sim(this.map, cfg, m.party.map((p) => ({ hero: heroById(p.heroId), xp: p.xp, sp: p.sp, name: p.name })), m.level, { mode: 'client', local: m.you });
+      this.runUps = (me.ups || []).filter((id) => upgradeById(id));
+      this.levelStartUps = this.runUps.slice();
+      this.endless = false;
+      this.sim = new Sim(this.map, cfg, m.party.map((p) => ({ hero: heroById(p.heroId), xp: p.xp, sp: p.sp, name: p.name, ups: (p.ups || []).filter((id) => upgradeById(id)) })), m.level, { mode: 'client', local: m.you, cheats: m.cheats || {} });
       this.sim.act = (a, ...args) => this.net.send({ t: 'act', a, args });
       this.runScore = this.runScore || 0;
       this.levelStartScore = this.runScore;
@@ -689,6 +824,7 @@ export class Game {
 
   update(dt) {
     music.tick();
+    this.input.pollPad(dt);
     const m = this.mode;
     if (m === 'crt' && this.modeT > 0.5) {
       sfx.postBeep();
@@ -705,7 +841,8 @@ export class Game {
       LP.a += inp.look * 0.0026 * settings.sens;
       LP.pitch = clamp((LP.pitch || 0) - (inp.lookY || 0) * 0.0026 * settings.sens, -MAX_PITCH, MAX_PITCH);
       this.input.spReady = this.sim.player.sp >= 100 && !this.sim.player.spKind;
-      this.sim.update(dt, inp);
+      this.sim.update(this.sim.cheats.turbo ? dt * 1.25 : dt, inp);
+      if (this.endless && this.sim.lv.wave + 1 >= 20) this.award('wave20');
       this.netTick(dt);
       this.handleEvents();
       if (this.sim && this.mode === 'play') {
@@ -717,6 +854,11 @@ export class Game {
       }
     }
     this.updateBursts(dt);
+    // Trophy pop-ups slide in one at a time.
+    if (this.achQ.length) {
+      this.achQ[0].t += dt;
+      if (this.achQ[0].t > 4) this.achQ.shift();
+    }
   }
 
   saveXp() {
@@ -733,6 +875,15 @@ export class Game {
       if (e.type === 'levelup' || e.type === 'dead' || e.type === 'clear') this.saveXp();
       if (e.type === 'dead') {
         this.deadStats = { level: this.levelN, kills: this.sim.lv.kills, score: this.runScore + this.sim.score, hero: this.sim.players.length > 1 ? 'The crew' : this.hero.name };
+        if (this.endless) {
+          const wave = this.sim.lv.wave + 1;
+          const best = store.get('endless', {}) || {};
+          this.deadStats.endless = { wave, district: DISTRICTS[this.endlessD].name, best: Math.max(wave, best[this.endlessD] || 0), newBest: wave > (best[this.endlessD] || 0) };
+          best[this.endlessD] = this.deadStats.endless.best;
+          store.set('endless', best);
+        }
+        this.countKills(this.sim.lv.kills);
+        this.checkRank();
         if (this.net.role === 'host') {
           this.net.send(this.sim.snapshot());
           this.net.send({ t: 'end', kind: 'dead', stats: this.deadStats });
@@ -845,10 +996,21 @@ export class Game {
     // Zombies.
     const dIdx = Math.min(4, Math.floor((this.levelN - 1) / 10));
     const look = (z) => {
+      if (z.kind === 'boss') return S.bosses[sim.bossIdx] || S.zombies.boss;
       const list = S.horde[z.kind]?.[dIdx];
       return list ? list[z.look % list.length] : S.zombies[z.kind];
     };
+    const bigHead = sim.cheats.bighead;
     for (const z of sim.zombies) {
+      // A burrowed boss is just a moving mound of dirt; surfacing, the street cracks in a red ring.
+      if (z.bs) {
+        W3.decal(S.shadow, z.x, z.y, z.bs === 2 ? 2.4 : 1.4, 0, 0.6);
+        const heave = z.bs === 2 ? 2 : Math.floor(this.t * 8) % 2;
+        W3.sprite(S.mound[heave], z.x, 0, z.y, z.bs === 2 ? 1.8 : 1.3, z.bs === 2 ? 0.8 : 0.55);
+        for (let k = 0; k < 6; k++) W3.particle(z.x + rand(-0.5, 0.5), rand(0, 0.25), z.y + rand(-0.5, 0.5), k % 2 ? '#6a5a44' : '#a89878');
+        if (z.bs === 2) this.floorRing(z.x, z.y, 1.9, Math.floor(this.t * 12) % 2 ? PAL.red : PAL.gold);
+        continue;
+      }
       const Z = look(z);
       let tex;
       if (z.hurtT > 0 && Math.floor(this.t * 16) % 2 === 0) tex = Z.flash[0];
@@ -859,7 +1021,25 @@ export class Game {
       const grow = z.spawnT > 0 ? 1 - z.spawnT / 0.6 : 1;
       W3.sprite(tex, z.x, 0, z.y, h * Z.aspect, h * grow);
       W3.decal(S.shadow, z.x, z.y, ZRAD[z.kind] * 2.6, 0, 0.45);
+      // Big Heads cheat: a swollen copy of the head over the real one.
+      if (bigHead && z.kind !== 'boss' && z.kind !== 'crawler' && grow >= 1) {
+        const hd = this.headOf(Z.walk[0]);
+        const hh = h * hd.frac * 1.9;
+        W3.sprite(hd.tex, z.x - Math.cos(P.a) * 0.02, h * (1 - hd.frac * 1.35), z.y - Math.sin(P.a) * 0.02, hh * hd.aspect, hh, z.hurtT > 0 ? [1.6, 1.6, 1.6] : undefined);
+      }
     }
+    // Boss shockwaves roll along the floor; packets fly at chest height.
+    for (const g of sim.rings) {
+      this.floorRing(g.x, g.y, g.r, PAL.pink, 0.04);
+      this.floorRing(g.x, g.y, g.r, PAL.cyan, 0.22);
+      // A wall of sparks along the wave so it reads from a distance.
+      const n = Math.round(g.r * 9);
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * TAU + this.t;
+        W3.particle(g.x + Math.cos(a) * g.r, 0.05 + Math.random() * 0.17, g.y + Math.sin(a) * g.r, PARTY[i % PARTY.length]);
+      }
+    }
+    for (const b of sim.bolts) W3.sprite(S.packet[b.c ? 1 : 0], b.x, b.z - 0.12, b.y, 0.26, 0.26);
     for (const c of sim.corpses) {
       const Z = look(c);
       const h = ZHEIGHT[c.kind] * (Z.hmul || 1) * (c.sc || 1);
@@ -974,6 +1154,7 @@ export class Game {
 
   drawUI(g) {
     this.drawScreen(g);
+    if (this.achQ.length) SCR.drawAchPop(g, this.achQ[0]);
     if (this.notice) {
       this.buttons = [];
       SCR.drawNotice(g, this, this.notice);
@@ -1000,6 +1181,7 @@ export class Game {
     if (m === 'dialup') return SCR.drawDialup(g, t);
     if (m === 'title') return SCR.drawTitle(g, ui, this.t);
     if (m === 'howto') return SCR.drawHowto(g, ui, this.t);
+    if (m === 'trophies') return SCR.drawTrophies(g, ui, this.t);
     if (m === 'select') return SCR.drawSelect(g, ui, this.t, this.S);
     if (m === 'ending') return SCR.drawEnding(g, ui, t, this.endStats);
     if (m === 'mp') return SCR.drawMp(g, ui, this.t);
@@ -1087,6 +1269,16 @@ export class Game {
     }
     if (!best) return false;
     return sim.zoneAt(best, eyeZ + bestT * slope) === 'head' ? 'head' : true;
+  }
+
+  // A circle of line segments on the floor (shockwaves, eruption warnings).
+  floorRing(x, y, r, color, z = 0.05) {
+    const n = Math.max(12, Math.min(28, Math.round(r * 5)));
+    for (let i = 0; i < n; i++) {
+      const a0 = (i / n) * TAU;
+      const a1 = ((i + 1) / n) * TAU;
+      this.world.line([x + Math.cos(a0) * r, z, y + Math.sin(a0) * r], [x + Math.cos(a1) * r, z, y + Math.sin(a1) * r], color);
+    }
   }
 
   // Top rows of a zombie frame (its head) as a separate texture, for headshot pops.

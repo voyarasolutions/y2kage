@@ -1,4 +1,4 @@
-// Keyboard, mouse (with pointer lock) and touch, mapped onto the 384x216 screen grid.
+// Keyboard, mouse (with pointer lock), touch and gamepads, mapped onto the 384x216 screen grid.
 import { W, H, clamp } from './util.js';
 
 export class Input {
@@ -13,7 +13,81 @@ export class Input {
     this.noLock = false;
     this.playing = false;
     this.spReady = false;
+    // Gamepad: sticks and triggers read every frame; buttons turn into the same key codes the
+    // keyboard sends, so menus and moves need no special cases.
+    this.pad = { on: false, move: { x: 0, y: 0 }, look: { x: 0, y: 0 }, fire: false, prev: [], rep: 0, dir: null, name: '' };
     this.bind();
+  }
+
+  // Standard mapping: A jump, B or LB ride trick, Y or RB special, RT or X fire, Start pause.
+  // In menus: d-pad or left stick move, A select, B back, X switches (Endless on hero select).
+  pollPad(dt) {
+    const P = this.pad;
+    let pad = null;
+    try {
+      for (const g of navigator.getGamepads ? navigator.getGamepads() : []) {
+        if (g && g.connected && g.mapping !== 'xr-standard') {
+          pad = g;
+          break;
+        }
+      }
+    } catch (e) {}
+    if (!pad) {
+      if (P.on && P.prev[0]) this.h.keyUp('Space');
+      P.on = false;
+      P.move = { x: 0, y: 0 };
+      P.look = { x: 0, y: 0 };
+      P.fire = false;
+      P.prev = [];
+      return;
+    }
+    P.on = true;
+    P.name = pad.id || 'Gamepad';
+    const dead = 0.2;
+    const ax = (i) => {
+      const v = pad.axes[i] || 0;
+      return Math.abs(v) < dead ? 0 : (v - Math.sign(v) * dead) / (1 - dead);
+    };
+    const down = pad.buttons.map((b) => !!b && (b.pressed || b.value > 0.45));
+    const hit = (i) => down[i] && !P.prev[i];
+    const rel = (i) => !down[i] && P.prev[i];
+    P.move = { x: ax(0), y: ax(1) };
+    P.look = { x: ax(2), y: ax(3) };
+    if (this.playing) {
+      P.fire = !!(down[7] || down[2]);
+      // Curved stick response: fine aim near the centre, fast turns at full tilt.
+      this.lookDX += P.look.x * Math.abs(P.look.x) * 1100 * dt;
+      this.lookDY += P.look.y * Math.abs(P.look.y) * 650 * dt;
+      if (hit(0)) this.h.key('Space');
+      if (rel(0)) this.h.keyUp('Space');
+      if (hit(1) || hit(4)) this.h.key('ShiftLeft');
+      if (hit(3) || hit(5)) this.h.key('Special');
+      if (hit(9) || hit(8)) this.h.key('Escape');
+    } else {
+      P.fire = false;
+      if (P.prev[0] && !down[0]) this.h.keyUp('Space');
+      if (hit(0) || hit(9)) this.h.key('Enter');
+      if (hit(1) || hit(8)) this.h.key('Escape');
+      if (hit(2)) this.h.key('Tab');
+      // D-pad or stick as arrow keys, repeating while held.
+      let dir = null;
+      if (down[12] || P.move.y < -0.6) dir = 'ArrowUp';
+      else if (down[13] || P.move.y > 0.6) dir = 'ArrowDown';
+      else if (down[14] || P.move.x < -0.6) dir = 'ArrowLeft';
+      else if (down[15] || P.move.x > 0.6) dir = 'ArrowRight';
+      if (dir !== P.dir) {
+        P.dir = dir;
+        P.rep = 0.4;
+        if (dir) this.h.key(dir);
+      } else if (dir) {
+        P.rep -= dt;
+        if (P.rep <= 0) {
+          P.rep = 0.14;
+          this.h.key(dir);
+        }
+      }
+    }
+    P.prev = down;
   }
 
   toScreen(cx, cy) {
@@ -157,8 +231,12 @@ export class Input {
       f -= this.touch.vec.y;
       s += this.touch.vec.x;
     }
+    if (this.pad.on) {
+      f -= this.pad.move.y;
+      s += this.pad.move.x;
+    }
     const turn = (k.has('ArrowLeft') || k.has('KeyQ') ? -1 : 0) + (k.has('ArrowRight') || k.has('KeyE') ? 1 : 0);
-    const fire = this.mouse.down || this.touch.fire != null || k.has('KeyF') || k.has('ControlLeft') || k.has('Enter');
+    const fire = this.mouse.down || this.touch.fire != null || this.pad.fire || k.has('KeyF') || k.has('ControlLeft') || k.has('Enter');
     const look = this.lookDX;
     const lookY = this.lookDY;
     this.lookDX = 0;

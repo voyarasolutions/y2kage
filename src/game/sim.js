@@ -4,7 +4,8 @@
 // Modes: 'solo' runs everything locally. 'host' runs everything too, and also records sounds and
 // effects in `out` so the network layer can replay them for guests. 'client' only moves the local
 // player; everything else arrives in snapshots from the host (see applySnapshot).
-import { ENEMIES, clockFor } from '../data/levels.js';
+import { ENEMIES, BOSSES, scaleFor } from '../data/levels.js';
+import { upgradeMods } from '../data/upgrades.js';
 import { rankFor, dmgMulFor, xpForRank } from '../data/progress.js';
 import { PARTY } from '../core/palette.js';
 import { rand, clamp, TAU, pickOne } from '../core/util.js';
@@ -16,6 +17,7 @@ const GRAV = 16;
 export const ZRAD = { shambler: 0.3, runner: 0.26, brute: 0.45, glitch: 0.3, boss: 0.85, crawler: 0.28, bloater: 0.42 };
 export const ZHEIGHT = { shambler: 1.0, runner: 1.0, brute: 1.45, glitch: 1.0, boss: 1.95, crawler: 0.45, bloater: 1.3 };
 const COMBO_WINDOW = 2.2;
+const GOO = '#9be04a';
 const COMBO_CALLS = [
   { n: 5, text: 'BOOYAH!' },
   { n: 10, text: 'ALL THAT!' },
@@ -37,6 +39,8 @@ const NEW_TIPS = {
 const ZMASS = { shambler: 1, runner: 0.8, brute: 2.5, glitch: 1, boss: 8, crawler: 0.7, bloater: 1.6 };
 export const ZKINDS = ['shambler', 'runner', 'brute', 'glitch', 'boss', 'crawler', 'bloater'];
 export const PROJ_KINDS = ['water', 'yoyo', 'floppy', 'rocket'];
+// Boss moves and how long until each one comes round again (seconds).
+const BOSS_CD = { charge: [4, 6], ring: [3.2, 4.4], burrow: [5, 7], bolts: [2.6, 3.6], summon: [9, 12], blink: [5, 7] };
 export const PICK_KINDS = ['health', 'armor', 'overclock', 'patch', 'multi', 'freeze', 'cad'];
 const ZSTATES = ['walk', 'attack', 'windup'];
 
@@ -70,6 +74,15 @@ export class Sim {
     this.levelN = levelN;
     this.mode = opts.mode || 'solo';
     this.out = null;
+    // Cheats from the Trophy Case, and Endless mode (waves generated as they come).
+    this.cheats = opts.cheats || {};
+    this.endless = !!cfg.endless;
+    this.grav = this.cheats.lowgrav ? 0.4 : 1;
+    this.bossIdx = cfg.bossIdx ?? Math.min(BOSSES.length - 1, Math.floor((levelN - 1) / 10));
+    this.bossDef = BOSSES[this.bossIdx];
+    this.rings = [];
+    this.bolts = [];
+    this.hurtTaken = 0;
     // Timed powerups are shared by the whole party.
     this.buffs = { patch: 0, multi: 0, freeze: 0 };
     this.t = 0;
@@ -139,13 +152,15 @@ export class Sim {
     }
     const xp = e.xp || 0;
     const rank = rankFor(xp);
+    const ups = (e.ups || []).slice();
+    const mods = upgradeMods(ups);
     return {
       idx: i, name: e.name || `P${i + 1}`, hero, heroIdx: Math.max(0, HEROES.findIndex((h) => h.id === hero.id)),
-      xp, rank, dmgMul: dmgMulFor(rank), lvlUp: null,
+      xp, rank, dmgMul: dmgMulFor(rank) * mods.dmg, lvlUp: null, ups, mods, maxHp: mods.maxHp,
       sp: Math.max(0, Math.min(SP_MAX, e.sp || 0)), spKind: null, pitch: 0, spT: 0, spStep: 0, spCall: null, iT: 0,
       down: false, remote: false, input: { move: { f: 0, s: 0 }, turn: 0, fire: false, look: 0 },
       x, y, a: face, z: 0, vz: 0, vx: 0, vy: 0,
-      hp: 100, armor: 0, hurtT: 0, overclock: 0, charge: 0, charging: false, boostCd: 0,
+      hp: mods.maxHp, armor: mods.armor, hurtT: 0, overclock: 0, charge: 0, charging: false, boostCd: 0,
       charges: hero.move.charges || 0, rechargeT: 0, mega: false, bob: 0, onGround: true, dashT: 0,
       tank: hero.gun.tank || 0, heat: 0, overheated: false, fireCd: 0, hand: 0, fireAnim: 0, pumpT: 0, speed: 0, stride: 0,
     };
@@ -177,6 +192,11 @@ export class Sim {
     return this.players.filter((P) => !P.down);
   }
 
+  // Zombie goo, or party colours with the Confetti Goo cheat.
+  goo() {
+    return this.cheats.confetti ? pickOne(PARTY) : GOO;
+  }
+
   emit(type, data) {
     this.events.push({ type, ...data });
   }
@@ -201,6 +221,7 @@ export class Sim {
 
   feel(kind, ...a) {
     if (kind === 'hurt') {
+      this.localHurt = (this.localHurt || 0) + 1;
       this.shake = Math.min(1, this.shake + 0.4);
       this.flash = { color: '#ff2020', t: 0.18, amt: 0.35 };
       sfx.hurt();
@@ -248,14 +269,14 @@ export class Sim {
   }
 
   // Move a circle in small steps, sliding along walls and round props.
-  moveCircle(e, dx, dy, r) {
+  moveCircle(e, dx, dy, r, props = true) {
     const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 0.15));
     const sx = e.x;
     const sy = e.y;
     for (let i = 0; i < steps; i++) {
       e.x += dx / steps;
       e.y += dy / steps;
-      for (const p of this.props) {
+      if (props) for (const p of this.props) {
         const ddx = e.x - p.x;
         const ddy = e.y - p.y;
         const d = Math.hypot(ddx, ddy);
@@ -315,6 +336,7 @@ export class Sim {
     }
     this.updateFlow();
     this.updateZombies(dt);
+    this.updateHazards(dt);
     this.updateProjs(dt);
     this.updatePickups(dt);
     this.updateWaves(dt);
@@ -350,7 +372,7 @@ export class Sim {
       // The headless body keeps spurting until it drops.
       if (c.headless && c.t < 0.4 && Math.random() < 0.8) {
         const H = ZHEIGHT[c.kind] * (c.sc || 1);
-        this.particles.push({ x: c.x + rand(-0.05, 0.05), y: c.y + rand(-0.05, 0.05), z: H * 0.74, vx: rand(-0.5, 0.5), vy: rand(-0.5, 0.5), vz: rand(2, 3.4), life: rand(0.4, 0.8), color: Math.random() < 0.7 ? '#9be04a' : '#ff2e88' });
+        this.particles.push({ x: c.x + rand(-0.05, 0.05), y: c.y + rand(-0.05, 0.05), z: H * 0.74, vx: rand(-0.5, 0.5), vy: rand(-0.5, 0.5), vz: rand(2, 3.4), life: rand(0.4, 0.8), color: Math.random() < 0.7 ? this.goo() : '#ff2e88' });
       }
     }
     this.corpses = this.corpses.filter((c) => c.t < (c.headless ? 0.9 : 0.5));
@@ -374,7 +396,7 @@ export class Sim {
         h.vy *= 0.55;
         h.vs *= 0.5;
       }
-      if (Math.random() < 0.3 && h.t < 0.8) this.particles.push({ x: h.x, y: h.y, z: h.z, vx: 0, vy: 0, vz: 0, life: 0.3, color: '#9be04a' });
+      if (Math.random() < 0.3 && h.t < 0.8) this.particles.push({ x: h.x, y: h.y, z: h.z, vx: 0, vy: 0, vz: 0, life: 0.3, color: this.goo() });
     }
     this.heads = this.heads.filter((h) => h.t < 2.2);
     this.headT = Math.max(0, (this.headT || 0) - dt);
@@ -399,13 +421,14 @@ export class Sim {
     P.iT = Math.max(0, P.iT - dt);
     P.overclock = Math.max(0, P.overclock - dt);
     P.fireAnim = Math.max(0, P.fireAnim - dt);
+    if (P.mods.regen && !P.down && this.lv.phase !== 'done') P.hp = Math.min(P.maxHp, P.hp + P.mods.regen * dt);
     if (P.down) this.lasers = this.lasers.filter((l) => l.o !== P.idx);
     if (!P.down && !P.spKind && this.lv.phase !== 'done') this.chargeSpecial(P, SP_PER_SEC * dt);
   }
 
   chargeSpecial(P, n) {
     const was = P.sp;
-    P.sp = Math.min(SP_MAX, P.sp + n);
+    P.sp = Math.min(SP_MAX, P.sp + n * P.mods.sp);
     if (was < SP_MAX && P.sp >= SP_MAX && this.isLocal(P)) sfx.spReady();
   }
 
@@ -487,7 +510,8 @@ export class Sim {
     const air = P.onGround ? 1 : 0.35;
     let ax;
     let ay;
-    let accel = M.accel;
+    let accel = M.accel * P.mods.speed;
+    const vmax = M.max * P.mods.speed;
     if (M.type === 'board') {
       // Push only forward; back brakes; strafing is weak.
       const fwd = Math.max(0, f);
@@ -528,8 +552,8 @@ export class Sim {
       P.vy *= keep;
     }
     const sp2 = Math.hypot(P.vx, P.vy);
-    if (sp2 > M.max) {
-      const target = Math.max(M.max, sp2 - 6 * dt);
+    if (sp2 > vmax) {
+      const target = Math.max(vmax, sp2 - 6 * dt);
       P.vx *= target / sp2;
       P.vy *= target / sp2;
     }
@@ -540,7 +564,7 @@ export class Sim {
     // Vertical: hops, the slinky's coil, the pogo's endless bounce.
     if (P.charging) P.charge = Math.min(1, P.charge + dt);
     if (!P.onGround || P.vz > 0) {
-      P.vz -= GRAV * dt;
+      P.vz -= GRAV * this.grav * dt;
       P.z += P.vz * dt;
       if (P.z <= 0) {
         P.z = 0;
@@ -596,6 +620,8 @@ export class Sim {
       this.personal(P, 'shield');
       return;
     }
+    if (this.cheats.onehit) dmg = 9999;
+    this.hurtTaken += dmg;
     if (P.armor > 0) {
       const soak = Math.min(P.armor, dmg * 0.5);
       P.armor -= soak;
@@ -627,7 +653,7 @@ export class Sim {
         P.y = buddy.y;
       }
       P.down = false;
-      P.hp = REVIVE_HP;
+      P.hp = Math.min(P.maxHp, REVIVE_HP);
       P.iT = 2;
       this.personal(P, 'revive');
     }
@@ -636,7 +662,7 @@ export class Sim {
   // ------------------------------------------------------------ weapons
   updateWeapon(P, dt) {
     const G = P.hero.gun;
-    const oc = P.overclock > 0 ? 0.5 : 1;
+    const oc = (P.overclock > 0 ? 0.5 : 1) / P.mods.rate;
     P.fireCd -= dt;
     const firing = P.input.fire;
     this.lasers = this.lasers.filter((l) => l.o !== P.idx || l.sp);
@@ -647,8 +673,8 @@ export class Sim {
     if (G.kind === 'soaker') {
       if (firing && P.tank > G.drain) {
         while (P.fireCd <= 0) {
-          P.fireCd += G.every;
-          P.tank -= G.drain * oc;
+          P.fireCd += G.every / P.mods.rate;
+          P.tank -= G.drain * (P.overclock > 0 ? 0.5 : 1);
           const a = P.a + rand(-G.spread, G.spread);
           for (const off of this.spread()) {
             const b = a + off;
@@ -791,12 +817,13 @@ export class Sim {
   zoneAt(z, hz) {
     if (hz == null || z.kind === 'crawler') return 'body';
     const f = hz / (ZHEIGHT[z.kind] * (z.sc || 1));
-    return f > HEAD_FRAC ? 'head' : f < LEG_FRAC ? 'legs' : 'body';
+    return f > (this.cheats.bighead && z.kind !== 'boss' ? 0.62 : HEAD_FRAC) ? 'head' : f < LEG_FRAC ? 'legs' : 'body';
   }
 
   // Can a shot at height hz touch this zombie at all?
   inHeight(z, hz) {
-    const top = ZHEIGHT[z.kind] * (z.sc || 1) + (z.kind === 'crawler' ? 0.12 : 0.06);
+    if (z.bs) return false;
+    const top = ZHEIGHT[z.kind] * (z.sc || 1) * (this.cheats.bighead && z.kind !== 'boss' && z.kind !== 'crawler' ? 1.15 : 1) + (z.kind === 'crawler' ? 0.12 : 0.06);
     return hz > -0.05 && hz < top;
   }
 
@@ -927,7 +954,7 @@ export class Sim {
           if (d < ZRAD[z.kind] + p.r) {
             z.orbT = this.t + 0.22;
             this.hurtZombie(z, p.dmg * ocMul, (z.x - P.x) / (d || 1), (z.y - P.y) / (d || 1), p.knock, P);
-            this.puff(p.x, p.y, p.z, '#9be04a', 5);
+            this.puff(p.x, p.y, p.z, this.goo(), 5);
           }
         }
         continue;
@@ -969,7 +996,7 @@ export class Sim {
             p.hits.add(z);
             const d = Math.hypot(p.vx, p.vy) || 1;
             this.hurtZombie(z, p.dmg * ocMul, p.vx / d, p.vy / d, p.knock, P, this.zoneAt(z, hz));
-            this.puff(p.x, p.y, p.z, '#9be04a', 5);
+            this.puff(p.x, p.y, p.z, this.goo(), 5);
           }
         }
         continue;
@@ -1065,7 +1092,7 @@ export class Sim {
               this.puff(p.x, p.y, p.z, '#8fd8ff', 2);
               if (Math.random() < 0.15) this.snd('splash');
             }
-            if (p.kind === 'floppy') this.puff(p.x, p.y, p.z, '#9be04a', 6);
+            if (p.kind === 'floppy') this.puff(p.x, p.y, p.z, this.goo(), 6);
             if (p.kind === 'rocket') this.explode(p.x, p.y, p.z, P, p.big);
             dead = true;
             break;
@@ -1147,7 +1174,7 @@ export class Sim {
     for (let i = 0; i < 70; i++) {
       const a = rand(0, TAU);
       const s = rand(1.5, 4.5);
-      this.particles.push({ x, y, z: rand(0.4, 1.1), vx: Math.cos(a) * s, vy: Math.sin(a) * s, vz: rand(0, 3.5), life: rand(0.5, 1.2), color: i % 3 ? PARTY[i % PARTY.length] : '#9be04a' });
+      this.particles.push({ x, y, z: rand(0.4, 1.1), vx: Math.cos(a) * s, vy: Math.sin(a) * s, vz: rand(0, 3.5), life: rand(0.5, 1.2), color: i % 3 ? PARTY[i % PARTY.length] : this.goo() });
     }
   }
 
@@ -1160,7 +1187,7 @@ export class Sim {
     for (let i = 0; i < n; i++) {
       const a = rand(0, TAU);
       const s = rand(0.8, kind === 'boss' ? 5 : 2.5);
-      this.particles.push({ x, y, z: rand(0.3, 0.9), vx: Math.cos(a) * s, vy: Math.sin(a) * s, vz: rand(0.5, 3), life: rand(0.5, 1.1), color: i % 2 ? '#9be04a' : PARTY[i % PARTY.length] });
+      this.particles.push({ x, y, z: rand(0.3, 0.9), vx: Math.cos(a) * s, vy: Math.sin(a) * s, vz: rand(0.5, 3), life: rand(0.5, 1.1), color: i % 2 ? this.goo() : PARTY[i % PARTY.length] });
     }
     if (kind === 'boss') {
       this.shake = 1;
@@ -1179,7 +1206,7 @@ export class Sim {
     for (let i = 0; i < 36; i++) {
       const a = rand(0, TAU);
       const s = rand(0.4, 1.6);
-      this.particles.push({ x, y, z: H * 0.78, vx: Math.cos(a) * s, vy: Math.sin(a) * s, vz: rand(1.5, 4), life: rand(0.5, 1.1), color: i % 3 ? '#9be04a' : PARTY[i % PARTY.length] });
+      this.particles.push({ x, y, z: H * 0.78, vx: Math.cos(a) * s, vy: Math.sin(a) * s, vz: rand(1.5, 4), life: rand(0.5, 1.1), color: i % 3 ? this.goo() : PARTY[i % PARTY.length] });
     }
     if (kind === 'boss') {
       this.shake = 1;
@@ -1216,23 +1243,34 @@ export class Sim {
   }
 
   // ------------------------------------------------------------ the horde
-  spawnZombie(kind) {
+  // `at` places the zombie somewhere specific (a boss calling in minions); otherwise it comes
+  // out of a spawn point away from the party.
+  spawnZombie(kind, at = null) {
     const base = ENEMIES[kind];
     const cfg = this.cfg;
-    const up = this.alive();
-    const far = (s) => up.every((P) => Math.hypot(s.x - P.x, s.y - P.y) > 6);
-    const nearest = (s) => Math.min(...up.map((P) => Math.hypot(s.x - P.x, s.y - P.y)));
-    let pts = this.map.spawns.filter(far);
-    if (!pts.length) pts = this.map.spawns.slice().sort((a, b) => nearest(b) - nearest(a)).slice(0, 1);
-    const s = pickOne(pts);
+    let s = at;
+    if (!s) {
+      const up = this.alive();
+      const far = (s) => up.every((P) => Math.hypot(s.x - P.x, s.y - P.y) > 6);
+      const nearest = (s) => Math.min(...up.map((P) => Math.hypot(s.x - P.x, s.y - P.y)));
+      let pts = this.map.spawns.filter(far);
+      if (!pts.length) pts = this.map.spawns.slice().sort((a, b) => nearest(b) - nearest(a)).slice(0, 1);
+      s = pickOne(pts);
+    }
+    const B = kind === 'boss' ? this.bossDef : null;
+    const hp = base.hp * cfg.hpMul * (B ? B.hpMul : 1);
     const z = {
       id: this.nextZid++, kind, x: s.x + rand(-0.2, 0.2), y: s.y + rand(-0.2, 0.2),
-      hp: base.hp * cfg.hpMul, max: base.hp * cfg.hpMul,
-      speed: Math.min(kind === 'runner' ? 4.2 : 3.6, (base.speed / 40) * cfg.speedMul * rand(0.88, 1.12)),
+      hp, max: hp, bs: 0,
+      speed: Math.min(kind === 'runner' ? 4.2 : 3.6, (base.speed / 40) * cfg.speedMul * rand(0.88, 1.12)) * (B ? B.speed : 1),
       dmg: base.damage * cfg.damageMul, state: 'walk', atkT: 0, cd: 0.5, kx: 0, ky: 0, hurtT: 0,
-      look: Math.floor(Math.random() * 1000), sc: kind === 'boss' ? 1 : r2(rand(0.92, 1.08)),
+      look: Math.floor(Math.random() * 1000), sc: B ? B.scale : r2(rand(0.92, 1.08)),
       anim: rand(0, 4), spawnT: 0.6, blinkT: rand(2, 3.5), chargeT: rand(4, 6), chargeLeft: 0, groanT: rand(2, 9), wob: rand(0, TAU),
     };
+    if (B) {
+      z.ab = {};
+      B.moves.forEach((m, i) => (z.ab[m] = rand(...BOSS_CD[m]) * 0.6 + i * 0.8));
+    }
     this.zombies.push(z);
     // First sighting of a new type gets a heads-up.
     const tip = NEW_TIPS[kind];
@@ -1243,7 +1281,7 @@ export class Sim {
     this.fx('spawn', r2(z.x), r2(z.y));
     if (kind === 'boss') {
       this.boss = z;
-      this.banner = { kind: 'boss', t: 2.8, dur: 2.8 };
+      if (!this.boss || this.boss === z) this.banner = { kind: 'boss', t: 2.8, dur: 2.8 };
       this.snd('bossRoar');
     }
   }
@@ -1373,33 +1411,13 @@ export class Sim {
       if (z.spawnT > 0) speed = 0;
       if (z.state === 'attack') speed *= 0.15;
 
-      // Boss: telegraphed charges.
+      // Bosses run their own move set.
       if (z.kind === 'boss') {
-        if (z.chargeLeft > 0) {
-          z.chargeLeft -= dt;
-          speed = z.speed * 3.4;
-          gx = z.cdx;
-          gy = z.cdy;
-          if (Math.random() < 0.5) this.puff(z.x, z.y, 0.1, '#d8cfb4', 1);
-        } else if (z.state !== 'windup') {
-          z.chargeT -= dt;
-          if (z.chargeT <= 0 && dist < 10) {
-            z.state = 'windup';
-            z.atkT = 0.8;
-            this.snd('bossRoar');
-          }
-        }
-        if (z.state === 'windup') {
-          speed = 0;
-          z.atkT -= dt;
-          if (z.atkT <= 0) {
-            z.state = 'walk';
-            z.chargeLeft = 1.0;
-            z.cdx = tx / (dist || 1);
-            z.cdy = ty / (dist || 1);
-            z.chargeT = rand(4, 6);
-            this.fx('shake', 0.3);
-          }
+        const o = this.updateBoss(z, P, dist, tx, ty, dt);
+        if (o.speed != null) speed = o.speed * frz;
+        if (o.gx != null) {
+          gx = o.gx;
+          gy = o.gy;
         }
       }
 
@@ -1423,7 +1441,7 @@ export class Sim {
 
       z.kx *= Math.max(0, 1 - 7 * dt);
       z.ky *= Math.max(0, 1 - 7 * dt);
-      this.moveCircle(z, (gx * speed + z.kx) * dt, (gy * speed + z.ky) * dt, r * 0.9);
+      this.moveCircle(z, (gx * speed + z.kx) * dt, (gy * speed + z.ky) * dt, (z.bs ? 0.3 : r) * 0.9, !z.bs);
 
       // Attacks.
       const reach = r + 0.45;
@@ -1431,7 +1449,7 @@ export class Sim {
         z.state = 'attack';
         z.atkT = 0.35;
       }
-      if (z.kind === 'boss' && dist < reach + 0.2 && z.cd <= 0) {
+      if (z.kind === 'boss' && !z.bs && dist < reach + 0.2 && z.cd <= 0) {
         z.cd = 1;
         if (P.z < 0.35) this.hurtPlayer(P, z.dmg);
       }
@@ -1444,7 +1462,7 @@ export class Sim {
         }
       }
       // Keep out of the player's body.
-      if (dist < r + 0.26 && dist > 0.001) {
+      if (!z.bs && dist < r + 0.26 && dist > 0.001) {
         const push = (r + 0.26 - dist) / dist;
         this.moveCircle(z, -tx * push, -ty * push, r * 0.9);
       }
@@ -1455,6 +1473,7 @@ export class Sim {
       for (let j = i + 1; j < zs.length; j++) {
         const a = zs[i];
         const b = zs[j];
+        if (a.bs || b.bs) continue;
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const min = (ZRAD[a.kind] + ZRAD[b.kind]) * 0.85;
@@ -1473,10 +1492,237 @@ export class Sim {
     }
   }
 
+  // ------------------------------------------------------------ bosses
+  // One step of a boss's move set. Returns overrides for its speed and heading this frame.
+  // Only one move winds up at a time; below half health every timer runs faster.
+  updateBoss(z, P, dist, tx, ty, dt) {
+    const B = this.bossDef;
+    const enraged = z.hp < z.max * 0.5;
+    const rate = enraged ? 1.45 : 1;
+    const out = {};
+    if (z.spawnT > 0) return out;
+    // Bull rush in progress.
+    if (z.chargeLeft > 0) {
+      z.chargeLeft -= dt;
+      if (Math.random() < 0.5) this.puff(z.x, z.y, 0.1, '#d8cfb4', 1);
+      return { speed: z.speed * 3.4, gx: z.cdx, gy: z.cdy };
+    }
+    // Under the street: rush toward the nearest player, then surface beneath them.
+    if (z.bs === 1) {
+      z.burT -= dt;
+      if (Math.random() < 0.7) this.puff(z.x + rand(-0.4, 0.4), z.y + rand(-0.4, 0.4), 0.05, '#6a5a44', 1);
+      if (dist < 0.6 || z.burT <= 0) {
+        z.bs = 2;
+        z.emT = 0.85;
+        this.snd('rumble');
+      }
+      // Tunnels straight at them under props and parked cars; round walls by the flow field.
+      const clear = this.wallDistance(z.x, z.y, Math.atan2(ty, tx), dist) >= dist - 0.05;
+      return clear ? { speed: z.speed * 2.3, gx: tx / (dist || 1), gy: ty / (dist || 1) } : { speed: z.speed * 2.3 };
+    }
+    if (z.bs === 2) {
+      z.emT -= dt;
+      if (z.emT <= 0) this.erupt(z);
+      return { speed: 0 };
+    }
+    // A telegraphed move is winding up: stand still, then let it go.
+    if (z.state === 'windup') {
+      z.atkT -= dt;
+      if (z.atkT <= 0) {
+        z.state = 'walk';
+        this.bossMove(z, z.wind, P, dist, tx, ty, enraged);
+      }
+      return { speed: 0 };
+    }
+    // Trailing extra shockwaves.
+    if (z.ringQ > 0) {
+      z.ringT -= dt;
+      if (z.ringT <= 0) {
+        z.ringQ--;
+        z.ringT = 0.45;
+        this.ring(z);
+      }
+    }
+    for (const m of B.moves) {
+      z.ab[m] -= dt * rate;
+    }
+    const ready = B.moves.filter((m) => z.ab[m] <= 0 && this.bossCan(z, m, dist));
+    if (ready.length) {
+      const m = ready[0];
+      z.ab[m] = rand(...BOSS_CD[m]);
+      // Push the other moves back a little so they don't stack up.
+      for (const k of B.moves) if (k !== m) z.ab[k] = Math.max(z.ab[k], 1.2);
+      const wind = { charge: 0.8, ring: 0.6, bolts: 0.55, summon: 0.7, blink: 0.35, burrow: 0.5 }[m];
+      z.state = 'windup';
+      z.wind = m;
+      z.atkT = wind;
+      if (m === 'charge' || m === 'ring' || m === 'summon') this.snd('bossRoar');
+      if (m === 'bolts') this.snd('charge');
+      return { speed: 0 };
+    }
+    return out;
+  }
+
+  bossCan(z, m, dist) {
+    if (m === 'charge') return dist < 10;
+    if (m === 'ring') return dist < 11;
+    if (m === 'bolts') return dist < 14 && dist > 1.5;
+    if (m === 'burrow') return dist > 1.4;
+    if (m === 'summon') return this.zombies.length < this.maxAlive() + 4;
+    if (m === 'blink') return dist < 3 || dist > 9;
+    return true;
+  }
+
+  bossMove(z, m, P, dist, tx, ty, enraged) {
+    const B = this.bossDef;
+    if (m === 'charge') {
+      z.chargeLeft = 1.0;
+      z.cdx = tx / (dist || 1);
+      z.cdy = ty / (dist || 1);
+      this.fx('shake', 0.3);
+    } else if (m === 'ring') {
+      this.ring(z);
+      z.ringQ = (B.id === 'frontman' ? 1 : 0) + (enraged ? 1 : 0);
+      z.ringT = 0.45;
+    } else if (m === 'bolts') {
+      const n = enraged ? 7 : 5;
+      const a0 = Math.atan2(ty, tx);
+      const spread = enraged ? 0.2 : 0.26;
+      for (let i = 0; i < n; i++) {
+        const a = a0 + (i - (n - 1) / 2) * spread;
+        this.bolts.push({ x: z.x + Math.cos(a) * 0.9, y: z.y + Math.sin(a) * 0.9, z: 0.75, vx: Math.cos(a) * 5.2, vy: Math.sin(a) * 5.2, life: 3.2, dmg: z.dmg * 0.28, c: i % 2 });
+      }
+      this.snd('zap');
+    } else if (m === 'summon') {
+      const kind = B.summon || 'shambler';
+      const n = kind === 'crawler' ? 4 : 3;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * TAU + rand(-0.3, 0.3);
+        const x = z.x + Math.cos(a) * 1.3;
+        const y = z.y + Math.sin(a) * 1.3;
+        if (!this.wallAt(x, y)) this.spawnZombie(kind, { x, y });
+      }
+      const call = { runner: ['BACKUP DANCERS!', 'The Frontman called his crew'], crawler: ['MIND THE GAP', 'Crawlers from the tracks'], glitch: ['SPAWNING PROCESSES', 'Corrupted inbound'] }[kind];
+      if (call) this.toast(call[0], call[1]);
+    } else if (m === 'blink') {
+      // Reappear somewhere open a few steps from the player.
+      for (let k = 0; k < 12; k++) {
+        const a = rand(0, TAU);
+        const r = rand(3.5, 6);
+        const x = P.x + Math.cos(a) * r;
+        const y = P.y + Math.sin(a) * r;
+        const cx = Math.floor(x);
+        const cy = Math.floor(y);
+        if (this.wallAt(x, y) || this.blocked[cy * this.map.w + cx] || this.flow[cy * this.map.w + cx] < 0) continue;
+        this.fx('blink', r2(z.x), r2(z.y));
+        z.x = x;
+        z.y = y;
+        z.warp = true;
+        this.fx('blink', r2(x), r2(y));
+        break;
+      }
+    } else if (m === 'burrow') {
+      z.bs = 1;
+      z.burT = 2.6;
+      this.fx('dig', r2(z.x), r2(z.y));
+    }
+  }
+
+  // A shockwave rolling out along the floor from the boss. Jump it, dash through it, or eat it.
+  ring(z) {
+    this.rings.push({ x: r2(z.x), y: r2(z.y), r: ZRAD.boss, v: 5.2, max: 12, dmg: z.dmg * 0.42, hit: [] });
+    this.snd('boom');
+    this.fx('shake', 0.25);
+  }
+
+  // Burrowing boss bursts up out of the street.
+  erupt(z) {
+    z.bs = 0;
+    z.cd = 0.8;
+    this.fx('erupt', r2(z.x), r2(z.y));
+    for (const Q of this.players) {
+      const d = Math.hypot(Q.x - z.x, Q.y - z.y);
+      if (Q.down || d > 2.1) continue;
+      if (Q.z < 0.5) this.hurtPlayer(Q, z.dmg * (1.3 - d * 0.3));
+      if (!Q.remote) {
+        Q.vx += ((Q.x - z.x) / (d || 1)) * 5;
+        Q.vy += ((Q.y - z.y) / (d || 1)) * 5;
+      }
+    }
+    const kind = this.bossDef.summon;
+    if (kind && this.zombies.length < this.maxAlive() + 4) {
+      for (let i = 0; i < 2; i++) {
+        const a = rand(0, TAU);
+        const x = z.x + Math.cos(a) * 1.4;
+        const y = z.y + Math.sin(a) * 1.4;
+        if (!this.wallAt(x, y)) this.spawnZombie(kind, { x, y });
+      }
+    }
+  }
+
+  // Shockwaves and packets fired by bosses.
+  updateHazards(dt) {
+    for (const g of this.rings) {
+      g.r += g.v * dt;
+      for (const Q of this.players) {
+        if (Q.down || g.hit.includes(Q.idx)) continue;
+        const d = Math.hypot(Q.x - g.x, Q.y - g.y);
+        if (Math.abs(d - g.r) < 0.35 && Q.z < 0.3) {
+          g.hit.push(Q.idx);
+          this.hurtPlayer(Q, g.dmg);
+        }
+      }
+    }
+    this.rings = this.rings.filter((g) => g.r < g.max);
+    for (const b of this.bolts) {
+      b.life -= dt;
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      if (this.wallAt(b.x, b.y)) {
+        b.life = 0;
+        this.puff(b.x - b.vx * dt, b.y - b.vy * dt, b.z, '#3de0e0', 4);
+        continue;
+      }
+      for (const Q of this.players) {
+        if (Q.down || Q.z > 1.1) continue;
+        if (Math.hypot(Q.x - b.x, Q.y - b.y) < 0.38) {
+          this.hurtPlayer(Q, b.dmg);
+          b.life = 0;
+          this.puff(b.x, b.y, b.z, '#ff3b3b', 5);
+          break;
+        }
+      }
+    }
+    this.bolts = this.bolts.filter((b) => b.life > 0);
+  }
+
+  fx_dig(x, y) {
+    sfx.stomp();
+    this.shake = Math.min(1, this.shake + 0.3);
+    for (let i = 0; i < 40; i++) {
+      const a = rand(0, TAU);
+      const s = rand(1, 3);
+      this.particles.push({ x, y, z: 0.1, vx: Math.cos(a) * s, vy: Math.sin(a) * s, vz: rand(1, 3), life: rand(0.4, 0.8), color: i % 3 ? '#6a5a44' : '#a89878' });
+    }
+  }
+
+  fx_erupt(x, y) {
+    sfx.explode();
+    this.shake = 1;
+    this.flash = { color: '#a89878', t: 0.15, amt: 0.3 };
+    this.splats.push({ x, y, t: 14, big: true, rot: rand(0, TAU) });
+    for (let i = 0; i < 90; i++) {
+      const a = rand(0, TAU);
+      const s = rand(1.5, 5);
+      this.particles.push({ x, y, z: 0.1, vx: Math.cos(a) * s, vy: Math.sin(a) * s, vz: rand(2, 5), life: rand(0.5, 1.1), color: i % 3 === 0 ? '#e8e2c8' : i % 3 === 1 ? '#6a5a44' : '#a89878' });
+    }
+  }
+
   hurtZombie(z, dmg, nx, ny, knock, P = this.player, zone = 'body') {
-    if (z.dead) return;
-    if (zone === 'head') dmg *= HEAD_MUL;
+    if (z.dead || z.bs) return;
+    if (zone === 'head') dmg *= HEAD_MUL * P.mods.head;
     else if (zone === 'legs') dmg *= LEG_MUL;
+    if (this.cheats.onehit && dmg > 0) dmg = z.kind === 'boss' ? dmg * 8 : 1e6;
     z.hp -= dmg * P.dmgMul;
     z.hurtT = 0.08;
     if (this.isLocal(P)) {
@@ -1499,7 +1745,7 @@ export class Sim {
     const base = ENEMIES[z.kind];
     const C = this.combo;
     C.n = C.t > 0 ? C.n + 1 : 1;
-    C.t = COMBO_WINDOW;
+    C.t = COMBO_WINDOW + P.mods.combo;
     this.lv.bestCombo = Math.max(this.lv.bestCombo, C.n);
     const mult = comboMult(C.n);
     // Headshot kills are worth half again, in score and XP.
@@ -1523,6 +1769,7 @@ export class Sim {
       this.gainXp(Q, base.score * share * hs);
       if (!Q.down && !Q.spKind) this.chargeSpecial(Q, base.score * SP_PER_SCORE * share);
     }
+    if (P.mods.leech && !P.down) P.hp = Math.min(P.maxHp, P.hp + P.mods.leech);
     if (head) this.fx('headshot', z.kind, r2(z.x), r2(z.y), z.look, z.sc, r2(nx), r2(ny));
     else this.fx('death', z.kind, r2(z.x), r2(z.y), z.look, z.sc);
     if (z.kind === 'bloater') this.pop(z, P);
@@ -1533,11 +1780,11 @@ export class Sim {
       return;
     }
     const roll = Math.random();
-    const weak = this.players.some((Q) => !Q.down && Q.hp < 50);
+    const weak = this.players.some((Q) => !Q.down && Q.hp < Q.maxHp / 2);
     if (roll < (weak ? 0.09 : 0.04)) this.dropPickup(z.x, z.y, 'health');
     else if (roll < 0.115) this.dropPickup(z.x, z.y, 'armor');
     else if (roll < 0.14) this.dropPickup(z.x, z.y, 'overclock');
-    else if (roll < 0.165 + (z.kind === 'brute' ? 0.25 : 0)) this.dropPickup(z.x, z.y, pickOne(['patch', 'multi', 'freeze', 'multi', 'patch', 'cad']));
+    else if (roll < 0.14 + 0.025 * Math.max(...this.players.map((Q) => Q.mods.luck)) + (z.kind === 'brute' ? 0.25 : 0)) this.dropPickup(z.x, z.y, pickOne(['patch', 'multi', 'freeze', 'multi', 'patch', 'cad']));
   }
 
   gainXp(P, n) {
@@ -1545,7 +1792,7 @@ export class Sim {
     const r = Math.min(99, rankFor(P.xp));
     if (r > P.rank) {
       P.rank = r;
-      P.dmgMul = dmgMulFor(r);
+      P.dmgMul = dmgMulFor(r) * P.mods.dmg;
       if (this.isLocal(P)) this.celebrateRank(r);
     }
   }
@@ -1588,10 +1835,10 @@ export class Sim {
         continue;
       }
       for (const P of this.players) {
-        if (P.down || Math.hypot(p.x - P.x, p.y - P.y) >= 0.55 || P.z >= 0.8) continue;
+        if (P.down || Math.hypot(p.x - P.x, p.y - P.y) >= P.mods.reach || P.z >= 0.8) continue;
         if (p.kind === 'health') {
-          if (P.hp >= 100) continue;
-          P.hp = Math.min(100, P.hp + 30);
+          if (P.hp >= P.maxHp) continue;
+          P.hp = Math.min(P.maxHp, P.hp + 30);
           this.personal(P, 'flash', '#ff6aa0', 0.12, 0.2);
           this.personal(P, 'toast', '+30 HEALTH', 'Volt Cola');
         } else if (p.kind === 'armor') {
@@ -1599,19 +1846,19 @@ export class Sim {
           this.personal(P, 'flash', '#f6c945', 0.12, 0.2);
           this.personal(P, 'toast', '+50 ARMOR', 'Y2K compliant');
         } else if (p.kind === 'overclock') {
-          P.overclock = 10;
+          P.overclock = 10 * P.mods.buff;
           this.personal(P, 'flash', '#3de0e0', 0.12, 0.2);
           this.personal(P, 'toast', 'OVERCLOCKED', '10 seconds of turbo');
         } else if (p.kind === 'patch') {
-          this.buffs.patch = 8;
+          this.buffs.patch = 8 * P.mods.buff;
           this.toast('Y2K PATCH INSTALLED', 'Invincible for 8 seconds');
           this.fx('flash', '#7ac943', 0.15, 0.25);
         } else if (p.kind === 'multi') {
-          this.buffs.multi = 10;
+          this.buffs.multi = 10 * P.mods.buff;
           this.toast('MULTITASKING', 'Triple shot for 10 seconds');
           this.fx('flash', '#ff8a2a', 0.12, 0.2);
         } else if (p.kind === 'freeze') {
-          this.buffs.freeze = 7;
+          this.buffs.freeze = 7 * P.mods.buff;
           this.toast('SCREENSAVER ON', 'The horde slows to a crawl');
           this.fx('flash', '#8fd8ff', 0.2, 0.3);
         } else if (p.kind === 'cad') {
@@ -1655,6 +1902,11 @@ export class Sim {
   startWave(i) {
     const L = this.lv;
     L.wave = i;
+    if (this.endless) {
+      // Endless: build the next wave on demand and turn the difficulty up.
+      if (!this.cfg.waves[i]) this.cfg.waves[i] = this.cfg.makeWave(i);
+      Object.assign(this.cfg, scaleFor(this.cfg.diff(i)));
+    }
     const base = this.cfg.waves[i];
     const q = base.slice();
     const extra = Math.round(base.length * COOP_WAVE * (this.players.length - 1));
@@ -1705,8 +1957,8 @@ export class Sim {
     if (!L.queue.length && !this.zombies.length) {
       // Wave cleared: a jingle, confetti and a score bonus, then either a live countdown to the next
       // wave or a short victory lap before the level-clear screen. Nothing pauses.
-      const last = L.wave + 1 >= cfg.waves.length;
-      const bonus = 100 * (L.wave + 1) * (1 + Math.floor(this.levelN / 10));
+      const last = !this.endless && L.wave + 1 >= cfg.waves.length;
+      const bonus = 100 * (this.endless ? 3 : L.wave + 1) * (1 + Math.floor((this.endless ? this.cfg.diff(L.wave) : this.levelN) / 10));
       this.score += bonus;
       this.fx('waveClear', L.wave + 1, last ? 1 : 0);
       this.banner = { kind: last ? 'final' : 'cleared', t: 2.6, dur: 2.6, wave: L.wave + 1, bonus };
@@ -1715,7 +1967,7 @@ export class Sim {
         L.phase = 'break';
         L.t = BREAK_T;
         for (const P of this.alive()) {
-          if (P.hp < 70) this.dropPickup(P.x + rand(-1, 1), P.y + rand(-1, 1), 'health');
+          if (P.hp < P.maxHp * 0.7) this.dropPickup(P.x + rand(-1, 1), P.y + rand(-1, 1), 'health');
         }
       } else {
         L.phase = 'outro';
@@ -1779,7 +2031,9 @@ export class Sim {
     const snap = {
       t: 'snap',
       p: this.players.map((P) => [r2(P.x), r2(P.y), r2(P.a), r2(P.z), Math.ceil(P.hp), Math.ceil(P.armor), P.down ? 1 : 0, Math.floor(P.sp), Math.floor(P.xp), r2(P.overclock), r2(P.tank), r2(P.heat), P.overheated ? 1 : 0, r2(P.fireCd), P.fireAnim > 0 ? 1 : 0, P.spKind ? 1 : 0, r2(P.iT), r2(P.pitch || 0)]),
-      z: this.zombies.map((z) => [z.id, ZKINDS.indexOf(z.kind), r2(z.x), r2(z.y), r2(z.hp / z.max), ZSTATES.indexOf(z.state), r2(z.atkT), r2(z.anim), z.hurtT > 0 ? 1 : 0, r2(z.spawnT), z.look, z.sc, z.warp ? 1 : 0]),
+      z: this.zombies.map((z) => [z.id, ZKINDS.indexOf(z.kind), r2(z.x), r2(z.y), r2(z.hp / z.max), ZSTATES.indexOf(z.state), r2(z.atkT), r2(z.anim), z.hurtT > 0 ? 1 : 0, r2(z.spawnT), z.look, z.sc, z.warp ? 1 : 0, z.bs || 0]),
+      rg: this.rings.map((g) => [g.x, g.y, r2(g.r), g.v]),
+      bo: this.bolts.map((b) => [r2(b.x), r2(b.y), r2(b.z), r2(b.vx), r2(b.vy), b.c]),
       pr: this.projs.filter((p) => !p.fx || Math.random() < 0.5).map((p) => [PROJ_KINDS.indexOf(p.kind), r2(p.x), r2(p.y), r2(p.z), Math.floor(p.spin || 0), p.hand ?? 0, p.o, p.orbit ? 1 : 0]),
       pk: this.pickups.map((p) => [PICK_KINDS.indexOf(p.kind), r2(p.x), r2(p.y), r2(p.t), p.ph]),
       lz: this.lasers.map((l) => [l.o, l.sp ? 1 : 0, r2(l.x), r2(l.y), r2(l.z), r2(l.a), r2(l.d), r2(l.pt || 0)]),
@@ -1829,7 +2083,7 @@ export class Sim {
         const r = Math.min(99, rankFor(P.xp));
         if (r > P.rank) {
           P.rank = r;
-          P.dmgMul = dmgMulFor(r);
+          P.dmgMul = dmgMulFor(r) * P.mods.dmg;
           this.celebrateRank(r);
         }
       } else if (!me) P.xp = a[8];
@@ -1861,8 +2115,11 @@ export class Sim {
       z.spawnT = a[9];
       z.look = a[10];
       z.sc = a[11];
+      z.bs = a[13] || 0;
       return z;
     });
+    this.rings = (s.rg || []).map((a) => ({ x: a[0], y: a[1], r: a[2], v: a[3] }));
+    this.bolts = (s.bo || []).map((a) => ({ x: a[0], y: a[1], z: a[2], vx: a[3], vy: a[4], c: a[5] }));
     this.boss = s.boss ? this.zombies.find((z) => z.id === s.boss) || null : null;
     this.projs = s.pr.map((a) => ({ kind: PROJ_KINDS[a[0]], x: a[1], y: a[2], z: a[3], spin: a[4], hand: a[5], o: a[6], orbit: !!a[7] }));
     this.pickups = s.pk.map((a) => ({ kind: PICK_KINDS[a[0]], x: a[1], y: a[2], t: a[3], ph: a[4] }));
@@ -1926,6 +2183,11 @@ export class Sim {
       z.anim += dt * 4;
     }
     for (const p of this.projs) if (p.kind === 'rocket') this.rocketTrail(p);
+    for (const g of this.rings) g.r += g.v * dt;
+    for (const b of this.bolts) {
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+    }
     this.updateParticles(dt);
     this.tickTimers(dt);
     for (const b in this.buffs) this.buffs[b] = Math.max(0, this.buffs[b] - dt);

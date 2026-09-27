@@ -7,7 +7,7 @@ export const DMG_PER_RANK = 0.04;
 
 // Total XP needed to reach rank r.
 export function xpForRank(r) {
-  return Math.round(150 * Math.pow(Math.max(0, r - 1), 1.5));
+  return Math.round(120 * Math.pow(Math.max(0, r - 1), 2));
 }
 
 export function rankFor(xp) {

@@ -1,6 +1,6 @@
 // In-game HUD: a Windows 98 taskbar along the bottom (health, armor, ride and weapon meters, the
 // system-tray clock counting down to midnight), dialog-box banners and tray tooltips.
-import { comboMult as comboMultOf } from '../game/sim.js';
+import { comboMult as comboMultOf, BREAK_T } from '../game/sim.js';
 import { PAL, PARTY } from '../core/palette.js';
 import { W, H } from '../core/util.js';
 import { text, textWidth, wrap } from '../core/pixelfont.js';
@@ -134,7 +134,7 @@ export function drawTopHud(g, sim, t) {
     text(g, `NEXT WAVE IN ${n}`, W / 2, 5, { font: 'big', color: n <= 3 ? (pulse ? PAL.white : PAL.gold) : PAL.cream, outline: PAL.ink, align: 'center' });
     text(g, `WAVE ${L.wave + 2}${of} INCOMING${sim.endless && (L.wave + 2) % 5 === 0 ? ': BOSS' : ''}`, W / 2, 15, { font: 'small', color: PAL.pinkLight, outline: PAL.ink, align: 'center' });
     rect(g, W / 2 - 40, 24, 80, 2, PAL.ink);
-    rect(g, W / 2 - 40, 24, Math.round(80 * Math.max(0, L.t) / 6), 2, PAL.gold);
+    rect(g, W / 2 - 40, 24, Math.round(80 * Math.max(0, L.t) / BREAK_T), 2, PAL.gold);
   } else if (L.phase === 'outro') {
     text(g, 'LEVEL CLEAR!', W / 2, 5, { font: 'big', color: PARTY[Math.floor(t * 8) % PARTY.length], outline: PAL.ink, align: 'center' });
   }
@@ -446,4 +446,51 @@ export function drawDowned(g, sim, t) {
   text(g, 'YOU CRASHED', W / 2, 70, { font: 'big', color: PAL.white, outline: PAL.ink, align: 'center', scale: 2 });
   text(g, 'Your crew has to clear this wave.', W / 2, 96, { font: 'small', color: PAL.cream, outline: PAL.ink, align: 'center' });
   text(g, 'You reboot when the next one starts.', W / 2, 106, { font: 'small', color: PAL.cream, outline: PAL.ink, align: 'center' });
+}
+
+// The last few zombies of a wave: a bobbing marker over each one on screen, an arrow at the edge
+// for the ones behind you. `marks` holds { sx, sy } for on-screen ones and { rel } (radians from
+// straight ahead, clockwise) for the rest.
+export function drawStragglers(g, marks, t) {
+  if (!marks.length) return;
+  const col = Math.floor(t * 6) % 2 ? PAL.gold : PAL.red;
+  for (const m of marks) {
+    if (m.sx != null) {
+      const y = Math.round(m.sy - 6 - Math.abs(Math.sin(t * 5)) * 3);
+      const x = Math.round(m.sx);
+      g.fillStyle = PAL.ink;
+      g.beginPath();
+      g.moveTo(x - 4, y - 5);
+      g.lineTo(x + 4, y - 5);
+      g.lineTo(x, y + 1);
+      g.fill();
+      g.fillStyle = col;
+      g.beginPath();
+      g.moveTo(x - 3, y - 4);
+      g.lineTo(x + 3, y - 4);
+      g.lineTo(x, y);
+      g.fill();
+    } else {
+      const cx = W / 2;
+      const cy = (H - TASKBAR_H) / 2;
+      const px = cx + Math.sin(m.rel) * (W / 2 - 14);
+      const py = cy - Math.cos(m.rel) * ((H - TASKBAR_H) / 2 - 14);
+      g.save();
+      g.translate(Math.round(px), Math.round(py));
+      g.rotate(m.rel);
+      g.fillStyle = PAL.ink;
+      g.beginPath();
+      g.moveTo(0, -8);
+      g.lineTo(6, 3);
+      g.lineTo(-6, 3);
+      g.fill();
+      g.fillStyle = col;
+      g.beginPath();
+      g.moveTo(0, -6);
+      g.lineTo(4, 2);
+      g.lineTo(-4, 2);
+      g.fill();
+      g.restore();
+    }
+  }
 }

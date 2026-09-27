@@ -111,7 +111,7 @@ export function scaleFor(n) {
 function makeWave(n, w, rnd, bosses) {
   const weights = weightsFor(n);
   // Hordes: half again as many as the first release, and they arrive faster.
-  const count = Math.round((5 + n * 0.9 + w * 2.5) * 1.5);
+  const count = Math.round((5 + n * 0.75 + w * 3) * 1.5);
   const spawns = [];
   for (let i = 0; i < count; i++) spawns.push(pick(weights, rnd));
   // Brutes arrive late in a wave, not in the opening second.
@@ -124,7 +124,8 @@ export function levelConfig(n) {
   const rnd = mulberry32(n * 9973 + 1999);
   const dIdx = Math.min(DISTRICTS.length - 1, Math.floor((n - 1) / 10));
   const isBoss = n % 10 === 0;
-  const waveCount = 3 + Math.floor((n - 1) / 10);
+  // Levels stay short (two to three minutes) so there is always time for one more; later waves hit harder instead.
+  const waveCount = 3 + Math.floor((n - 1) / 20);
   const waves = [];
   for (let w = 0; w < waveCount; w++) waves.push(makeWave(n, w, rnd, isBoss && w === waveCount - 1 ? 1 + Math.floor(n / 30) : 0));
   return {

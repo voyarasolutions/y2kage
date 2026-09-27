@@ -1229,6 +1229,7 @@ export class Game {
     HUD.drawHurt(g, sim, this.t);
     HUD.drawTopHud(g, sim, this.t);
     HUD.drawBossBar(g, sim, this.t);
+    if (m === 'play') HUD.drawStragglers(g, this.projectStragglers(sim), this.t);
     if (m === 'play' || m === 'paused') {
       HUD.drawBuffFx(g, sim, this.S, this.t);
       HUD.drawBuffs(g, sim, this.S, this.t);
@@ -1259,6 +1260,20 @@ export class Game {
       v.set(p.x, p.z, p.y).project(cam);
       if (v.z > 1 || Math.abs(v.x) > 1.1 || Math.abs(v.y) > 1.1) continue;
       out.push({ sx: ((v.x + 1) / 2) * W, sy: ((1 - v.y) / 2) * H, text: p.text, t: p.t, big: p.big });
+    }
+    return out;
+  }
+
+  // Where the last few zombies of a wave are: on screen, or which way to turn.
+  projectStragglers(sim) {
+    const cam = this.world.camera;
+    const v = this._pv || (this._pv = new THREE.Vector3());
+    const P = sim.player;
+    const out = [];
+    for (const z of sim.stragglers()) {
+      v.set(z.x, ZHEIGHT[z.kind] * (z.sc || 1) + 0.15, z.y).project(cam);
+      if (v.z < 1 && Math.abs(v.x) < 0.95 && Math.abs(v.y) < 0.9) out.push({ sx: ((v.x + 1) / 2) * W, sy: ((1 - v.y) / 2) * H });
+      else out.push({ rel: Math.atan2(Math.sin(Math.atan2(z.y - P.y, z.x - P.x) - P.a), Math.cos(Math.atan2(z.y - P.y, z.x - P.x) - P.a)) });
     }
     return out;
   }

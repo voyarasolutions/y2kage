@@ -66,7 +66,11 @@ const LEG_FRAC = 0.36;
 const CONVERGE = 5;
 export const MAX_PITCH = 0.55;
 // Seconds of countdown between waves (the level keeps running), and the victory lap after the last one.
-const BREAK_T = 6;
+export const BREAK_T = 4;
+// When the queue is empty and this few are left, they hurry to the party.
+const STRAGGLERS = 3;
+// Share of the horde that rises from the street around the party instead of a map spawn.
+const SPAWN_NEAR = 0.45;
 const OUTRO_T = 2.8;
 
 const r2 = (v) => Math.round(v * 100) / 100;
@@ -88,6 +92,8 @@ export class Sim {
     this.rings = [];
     this.bolts = [];
     this.hurtTaken = 0;
+    // How carefully CPU teammates keep their distance and aim (headless playtests turn it down to act like a person).
+    this.botSkill = opts.botSkill ?? 1;
     // Timed powerups are shared by the whole party.
     this.buffs = { patch: 0, multi: 0, freeze: 0 };
     this.t = 0;
@@ -690,7 +696,7 @@ export class Sim {
           B.target = z;
         }
       }
-      B.err = rand(-0.06, 0.06);
+      B.err = rand(-0.06, 0.06) / this.botSkill;
     }
     // Aim: turn toward the target at a human-ish rate, pitch toward the middle of its body.
     let fire = false;
@@ -702,7 +708,7 @@ export class Sim {
       P.a += clamp(da, -6 * dt, 6 * dt);
       const hz = ZHEIGHT[T.kind] * (T.sc || 1) * (T.kind === 'crawler' ? 0.5 : 0.62);
       P.pitch = clamp(Math.atan2(hz - (EYE + P.z), Math.max(0.6, d)), -MAX_PITCH, MAX_PITCH);
-      fire = Math.abs(da) < 0.12 + 0.35 / Math.max(1, d) && d < range && !(G.kind === 'rocket' && d < 2.6);
+      fire = Math.abs(da) < 0.12 + 0.35 / Math.max(1, d) && d < range && !(G.kind === 'rocket' && d < 1.2);
     } else P.pitch *= 1 - Math.min(1, 4 * dt);
     // The Soaker runs dry: let go and pump back up before spraying again.
     if (G.kind === 'soaker') {
@@ -757,7 +763,7 @@ export class Sim {
       const keep = z.kind === 'boss' ? 5 : z.kind === 'brute' || z.kind === 'bloater' ? 3.4 : 2.6;
       const d = Math.hypot(z.x - P.x, z.y - P.y);
       if (d < keep && d > 0.01) {
-        const f = ((keep - d) / keep) * 1.8;
+        const f = ((keep - d) / keep) * 1.8 * this.botSkill;
         wx -= ((z.x - P.x) / d) * f;
         wy -= ((z.y - P.y) / d) * f;
       }
@@ -1418,14 +1424,7 @@ export class Sim {
     const base = ENEMIES[kind];
     const cfg = this.cfg;
     let s = at;
-    if (!s) {
-      const up = this.alive();
-      const far = (s) => up.every((P) => Math.hypot(s.x - P.x, s.y - P.y) > 6);
-      const nearest = (s) => Math.min(...up.map((P) => Math.hypot(s.x - P.x, s.y - P.y)));
-      let pts = this.map.spawns.filter(far);
-      if (!pts.length) pts = this.map.spawns.slice().sort((a, b) => nearest(b) - nearest(a)).slice(0, 1);
-      s = pickOne(pts);
-    }
+    if (!s) s = this.spawnPoint(kind);
     const B = kind === 'boss' ? this.bossDef : null;
     const hp = base.hp * cfg.hpMul * (B ? B.hpMul * (1 + COOP_BOSS_HP * (this.players.length - 1)) : 1);
     const z = {
@@ -1453,6 +1452,33 @@ export class Sim {
       if (!this.boss || this.boss === z) this.banner = { kind: 'boss', t: 2.8, dur: 2.8 };
       this.snd('bossRoar');
     }
+  }
+
+  // Where a new zombie comes in: usually a map spawn that is out of reach but not across the map,
+  // and often a patch of open street just out of sight around the party, so the horde closes in
+  // from every side instead of trickling out of the corners.
+  spawnPoint(kind, near = false) {
+    const up = this.alive();
+    const nearest = (s) => Math.min(...up.map((P) => Math.hypot(s.x - P.x, s.y - P.y)));
+    if (kind !== 'boss' && up.length && (near || Math.random() < SPAWN_NEAR)) {
+      for (let k = 0; k < (near ? 60 : 24); k++) {
+        const P = pickOne(up);
+        const a = P.a + Math.PI + rand(-1.9, 1.9);
+        const d = rand(7, 11);
+        const x = P.x + Math.cos(a) * d;
+        const y = P.y + Math.sin(a) * d;
+        if (x < 1 || y < 1 || x >= this.map.w - 1 || y >= this.map.h - 1) continue;
+        if (this.blocked[Math.floor(y) * this.map.w + Math.floor(x)]) continue;
+        if (this.flow[Math.floor(y) * this.map.w + Math.floor(x)] < 0) continue;
+        if (nearest({ x, y }) < 6) continue;
+        return { x: Math.floor(x) + 0.5, y: Math.floor(y) + 0.5 };
+      }
+    }
+    let pts = this.map.spawns.filter((s) => nearest(s) > 6);
+    if (!pts.length) return this.map.spawns.slice().sort((a, b) => nearest(b) - nearest(a))[0];
+    // Weight the closer ones: across the map is a long, empty walk.
+    pts.sort((a, b) => nearest(a) - nearest(b));
+    return pts[Math.min(pts.length - 1, Math.floor(Math.random() * Math.random() * pts.length))];
   }
 
   // One flow field toward whichever standing player is closest; rebuilt when anyone changes cell.
@@ -1576,7 +1602,22 @@ export class Sim {
         gy = ngy;
       }
 
+      // A straggler that has neither hurt anyone nor been hurt for a while (wedged behind a rack, or
+      // lost across the map) walks back in from nearby, so a wave can never stall.
+      if (this.lv.phase === 'wave' && !this.lv.queue.length && z.kind !== 'boss' && z.hurtT <= 0 && z.state === 'walk') {
+        z.farT = (z.farT || 0) + dt;
+        if (z.farT > (dist > 9 ? 6 : 9)) {
+          const s = this.spawnPoint(z.kind, true);
+          z.x = s.x;
+          z.y = s.y;
+          z.farT = 0;
+          z.spawnT = 0.6;
+          this.fx('spawn', r2(z.x), r2(z.y));
+        }
+      } else z.farT = 0;
       let speed = z.speed * frz;
+      // The last few of a wave stop dawdling and come find you, so a wave never ends in a search.
+      if (this.lv.phase === 'wave' && !this.lv.queue.length && this.zombies.length <= STRAGGLERS && z.kind !== 'boss') speed *= 1.7;
       if (z.spawnT > 0) speed = 0;
       if (z.state === 'attack') speed *= 0.15;
 
@@ -2143,6 +2184,13 @@ export class Sim {
         L.t = OUTRO_T;
       }
     }
+  }
+
+  // The last few of a wave, once nothing else is coming: the HUD points at them.
+  stragglers() {
+    const L = this.lv;
+    if (L.phase !== 'wave' || L.queue.length || this.zombies.length > STRAGGLERS) return [];
+    return this.zombies.filter((z) => !z.bs);
   }
 
   remaining() {

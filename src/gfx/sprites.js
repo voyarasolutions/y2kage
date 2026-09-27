@@ -617,6 +617,7 @@ export function buildSprites() {
   S.shadow = tex(shadowBlob());
   S.portraits = [0, 1, 2, 3, 4].map(portrait);
   S.heroBodies = [0, 1, 2, 3, 4].map((i) => [heroBody(i, 0), heroBody(i, 1)]);
+  S.heroTex = S.heroBodies.map((fs) => fs.map(tex));
   S.icons = {};
   for (const k of ['skate', 'board', 'slinky', 'pogo', 'scooter', 'soaker', 'yoyo', 'floppy', 'rocket', 'laser', 'heart', 'shield']) S.icons[k] = icon(k);
   return S;

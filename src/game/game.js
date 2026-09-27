@@ -20,8 +20,9 @@ import { WeaponView } from '../ui/weapon.js';
 import { hit } from '../ui/win98.js';
 import * as HUD from '../ui/hud.js';
 import * as SCR from '../ui/screens.js';
+import { Net } from '../net/net.js';
 
-const MENU_COUNT = { title: 4, paused: 4, clear: 2, dead: 2 };
+const MENU_COUNT = { title: 4, paused: 4, clear: 2, dead: 2, mp: 3 };
 
 export class Game {
   constructor(glCanvas, uiCanvas) {
@@ -59,6 +60,7 @@ export class Game {
           const b = HUD.TOUCH[k];
           if (Math.hypot(x - b.x, y - b.y) <= b.r + 3) {
             if (k === 'boost' && !['board', 'scooter'].includes(this.sim?.hero.move.type)) continue;
+            if (k === 'special' && !this.input.spReady) continue;
             return k;
           }
         }
@@ -67,6 +69,7 @@ export class Game {
     });
     this.options = false;
     this.applySettings();
+    this.setupNet();
     const skip = new URLSearchParams(location.search).get('skip');
     if (skip) this.setMode(skip);
     this.last = performance.now();
@@ -126,12 +129,22 @@ export class Game {
   }
 
   setMode(m) {
+    if (m !== this.mode && ['mp', 'join', 'lobby', 'title'].includes(m)) {
+      this.netStatus = '';
+      this.netError = false;
+    }
     this.mode = m;
     this.modeT = 0;
     this.focus = 0;
     this.input.playing = m === 'play';
     this.cv.classList.toggle('play', m === 'play');
-    if (m === 'title' || m === 'select' || m === 'howto') music.play('title');
+    if (m === 'title' || m === 'select' || m === 'howto' || m === 'mp' || m === 'lobby') music.play('title');
+    if (m === 'title' && this.pendingJoin) {
+      this.joinCode = this.pendingJoin;
+      this.pendingJoin = null;
+      this.setMode('join');
+      this.joinOnline();
+    }
     if (m === 'dialup') this.dialLen = sfx.dialup();
     if (m === 'dead') {
       music.stop();
@@ -152,6 +165,8 @@ export class Game {
   // ------------------------------------------------------------ flow
   toSelect() {
     this.saveXp();
+    if (this.net.role === 'host') return this.backToLobby();
+    if (this.net.role === 'guest') return this.leaveOnline();
     this.input.unlock();
     if (this.mapIdx !== 0) this.loadWorld(0, 1);
     this.sim = null;
@@ -183,7 +198,15 @@ export class Game {
     const cfg = levelConfig(n);
     const mapIdx = Math.min(this.maps.length - 1, Math.floor((n - 1) / 10));
     this.loadWorld(mapIdx, n);
-    this.sim = new Sim(this.map, cfg, this.hero, n, heroXp(this.hero.id));
+    if (this.net.role === 'host') {
+      // Online host: everyone in the lobby joins the level; each guest learns which slot is theirs.
+      const party = this.lobbyPlayers();
+      this.net.guests.forEach((g, i) => (g.slot = i + 1));
+      this.sim = new Sim(this.map, cfg, party.map((p) => ({ hero: heroById(p.heroId), xp: p.xp, name: p.name })), n, { mode: 'host', local: 0 });
+      this.sim.out = [];
+      this.net.guests.forEach((g) => this.net.send({ t: 'start', level: n, party, you: g.slot }, g));
+      this.snapT = 0;
+    } else this.sim = new Sim(this.map, cfg, [{ hero: this.hero, xp: heroXp(this.hero.id), name: 'YOU' }], n);
     this.levelStartScore = this.runScore;
     this.setMode('play');
     const d = Math.floor((n - 1) / 10);
@@ -191,11 +214,15 @@ export class Game {
     this.input.lock();
   }
 
-  levelClear() {
+  levelClear(stats) {
     const s = this.sim;
     this.runScore += s.score;
     const n = this.levelN;
-    this.clearStats = { level: n, kills: s.lv.kills, time: s.lv.time, levelScore: s.score, score: this.runScore, combo: s.lv.bestCombo };
+    this.clearStats = stats || { level: n, kills: s.lv.kills, time: s.lv.time, levelScore: s.score, score: this.runScore, combo: s.lv.bestCombo };
+    if (this.net.role === 'host') {
+      this.net.send(s.snapshot());
+      this.net.send({ t: 'end', kind: 'clear', stats: this.clearStats });
+    }
     if (n + 1 > this.best && n < TOTAL_LEVELS) {
       this.best = n + 1;
       store.set('best', this.best);
@@ -217,10 +244,12 @@ export class Game {
   }
 
   nextLevel() {
+    if (this.net.role === 'guest') return;
     this.startLevel(Math.min(TOTAL_LEVELS, this.levelN + 1));
   }
 
   retry() {
+    if (this.net.role === 'guest') return;
     this.runScore = this.levelStartScore;
     this.startLevel(this.levelN);
   }
@@ -247,9 +276,17 @@ export class Game {
     if (m === 'crt') return;
     if (m === 'bios') return this.setMode('dialup');
     if (m === 'dialup') return this.setMode('title');
+    if (this.notice) {
+      if (code === 'Enter' || code === 'Space' || code === 'Escape') this.dismissNotice();
+      return;
+    }
+    if (m === 'join') return this.joinKey(code);
+    if (m === 'lobby') return this.lobbyKey(code);
+    if (m === 'mp' && code === 'Escape') return this.setMode('title');
     if (m === 'play') {
       if (code === 'Space') this.sim.pressJump();
       if (code === 'ShiftLeft' || code === 'ShiftRight') this.sim.pressBoost();
+      if (code === 'KeyR' || code === 'Special') this.sim.pressSpecial();
       if (code === 'KeyP' || code === 'Escape') this.pause();
       return;
     }
@@ -331,9 +368,290 @@ export class Game {
 
   toTitle() {
     this.saveXp();
+    if (this.net.active) this.net.leave();
     this.sim = null;
     if (this.mapIdx !== 0) this.loadWorld(0, 1);
     this.setMode('title');
+  }
+
+  // ------------------------------------------------------------ online co-op
+  setupNet() {
+    this.joinCode = '';
+    this.net = new Net({
+      locked: () => this.mode !== 'lobby',
+      fromGuest: (g, m) => this.fromGuest(g, m),
+      guestLeft: (g) => this.guestLeft(g),
+      fromHost: (m) => this.fromHost(m),
+      hostLeft: () => this.hostLeft(),
+      error: (msg) => this.netNote(msg, true),
+    });
+    const join = new URLSearchParams(location.search).get('join');
+    if (join) this.pendingJoin = join.toUpperCase().slice(0, 5);
+  }
+
+  isGuest() {
+    return this.net.role === 'guest';
+  }
+
+  netNote(msg, err = false) {
+    this.netStatus = msg;
+    this.netError = err;
+  }
+
+  showNotice(title, text) {
+    this.notice = { title, text };
+  }
+
+  dismissNotice() {
+    this.notice = null;
+    sfx.click();
+  }
+
+  async hostOnline() {
+    if (this.netBusy) return;
+    this.netBusy = true;
+    this.netNote('Dialing the matchmaker...');
+    try {
+      const code = await this.net.host();
+      this.lobby = { code, you: 0, level: clamp(this.pickLevel, 1, this.best), players: [] };
+      this.lobby.players = this.lobbyPlayers();
+      this.setMode('lobby');
+      sfx.select();
+    } catch (e) {
+      this.netNote(String(e), true);
+    }
+    this.netBusy = false;
+  }
+
+  promptCode() {
+    // Phones have no keyboard on a canvas, so fall back to the browser's own prompt.
+    if (!this.input.touch.on) return;
+    const v = window.prompt('Room code', this.joinCode);
+    if (v != null) this.joinCode = v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
+  }
+
+  joinKey(code) {
+    if (code === 'Escape') return this.cancelJoin();
+    if (code === 'Enter') return this.joinOnline();
+    if (code === 'Backspace') this.joinCode = this.joinCode.slice(0, -1);
+    const k = /^Key([A-Z])$/.exec(code) || /^Digit([0-9])$/.exec(code);
+    if (k && this.joinCode.length < 5) {
+      this.joinCode += k[1];
+      sfx.key();
+    }
+  }
+
+  cancelJoin() {
+    this.net.leave();
+    this.netBusy = false;
+    this.setMode('mp');
+  }
+
+  async joinOnline() {
+    if (this.netBusy || this.joinCode.length < 5) return;
+    this.netBusy = true;
+    this.netNote('Dialing...');
+    try {
+      await this.net.join(this.joinCode);
+      this.netNote('Connected! Saying hello...');
+      this.net.send({ t: 'hello', hero: this.heroId, xp: heroXp(this.heroId) });
+    } catch (e) {
+      this.netNote(String(e), true);
+    }
+    this.netBusy = false;
+  }
+
+  leaveOnline() {
+    this.saveXp();
+    this.net.leave();
+    this.lobby = null;
+    this.sim = null;
+    this.input.unlock();
+    if (this.mapIdx !== 0) this.loadWorld(0, 1);
+    this.setMode('mp');
+  }
+
+  // Host: the lobby roster, host first then guests in join order.
+  lobbyPlayers() {
+    const list = [{ name: 'P1', heroId: this.heroId, xp: heroXp(this.heroId) }];
+    this.net.guests.forEach((g, i) => list.push({ name: `P${i + 2}`, heroId: g.info?.heroId || 'tina', xp: g.info?.xp || 0 }));
+    return list;
+  }
+
+  broadcastLobby() {
+    if (this.net.role !== 'host' || !this.lobby) return;
+    const players = this.lobbyPlayers();
+    this.lobby.players = players;
+    this.net.guests.forEach((g, i) => this.net.send({ t: 'lobby', code: this.net.code, level: this.lobby.level, players, you: i + 1 }, g));
+  }
+
+  backToLobby() {
+    this.saveXp();
+    this.sim = null;
+    this.input.unlock();
+    if (this.mapIdx !== 0) this.loadWorld(0, 1);
+    this.lobby.level = clamp(this.levelN ? Math.min(this.best, this.levelN + 1) : this.lobby.level, 1, this.best);
+    this.setMode('lobby');
+    this.broadcastLobby();
+  }
+
+  lobbyHero(d) {
+    const i = HEROES.findIndex((h) => h.id === this.heroId);
+    this.heroId = HEROES[(i + d + HEROES.length) % HEROES.length].id;
+    store.set('hero', this.heroId);
+    sfx.click();
+    if (this.net.role === 'host') this.broadcastLobby();
+    else {
+      this.net.send({ t: 'pick', hero: this.heroId, xp: heroXp(this.heroId) });
+      // Show the change straight away; the host's next roster confirms it.
+      const me = this.lobby?.players[this.lobby.you];
+      if (me) {
+        me.heroId = this.heroId;
+        me.xp = heroXp(this.heroId);
+      }
+    }
+  }
+
+  lobbyLevel(d) {
+    if (this.net.role !== 'host') return;
+    this.lobby.level = clamp(this.lobby.level + d, 1, this.best);
+    sfx.click();
+    this.broadcastLobby();
+  }
+
+  lobbyKey(code) {
+    if (code === 'Escape') return this.leaveOnline();
+    if (code === 'ArrowLeft' || code === 'KeyA') this.lobbyHero(-1);
+    if (code === 'ArrowRight' || code === 'KeyD') this.lobbyHero(1);
+    if (code === 'ArrowUp' || code === 'KeyW') this.lobbyLevel(1);
+    if (code === 'ArrowDown' || code === 'KeyS') this.lobbyLevel(-1);
+    if ((code === 'Enter' || code === 'Space') && this.net.role === 'host') this.startOnline();
+  }
+
+  startOnline() {
+    if (this.net.role !== 'host') return;
+    this.hero = heroById(this.heroId);
+    this.runScore = 0;
+    sfx.select();
+    this.startLevel(this.lobby.level);
+  }
+
+  copyJoinLink() {
+    const url = `${location.origin}${location.pathname}?join=${this.net.code}`;
+    const done = () => {
+      this.copiedT = 2;
+      sfx.click();
+    };
+    try {
+      navigator.clipboard.writeText(url).then(done, () => window.prompt('Send this link to your friends', url));
+    } catch (e) {
+      window.prompt('Send this link to your friends', url);
+    }
+  }
+
+  fromGuest(g, m) {
+    if (m.t === 'hello' || m.t === 'pick') {
+      g.info = { heroId: heroById(m.hero).id, xp: Math.max(0, Number(m.xp) || 0) };
+      this.broadcastLobby();
+    } else if (m.t === 'in') {
+      if (this.sim && g.slot != null && Array.isArray(m.p) && Array.isArray(m.v)) this.sim.applyRemoteInput(g.slot, m);
+    } else if (m.t === 'act') {
+      if (this.sim && g.slot != null && this.mode !== 'clear' && this.mode !== 'dead') this.sim.remoteAct(g.slot, m.a, ...(m.args || []));
+    }
+  }
+
+  guestLeft(g) {
+    if (this.mode === 'lobby') return this.broadcastLobby();
+    const P = this.sim?.players[g.slot];
+    if (P) {
+      P.gone = true;
+      P.down = true;
+      P.hp = 0;
+      this.sim.toast(`${P.name} DISCONNECTED`, 'Carry on without them');
+      if (!this.sim.alive().length && this.sim.lv.phase !== 'done') {
+        this.sim.lv.phase = 'done';
+        this.sim.emit('dead');
+      }
+    }
+  }
+
+  fromHost(m) {
+    if (m.t === 'lobby') {
+      const first = !this.lobby;
+      this.lobby = { code: m.code, level: m.level, players: m.players, you: m.you };
+      if (this.mode !== 'lobby') {
+        this.saveXp();
+        this.sim = null;
+        this.input.unlock();
+        if (this.mapIdx !== 0) this.loadWorld(0, 1);
+        this.setMode('lobby');
+        if (first) sfx.select();
+      }
+    } else if (m.t === 'start') {
+      this.saveXp();
+      const me = m.party[m.you];
+      this.heroId = me.heroId;
+      this.hero = heroById(me.heroId);
+      this.levelN = m.level;
+      const cfg = levelConfig(m.level);
+      this.loadWorld(Math.min(this.maps.length - 1, Math.floor((m.level - 1) / 10)), m.level);
+      this.sim = new Sim(this.map, cfg, m.party.map((p) => ({ hero: heroById(p.heroId), xp: p.xp, name: p.name })), m.level, { mode: 'client', local: m.you });
+      this.sim.act = (a, ...args) => this.net.send({ t: 'act', a, args });
+      this.runScore = this.runScore || 0;
+      this.levelStartScore = this.runScore;
+      this.sendT = 0;
+      this.setMode('play');
+      const d = Math.floor((m.level - 1) / 10);
+      music.play('play', { transpose: [0, 2, -2, 3, 5][d], tempo: 1 + d * 0.04 });
+      this.input.lock();
+    } else if (m.t === 'snap') {
+      if (this.sim && this.sim.mode === 'client') this.sim.applySnapshot(m);
+    } else if (m.t === 'end') {
+      if (!this.sim) return;
+      this.saveXp();
+      if (m.kind === 'clear') {
+        this.runScore = m.stats.score - this.sim.score;
+        this.levelClear(m.stats);
+      } else {
+        this.deadStats = m.stats;
+        this.input.unlock();
+        this.setMode('dead');
+      }
+    } else if (m.t === 'full') {
+      this.net.leave();
+      this.setMode('join');
+      this.netNote('That room is full or already playing.', true);
+    }
+  }
+
+  hostLeft() {
+    this.saveXp();
+    this.lobby = null;
+    this.sim = null;
+    this.input.unlock();
+    if (this.mapIdx !== 0) this.loadWorld(0, 1);
+    this.setMode('mp');
+    this.showNotice('Connection lost', 'The host closed the room or dropped offline.');
+  }
+
+  // Host sends snapshots about 20 times a second; guests send their movement about 30.
+  netTick(dt) {
+    const sim = this.sim;
+    if (!sim) return;
+    if (this.net.role === 'host') {
+      this.snapT = (this.snapT || 0) + dt;
+      if (this.snapT >= 0.05) {
+        this.snapT = 0;
+        if (this.net.guests.length) this.net.send(sim.snapshot());
+        else sim.out = [];
+      }
+    } else if (this.net.role === 'guest') {
+      this.sendT = (this.sendT || 0) + dt;
+      if (this.sendT >= 1 / 30) {
+        this.sendT = 0;
+        this.net.send(sim.inputState());
+      }
+    }
   }
 
   // Test hook: run the game forward without drawing (headless playtests).
@@ -374,10 +692,15 @@ export class Game {
     }
     if (m === 'bios' && this.modeT > 3.9) this.setMode('dialup');
     if (m === 'dialup' && this.modeT > (this.dialLen || 5.2)) this.setMode('title');
-    if (m === 'play') {
-      const inp = this.input.state();
+    this.copiedT = Math.max(0, (this.copiedT || 0) - dt);
+    // Online, the level keeps running behind the pause menu.
+    const online = this.net.active && this.sim && m === 'paused';
+    if (m === 'play' || online) {
+      const inp = m === 'play' ? this.input.state() : { move: { f: 0, s: 0 }, turn: 0, fire: false, look: 0 };
       this.sim.player.a += inp.look * 0.0026 * settings.sens;
+      this.input.spReady = this.sim.player.sp >= 100 && !this.sim.player.spKind;
       this.sim.update(dt, inp);
+      this.netTick(dt);
       this.handleEvents();
       if (this.sim && this.mode === 'play') {
         if (this.sim.boss) music.play('boss', { transpose: 0, tempo: 1 });
@@ -395,10 +718,15 @@ export class Game {
   }
 
   handleEvents() {
+    if (!this.sim) return;
     for (const e of this.sim.events.splice(0)) {
       if (e.type === 'levelup' || e.type === 'dead' || e.type === 'clear') this.saveXp();
       if (e.type === 'dead') {
-        this.deadStats = { level: this.levelN, kills: this.sim.lv.kills, score: this.runScore + this.sim.score, hero: this.hero.name };
+        this.deadStats = { level: this.levelN, kills: this.sim.lv.kills, score: this.runScore + this.sim.score, hero: this.sim.players.length > 1 ? 'The crew' : this.hero.name };
+        if (this.net.role === 'host') {
+          this.net.send(this.sim.snapshot());
+          this.net.send({ t: 'end', kind: 'dead', stats: this.deadStats });
+        }
         this.bestScore = Math.max(this.bestScore, this.runScore + this.sim.score);
         store.set('bestScore', this.bestScore);
         this.input.unlock();
@@ -536,6 +864,17 @@ export class Game {
       W3.sprite(tex, p.x, 0.1 + Math.sin(this.t * 3 + p.ph) * 0.05, p.y, w, hh);
       W3.decal(S.shadow, p.x, p.y, 0.4, 0, 0.3);
     }
+    // Teammates, standing on their rides.
+    for (const Q of sim.players) {
+      if (Q === P) continue;
+      const set = S.heroTex[Q.heroIdx];
+      const tex = set[Math.floor(this.t * 2.5) & 1];
+      const hop = Q.z || 0;
+      if (Q.down) {
+        W3.sprite(S.heroTex[Q.heroIdx][0], Q.x, 0, Q.y, 0.7, 1.08, [0.35, 0.35, 1]);
+      } else W3.sprite(tex, Q.x, hop, Q.y, 0.7, 1.08, Q.iT > 0 && Math.floor(this.t * 10) % 2 ? [0.6, 1, 0.6] : undefined);
+      W3.decal(S.shadow, Q.x, Q.y, 0.6, 0, 0.45);
+    }
     // Projectiles.
     const right = { x: -Math.sin(P.a), y: Math.cos(P.a) };
     for (const p of sim.projs) {
@@ -543,26 +882,45 @@ export class Game {
       else if (p.kind === 'yoyo') {
         const set = p.hand ? S.yoyo2 : S.yoyo;
         W3.sprite(set[Math.floor(p.spin) % 4], p.x, p.z - 0.1, p.y, 0.22, 0.22);
+        const O = sim.players[p.o] || P;
         const side = p.hand ? 1 : -1;
-        const hx = P.x + Math.cos(P.a) * 0.25 + right.x * 0.2 * side;
-        const hy = P.y + Math.sin(P.a) * 0.25 + right.y * 0.2 * side;
-        W3.line([hx, eye - 0.28, hy], [p.x, p.z, p.y], PAL.cream);
+        const orx = -Math.sin(O.a);
+        const ory = Math.cos(O.a);
+        const hx = O.x + Math.cos(O.a) * 0.25 + orx * 0.2 * side;
+        const hy = O.y + Math.sin(O.a) * 0.25 + ory * 0.2 * side;
+        const oe = O === P ? eye : EYE + (O.z || 0);
+        W3.line([hx, oe - 0.28, hy], [p.x, p.z, p.y], PAL.cream);
       } else if (p.kind === 'floppy') W3.sprite(S.floppy[Math.floor(p.spin) % 4], p.x, p.z - 0.12, p.y, 0.24, 0.24);
       else if (p.kind === 'rocket') W3.sprite(S.flare[Math.floor(this.t * 20) % 2], p.x, p.z - 0.14, p.y, 0.28, 0.28);
     }
     for (const q of sim.particles) W3.particle(q.x, q.z, q.y, q.color);
     W3.ambient(this.t, P.x, P.y);
-    if (sim.laser) {
-      const d = sim.laser.d;
-      const fx2 = Math.cos(P.a);
-      const fy2 = Math.sin(P.a);
-      const mx = P.x + fx2 * 0.3 + right.x * 0.12;
-      const my = P.y + fy2 * 0.3 + right.y * 0.12;
-      const hx = P.x + fx2 * d;
-      const hy = P.y + fy2 * d;
-      W3.line([mx, eye - 0.17, my], [hx, eye - 0.08, hy], PAL.red);
-      W3.line([mx, eye - 0.175, my], [hx, eye - 0.085, hy], '#ff9090');
-      W3.sprite(S.flare[1], hx - fx2 * 0.05, eye - 0.2, hy - fy2 * 0.05, 0.14, 0.14, [1, 0.3, 0.3]);
+    for (const l of sim.lasers) {
+      const mine = l.o === sim.local;
+      // Our own pointer beam starts at the hand on screen; everything else from the owner's body.
+      const ox = mine ? P.x : l.x;
+      const oy = mine ? P.y : l.y;
+      const oe = mine ? eye : l.z;
+      const fx2 = Math.cos(l.a);
+      const fy2 = Math.sin(l.a);
+      const rx = -fy2;
+      const ry = fx2;
+      const off = mine && !l.sp ? 0.12 : 0;
+      const mx = ox + fx2 * 0.3 + rx * off;
+      const my = oy + fy2 * 0.3 + ry * off;
+      const hx = ox + fx2 * l.d;
+      const hy = oy + fy2 * l.d;
+      const top = l.sp ? oe - 0.3 : oe - 0.17;
+      const end = l.sp ? oe - 0.3 : oe - 0.08;
+      if (l.sp) {
+        // Light Show beams cycle through the party colours and are drawn thick.
+        const c = PARTY[(Math.floor(this.t * 8) + Math.round(l.a * 3)) % PARTY.length];
+        for (let k = -2; k <= 2; k++) W3.line([mx, top + k * 0.01, my], [hx, end + k * 0.01, hy], k ? c : PAL.white);
+      } else {
+        W3.line([mx, top, my], [hx, end, hy], PAL.red);
+        W3.line([mx, top - 0.005, my], [hx, end - 0.005, hy], '#ff9090');
+      }
+      W3.sprite(S.flare[1], hx - fx2 * 0.05, end - 0.12, hy - fy2 * 0.05, 0.14, 0.14, [1, 0.3, 0.3]);
     }
     fx.glitch = sim.glitchT > 0 ? 0.6 : 0;
     if (sim.flash) {
@@ -590,6 +948,10 @@ export class Game {
 
   drawUI(g) {
     this.drawScreen(g);
+    if (this.notice) {
+      this.buttons = [];
+      SCR.drawNotice(g, this, this.notice);
+    }
     if (this.options) {
       this.buttons = [];
       const keep = this.focus;
@@ -614,6 +976,9 @@ export class Game {
     if (m === 'howto') return SCR.drawHowto(g, ui, this.t);
     if (m === 'select') return SCR.drawSelect(g, ui, this.t, this.S);
     if (m === 'ending') return SCR.drawEnding(g, ui, t, this.endStats);
+    if (m === 'mp') return SCR.drawMp(g, ui, this.t);
+    if (m === 'join') return SCR.drawJoin(g, ui, this.t);
+    if (m === 'lobby') return SCR.drawLobby(g, ui, this.t, this.S);
     const sim = this.sim;
     if (!sim) return;
     if (m === 'dead') return SCR.drawBsod(g, ui, this.t, this.deadStats);
@@ -631,7 +996,12 @@ export class Game {
       HUD.drawBuffFx(g, sim, this.S, this.t);
       HUD.drawBuffs(g, sim, this.S, this.t);
       HUD.drawXpBar(g, sim, this.t);
+      HUD.drawSpecial(g, sim, this.t, this.input.touch.on);
+      HUD.drawTeam(g, sim, this.S, this.t);
+      HUD.drawNameTags(g, this.projectNames(sim));
     }
+    if (m === 'play') HUD.drawSpCall(g, sim, this.t);
+    if (m === 'play' || m === 'paused') HUD.drawDowned(g, sim, this.t);
     if (m === 'play') HUD.drawLevelUp(g, sim, this.t);
     if (m === 'play') HUD.drawCombo(g, sim, this.t, 2.2);
     if (m === 'play') HUD.drawBanner(g, sim, this.t);
@@ -652,6 +1022,20 @@ export class Game {
       v.set(p.x, p.z, p.y).project(cam);
       if (v.z > 1 || Math.abs(v.x) > 1.1 || Math.abs(v.y) > 1.1) continue;
       out.push({ sx: ((v.x + 1) / 2) * W, sy: ((1 - v.y) / 2) * H, text: p.text, t: p.t, big: p.big });
+    }
+    return out;
+  }
+
+  // Teammates' names over their heads.
+  projectNames(sim) {
+    const cam = this.world.camera;
+    const v = this._pv || (this._pv = new THREE.Vector3());
+    const out = [];
+    for (const Q of sim.players) {
+      if (Q === sim.player) continue;
+      v.set(Q.x, 1.25 + (Q.z || 0), Q.y).project(cam);
+      if (v.z > 1 || Math.abs(v.x) > 1.1 || Math.abs(v.y) > 1.1) continue;
+      out.push({ sx: ((v.x + 1) / 2) * W, sy: ((1 - v.y) / 2) * H, text: Q.name, down: Q.down });
     }
     return out;
   }

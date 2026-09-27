@@ -204,9 +204,9 @@ export function drawTitle(g, ui, t) {
   const inner = window98(g, x, y, w, 89, 'Y2KAGE.EXE');
   const items = [
     ['Start Game', () => ui.game.toSelect()],
+    ['Online Co-op', () => ui.game.setMode('mp')],
     ['How to Play', () => ui.game.setMode('howto')],
     ['Options', () => ui.game.openOptions()],
-    [`Sound: ${ui.game.muted() ? 'Off' : 'On'}`, () => ui.game.toggleMute()],
   ];
   items.forEach(([label, on], i) => {
     const b = { x: inner.x + 6, y: inner.y + 2 + i * 17, w: inner.w - 12, h: 14 };
@@ -243,9 +243,9 @@ const HOWTO = [
   '',
   'MOVE   W A S D  (arrows turn)     AIM   mouse',
   'FIRE   click, hold for auto       RIDE  SPACE / SHIFT',
-  'PAUSE  ESC or P                   MUTE  M',
+  'SPECIAL R / right-click when full  PAUSE ESC   MUTE M',
   'Phone: left thumb moves, right thumb aims, tap FIRE.',
-  '',
+  'ONLINE CO-OP: host a room, up to 3 friends join by code.',
   'Each hero has a ride and a weapon of their own.',
   'Water fries Corrupted zombies. Every 10th level: boss.',
   'Kills earn XP. Every LEVEL UP makes that hero hit harder.',
@@ -395,7 +395,14 @@ export function drawClear(g, ui, t, stats) {
   });
   const next = Math.min(TOTAL_LEVELS, stats.level + 1);
   text(g, `Next: ${clockFor(next).label}, ${DISTRICTS[Math.min(4, Math.floor((next - 1) / 10))].name}`, inner.x + 22, inner.y + 73, { font: 'small', color: PAL.strawberryDark });
-  const items = [['Next Level', () => ui.game.nextLevel()], ['Menu', () => ui.game.toSelect()]];
+  if (ui.game.isGuest()) {
+    text(g, 'Waiting for the host...', inner.x + 22, inner.y + 92, { font: 'small', color: PAL.winNavy });
+    const b = { x: inner.x + inner.w - 62, y: inner.y + 88, w: 56, h: 16 };
+    button(g, b.x, b.y, b.w, b.h, 'Leave', { focus: true });
+    ui.addButton(b, () => ui.game.leaveOnline(), 5);
+    return;
+  }
+  const items = [['Next Level', () => ui.game.nextLevel()], [ui.game.net.active ? 'Lobby' : 'Menu', () => ui.game.toSelect()]];
   items.forEach(([label, on], i) => {
     const b = { x: inner.x + 22 + i * 88, y: inner.y + 88, w: 80, h: 16 };
     button(g, b.x, b.y, b.w, b.h, label, { focus: ui.focus === i });
@@ -421,15 +428,21 @@ export function drawBsod(g, ui, t, stats) {
     '*  Press ESC to return to the menu. You will lose',
     '   any unsaved dignity.',
   ];
+  const guest = ui.game.isGuest();
+  if (guest) lines.splice(5, 3, '*  The whole crew crashed. Waiting for the host', '   to try again...');
   lines.forEach((l, i) => text(g, l, 26, 46 + i * 11, { font: 'small', color: PAL.white }));
   const msg = 'Press any key to continue ';
   text(g, msg, W / 2, 158, { font: 'small', color: PAL.white, align: 'center' });
   if (Math.floor(t * 2) % 2) rect(g, W / 2 + textWidth(msg, 'small') / 2, 158, 5, 7, PAL.white);
   const b1 = { x: W / 2 - 90, y: 176, w: 84, h: 16 };
   const b2 = { x: W / 2 + 6, y: 176, w: 84, h: 16 };
-  ui.addButton(b1, () => ui.game.retry(), 0);
-  ui.addButton(b2, () => ui.game.toSelect(), 1);
-  for (const [b, label, i] of [[b1, 'Try again', 0], [b2, 'Menu', 1]]) {
+  const btns = guest ? [[b2, 'Leave', 0]] : [[b1, 'Try again', 0], [b2, ui.game.net.active ? 'Lobby' : 'Menu', 1]];
+  if (guest) ui.addButton(b2, () => ui.game.leaveOnline(), 5);
+  else {
+    ui.addButton(b1, () => ui.game.retry(), 0);
+    ui.addButton(b2, () => ui.game.toSelect(), 1);
+  }
+  for (const [b, label, i] of btns) {
     rect(g, b.x, b.y, b.w, b.h, ui.focus === i ? PAL.white : PAL.bsod);
     rect(g, b.x, b.y, b.w, 1, PAL.white);
     rect(g, b.x, b.y + b.h - 1, b.w, 1, PAL.white);
@@ -509,4 +522,129 @@ export function drawOptions(g, ui, t, S) {
   button(g, done.x, done.y, done.w, done.h, 'OK', { focus: ui.focus === rows.length });
   ui.addButton(done, () => game.closeOptions(), rows.length);
   text(g, 'ARROWS adjust  ESC close', W / 2, H - 20, { font: 'small', color: PAL.cream, outline: PAL.ink, align: 'center' });
+}
+
+// ---------------------------------------------------------------- online co-op
+export function drawMp(g, ui, t) {
+  rect(g, 0, 0, W, H, '#00000066');
+  const w = 200;
+  const x = W / 2 - w / 2;
+  const inner = window98(g, x, 40, w, 128, 'Online Co-op');
+  iconInfo(g, inner.x + 4, inner.y + 4);
+  text(g, 'Fight the horde with up to', inner.x + 24, inner.y + 4, { font: 'small', color: PAL.ink });
+  text(g, '3 friends. Bigger waves, too.', inner.x + 24, inner.y + 13, { font: 'small', color: PAL.ink });
+  const items = [['Host a Game', () => ui.game.hostOnline()], ['Join a Game', () => ui.game.setMode('join')], ['Back', () => ui.game.setMode('title')]];
+  items.forEach(([label, on], i) => {
+    const b = { x: inner.x + 24, y: inner.y + 28 + i * 18, w: inner.w - 48, h: 15 };
+    button(g, b.x, b.y, b.w, b.h, label, { focus: ui.focus === i });
+    ui.addButton(b, on, i);
+  });
+  if (ui.game.netStatus) text(g, ui.game.netStatus, W / 2, inner.y + inner.h - 9, { font: 'small', color: ui.game.netError ? PAL.red : PAL.winNavy, align: 'center' });
+}
+
+export function drawJoin(g, ui, t) {
+  rect(g, 0, 0, W, H, '#00000066');
+  const w = 220;
+  const x = W / 2 - w / 2;
+  const inner = window98(g, x, 44, w, 118, 'Join a Game');
+  text(g, 'Type the room code your host sees:', inner.x + 4, inner.y + 4, { font: 'small', color: PAL.ink });
+  const box = { x: inner.x + 30, y: inner.y + 16, w: inner.w - 60, h: 22 };
+  bevel(g, box.x, box.y, box.w, box.h, true, PAL.white);
+  const code = ui.game.joinCode;
+  const shown = code + (Math.floor(t * 2) % 2 && code.length < 5 ? '_' : '');
+  text(g, shown, box.x + box.w / 2, box.y + 7, { font: 'big', color: PAL.ink, align: 'center', scale: 1 });
+  ui.addButton(box, () => ui.game.promptCode(), 9);
+  const busy = ui.game.netBusy;
+  const b1 = { x: inner.x + 30, y: inner.y + 46, w: 70, h: 16 };
+  const b2 = { x: inner.x + inner.w - 100, y: inner.y + 46, w: 70, h: 16 };
+  button(g, b1.x, b1.y, b1.w, b1.h, busy ? 'Dialing...' : 'Join', { focus: true, disabled: busy || code.length < 5 });
+  button(g, b2.x, b2.y, b2.w, b2.h, 'Cancel');
+  ui.addButton(b1, () => ui.game.joinOnline(), 0);
+  ui.addButton(b2, () => ui.game.cancelJoin(), 1);
+  if (ui.game.netStatus) text(g, ui.game.netStatus, W / 2, inner.y + 70, { font: 'small', color: ui.game.netError ? PAL.red : PAL.winNavy, align: 'center' });
+  text(g, "Or just open your host's join link.", W / 2, inner.y + 84, { font: 'small', color: PAL.winShadow, align: 'center' });
+}
+
+export function drawLobby(g, ui, t, S) {
+  const game = ui.game;
+  const L = game.lobby;
+  rect(g, 0, 0, W, H, '#00000066');
+  const inner = window98(g, 8, 6, W - 16, H - 14, `Co-op room ${L.code}  -  ${L.players.length}/4 players`);
+  // Player slots.
+  const cw = 84;
+  L.players.forEach((p, i) => {
+    const x = inner.x + 4 + i * (cw + 4);
+    const y = inner.y + 4;
+    const hi = HEROES.findIndex((h) => h.id === p.heroId);
+    const hero = HEROES[hi] || HEROES[0];
+    const fl = FLAVOURS[Math.max(0, hi)];
+    const mine = i === L.you;
+    bevel(g, x, y, cw, 88, true, mine ? '#203050' : '#101828');
+    const body = S.heroBodies[Math.max(0, hi)][Math.floor(t * 2.5 + i) & 1];
+    g.drawImage(body.c, Math.round(x + cw / 2 - body.w / 2), y + 4);
+    rect(g, x + 2, y + 66, cw - 4, 20, fl.dark);
+    text(g, `${p.name}${mine ? ' (YOU)' : ''}`, x + cw / 2, y + 68, { font: 'small', color: PAL.white, align: 'center' });
+    text(g, `${hero.name} LV${rankFor(p.xp || 0)}`, x + cw / 2, y + 77, { font: 'small', color: PAL.gold, align: 'center' });
+    if (mine) {
+      const bl = { x: x + 2, y: y + 30, w: 12, h: 14 };
+      const br = { x: x + cw - 14, y: y + 30, w: 12, h: 14 };
+      button(g, bl.x, bl.y, bl.w, bl.h, '<');
+      button(g, br.x, br.y, br.w, br.h, '>');
+      ui.addButton(bl, () => game.lobbyHero(-1), 20);
+      ui.addButton(br, () => game.lobbyHero(1), 21);
+    }
+  });
+  for (let i = L.players.length; i < 4; i++) {
+    const x = inner.x + 4 + i * (cw + 4);
+    bevel(g, x, inner.y + 4, cw, 88, true, '#0c0c14');
+    text(g, 'waiting', x + cw / 2, inner.y + 40, { font: 'small', color: PAL.winShadow, align: 'center' });
+    text(g, 'for player', x + cw / 2, inner.y + 49, { font: 'small', color: PAL.winShadow, align: 'center' });
+  }
+  const y2 = inner.y + 98;
+  // Room code and join link.
+  text(g, 'ROOM CODE', inner.x + 4, y2, { font: 'small', color: PAL.ink });
+  bevel(g, inner.x + 4, y2 + 9, 70, 18, true, PAL.white);
+  text(g, L.code, inner.x + 39, y2 + 14, { font: 'big', color: PAL.winNavy, align: 'center' });
+  const cb = { x: inner.x + 4, y: y2 + 30, w: 70, h: 14 };
+  button(g, cb.x, cb.y, cb.w, cb.h, game.copiedT > 0 ? 'Copied!' : 'Copy link');
+  ui.addButton(cb, () => game.copyJoinLink(), 22);
+  // Level (host picks) and start.
+  const n = L.level;
+  const px = inner.x + 84;
+  text(g, 'LEVEL', px, y2, { font: 'small', color: PAL.ink });
+  bevel(g, px, y2 + 9, 120, 18, true, PAL.white);
+  text(g, `${n}  ${clockFor(n).label}`, px + 60, y2 + 14, { font: 'small', color: PAL.ink, align: 'center' });
+  text(g, DISTRICTS[Math.min(4, Math.floor((n - 1) / 10))].name.toUpperCase(), px + 60, y2 + 33, { font: 'small', color: PAL.strawberryDark, align: 'center' });
+  const host = L.you === 0;
+  if (host) {
+    const bl = { x: px - 0, y: y2 + 30, w: 12, h: 12 };
+    const br = { x: px + 108, y: y2 + 30, w: 12, h: 12 };
+    button(g, bl.x, bl.y, bl.w, bl.h, '<', { disabled: n <= 1 });
+    button(g, br.x, br.y, br.w, br.h, '>', { disabled: n >= game.best });
+    ui.addButton(bl, () => game.lobbyLevel(-1), 23);
+    ui.addButton(br, () => game.lobbyLevel(1), 24);
+  }
+  const bx = inner.x + inner.w - 124;
+  if (host) {
+    const go = { x: bx, y: y2 + 6, w: 120, h: 20 };
+    button(g, go.x, go.y, go.w, go.h, L.players.length > 1 ? 'START' : 'START SOLO', { font: 'big', focus: true });
+    ui.addButton(go, () => game.startOnline(), 0);
+  } else text(g, 'Host starts the game', bx + 60, y2 + 12, { font: 'small', color: PAL.winNavy, align: 'center' });
+  const lv = { x: bx, y: y2 + 30, w: 120, h: 14 };
+  button(g, lv.x, lv.y, lv.w, lv.h, host ? 'Close room' : 'Leave room');
+  ui.addButton(lv, () => game.leaveOnline(), 1);
+  const tip = host ? 'Send friends the code or link.  ARROWS hero/level  ENTER start' : 'ARROWS change hero   ESC leave';
+  text(g, game.netStatus || tip, W / 2, inner.y + inner.h - 9, { font: 'small', color: game.netError ? PAL.red : PAL.winShadow, align: 'center' });
+}
+
+// A message box over whatever is on screen (for dropped connections and the like).
+export function drawNotice(g, ui, n) {
+  const w = 220;
+  const x = W / 2 - w / 2;
+  const inner = window98(g, x, 70, w, 62, n.title);
+  iconError(g, inner.x + 4, inner.y + 4);
+  wrap(n.text, inner.w - 30).slice(0, 2).forEach((l, i) => text(g, l, inner.x + 24, inner.y + 4 + i * 9, { font: 'small', color: PAL.ink }));
+  const b = { x: inner.x + inner.w / 2 - 30, y: inner.y + 26, w: 60, h: 15 };
+  button(g, b.x, b.y, b.w, b.h, 'OK', { focus: true });
+  ui.addButton(b, () => ui.game.dismissNotice(), 99);
 }

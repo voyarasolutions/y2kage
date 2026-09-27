@@ -182,6 +182,20 @@ export const sfx = {
   hurt() {
     tone(220, 0.2, 'square', 0.2, 110);
   },
+  // Meter full: a bright two-note chime.
+  spReady() {
+    tone(1318, 0.08, 'square', 0.1);
+    tone(1760, 0.16, 'square', 0.1, null, 0.08);
+  },
+  // Special attack: a whoosh up into a chord, flavoured by the weapon.
+  special(kind) {
+    noise(0.5, 900, 0.4, 0.22, 'bandpass');
+    tone(180, 0.45, 'sawtooth', 0.12, 720);
+    const chord = { soaker: [392, 494, 587], yoyo: [440, 554, 659], floppy: [523, 659, 784], rocket: [349, 440, 523], laser: [587, 740, 880] }[kind] || [440, 554, 659];
+    chord.forEach((f, i) => tone(f, 0.5, 'square', 0.09, null, 0.25 + i * 0.04));
+    if (kind === 'soaker') noise(1.2, 2600, 0.4, 0.14, 'highpass', 0.1);
+    if (kind === 'laser') tone(1200, 0.9, 'sawtooth', 0.05, 2400, 0.2);
+  },
   pickup() {
     tone(660, 0.08, 'square', 0.14);
     tone(990, 0.12, 'square', 0.14, null, 0.08);

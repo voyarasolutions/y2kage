@@ -341,7 +341,7 @@ export class WeaponView {
         }
       }
     } else if (G.kind === 'yoyo') {
-      const out = new Set(sim.projs.filter((p) => p.kind === 'yoyo').map((p) => p.hand));
+      const out = new Set(sim.projs.filter((p) => p.kind === 'yoyo' && p.o === sim.local && !p.orbit).map((p) => p.hand));
       const L = out.has(0) ? a.l.empty : a.l.full;
       const R = out.has(1) ? a.r.empty : a.r.full;
       d(L, 58, base - 52 + (out.has(0) ? -6 : 0));

@@ -48,7 +48,7 @@ function weaponMeter(g, sim, x, y, S) {
     col = P.overheated ? PAL.red : P.heat > 70 ? PAL.tangerine : PAL.gold;
   } else if (G.kind === 'yoyo') {
     label = 'X2';
-    frac = 1 - sim.projs.filter((p) => p.kind === 'yoyo').length / 2;
+    frac = 1 - sim.projs.filter((p) => p.kind === 'yoyo' && p.o === sim.local && !p.orbit).length / 2;
     col = PAL.pink;
   } else if (G.kind === 'floppy') {
     label = 'DISK';
@@ -232,6 +232,7 @@ export const TOUCH = {
   fire: { x: 336, y: 150, r: 22 },
   jump: { x: 292, y: 176, r: 13 },
   boost: { x: 352, y: 106, r: 12 },
+  special: { x: 290, y: 132, r: 13 },
   pause: { x: 372, y: 28, r: 9 },
 };
 
@@ -249,6 +250,7 @@ export function drawTouch(g, input, hero) {
   ring(TOUCH.jump, hero.move.type === 'scooter' ? 'DASH' : hero.move.type === 'slinky' ? 'LEAP' : 'JUMP', input.touch.jump != null);
   if (hero.move.type === 'board' || hero.move.type === 'scooter') ring(TOUCH.boost, hero.move.type === 'board' ? 'KICK' : 'DASH', false);
   ring(TOUCH.pause, 'II', false);
+  if (input.spReady) ring(TOUCH.special, 'SP!', false);
   if (input.touch.mo) {
     const m = input.touch.mo;
     g.fillStyle = '#ffffff22';
@@ -363,4 +365,67 @@ export function drawBuffFx(g, sim, S, t) {
     rect(g, 0, 0, 2, H - TASKBAR_H, c);
     rect(g, W - 2, 0, 2, H - TASKBAR_H, c);
   }
+}
+
+// Special meter above the taskbar on the right; flashes its name and key when full.
+export function drawSpecial(g, sim, t, touch) {
+  const P = sim.player;
+  const S = P.hero.special;
+  const y = H - TASKBAR_H - 13;
+  const w = 64;
+  const x = W - w - 4;
+  const full = P.sp >= 100;
+  const on = !!P.spKind;
+  rect(g, x - 1, y - 1, w + 2, 8, PAL.ink);
+  rect(g, x, y, w, 6, '#202020');
+  const col = on ? PARTY[Math.floor(t * 12) % PARTY.length] : full ? (Math.floor(t * 6) % 2 ? S.color : PAL.white) : S.color;
+  rect(g, x, y, Math.round(w * (on ? 1 : P.sp / 100)), 6, col);
+  rect(g, x, y, Math.round(w * (on ? 1 : P.sp / 100)), 1, '#ffffff66');
+  const label = on ? S.name : full ? `${touch ? 'TAP SP!' : '[R]'} ${S.name}` : 'SPECIAL';
+  text(g, label, x + w, y - 9, { font: 'small', color: full || on ? PAL.cream : PAL.pinkLight, outline: PAL.ink, align: 'right' });
+}
+
+// The special's name slammed across the middle of the screen.
+export function drawSpCall(g, sim, t) {
+  const c = sim.player.spCall;
+  if (!c) return;
+  const age = 1.6 - c.t;
+  const s = age < 0.1 ? 3 : 2;
+  g.globalAlpha = Math.min(1, c.t / 0.3);
+  text(g, c.text, W / 2, 60, { font: 'big', color: Math.floor(t * 12) % 2 ? sim.player.hero.special.color : PAL.white, outline: PAL.ink, align: 'center', scale: s });
+  g.globalAlpha = 1;
+}
+
+// Co-op: each teammate's face, name and health down the left edge.
+export function drawTeam(g, sim, S, t) {
+  const others = sim.players.filter((P) => P !== sim.player);
+  others.forEach((P, i) => {
+    const x = 4;
+    const y = 42 + i * 22;
+    rect(g, x, y, 20, 20, PAL.ink);
+    g.globalAlpha = P.down ? 0.4 : 1;
+    g.drawImage(S.portraits[P.heroIdx].c, x + 2, y + 2, 16, 16);
+    g.globalAlpha = 1;
+    text(g, P.name.slice(0, 10), x + 23, y + 1, { font: 'small', color: P.down ? PAL.red : PAL.cream, outline: PAL.ink });
+    rect(g, x + 23, y + 11, 40, 4, PAL.ink);
+    rect(g, x + 23, y + 11, Math.round(40 * Math.max(0, P.hp) / 100), 4, P.hp > 50 ? PAL.lime : P.hp > 25 ? PAL.tangerine : PAL.red);
+    rect(g, x + 23, y + 16, Math.round(40 * P.sp / 100), 1, P.sp >= 100 ? PAL.gold : PAL.pink);
+    if (P.down) text(g, 'REBOOTING', x + 23, y + 11, { font: 'small', color: PAL.white, outline: PAL.ink });
+  });
+}
+
+// Floating names over teammates in the world.
+export function drawNameTags(g, tags) {
+  for (const n of tags) {
+    text(g, n.text, Math.round(n.sx), Math.round(n.sy), { font: 'small', color: n.down ? PAL.red : PAL.cyan, outline: PAL.ink, align: 'center' });
+  }
+}
+
+// You went down in co-op: the screen goes blue until the next wave reboots you.
+export function drawDowned(g, sim, t) {
+  if (!sim.player.down) return;
+  rect(g, 0, 0, W, H - TASKBAR_H, '#0000aa88');
+  text(g, 'YOU CRASHED', W / 2, 70, { font: 'big', color: PAL.white, outline: PAL.ink, align: 'center', scale: 2 });
+  text(g, 'Your crew has to clear this wave.', W / 2, 96, { font: 'small', color: PAL.cream, outline: PAL.ink, align: 'center' });
+  text(g, 'You reboot when the next one starts.', W / 2, 106, { font: 'small', color: PAL.cream, outline: PAL.ink, align: 'center' });
 }

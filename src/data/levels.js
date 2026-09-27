@@ -84,7 +84,8 @@ export function levelConfig(n) {
   const weights = weightsFor(n);
   const waves = [];
   for (let w = 0; w < waveCount; w++) {
-    const count = Math.round(5 + n * 0.9 + w * 2.5);
+    // Hordes: half again as many as the first release, and they arrive faster.
+    const count = Math.round((5 + n * 0.9 + w * 2.5) * 1.5);
     const spawns = [];
     for (let i = 0; i < count; i++) spawns.push(pick(weights, rnd));
     // Brutes arrive late in a wave, not in the opening second.
@@ -104,8 +105,8 @@ export function levelConfig(n) {
     hpMul: 1 + (n - 1) * 0.055,
     speedMul: Math.min(1.6, 1 + (n - 1) * 0.012),
     damageMul: 1 + (n - 1) * 0.025,
-    spawnEvery: Math.max(240, 1050 - n * 17),
-    maxAlive: Math.round(12 + n * 0.6),
+    spawnEvery: Math.max(180, 800 - n * 13),
+    maxAlive: Math.round(16 + n * 0.8),
     // Chance per second of a Y2K screen glitch; rises toward midnight.
     glitchRate: Math.min(0.5, 0.02 + n * 0.009),
     radio: RADIO[(n - 1) % RADIO.length],

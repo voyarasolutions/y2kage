@@ -11,6 +11,7 @@ export class Input {
     this.lookDX = 0;
     this.noLock = false;
     this.playing = false;
+    this.spReady = false;
     this.bind();
   }
 
@@ -47,6 +48,8 @@ export class Input {
       const p = this.toScreen(e.clientX, e.clientY);
       this.mouse.x = p.x;
       this.mouse.y = p.y;
+      // Right button fires the special while playing.
+      if (e.button === 2 && this.playing) return this.h.key('Special');
       this.mouse.down = true;
       this.h.press(p.x, p.y, 'mouse');
     });
@@ -74,6 +77,7 @@ export class Input {
           this.touch.jump = t.identifier;
           this.h.key('Space');
         } else if (btn === 'boost') this.h.key('ShiftLeft');
+        else if (btn === 'special') this.h.key('Special');
         else if (btn === 'pause') this.h.key('Escape');
         else if (p.x < W * 0.42 && this.touch.move == null) {
           this.touch.move = t.identifier;

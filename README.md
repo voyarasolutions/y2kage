@@ -17,6 +17,26 @@ npm run build      # production build into dist/
 
 Add `?skip=title` to the URL to jump past the power-on, BIOS and dial-up intro.
 
+## Put it online
+
+`npm run build` makes a plain static site in `dist/` (relative paths, no server code). Any static host works:
+
+- **itch.io**: zip the *contents* of `dist/` (so `index.html` is at the top of the zip), create a new project, set
+  Kind to HTML, upload the zip, tick "This file will be played in the browser", and set the embed size to 1280x720 with
+  the fullscreen button on. Share the page link.
+- **GitHub Pages, Netlify, Cloudflare Pages**: publish the `dist/` folder as the site root.
+
+## Online co-op
+
+Up to four players, host plus three guests, over WebRTC (`src/net/net.js`, PeerJS). Online Co-op on the title screen:
+the host gets a five-letter room code and a join link (`?join=CODE`); guests type the code or open the link. The host's
+game runs the level and streams snapshots about 20 times a second; each guest moves themselves locally and sends their
+position and actions. Waves grow 60% per extra player. A player who goes down reboots at the start of the next wave; the
+level is lost only when everyone is down.
+
+Matchmaking uses the free public PeerJS broker, and PeerJS's TURN relay covers strict NATs. For local testing without
+internet, run a PeerJS server (`npx peerjs --port 9000`) and add `?peer=localhost:9000` to every player's URL.
+
 ## iOS
 
 The Xcode project is in `ios/` (Capacitor, Swift Package Manager). On a Mac with Xcode:
@@ -50,5 +70,5 @@ The app is locked to landscape. Fonts are bundled so it works offline.
 
 ## Controls
 
-WASD move, arrows or Q/E turn, mouse look (click to lock), click fire, Space and Shift for ride tricks, P or Esc pause,
-M mute. On touch screens: left thumb moves, right thumb looks, with on-screen fire, jump and boost buttons.
+WASD move, arrows or Q/E turn, mouse look (click to lock), click fire, Space and Shift for ride tricks, R or right-click
+for the hero's special once its meter is full, P or Esc pause, M mute. On touch screens: left thumb moves, right thumb looks, with on-screen fire, jump and boost buttons.

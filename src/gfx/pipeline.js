@@ -97,7 +97,8 @@ export class Pipeline {
     this.postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   }
 
-  render(scene, camera, fx) {
+  // overlay: the first-person weapons, drawn over the world with a fresh depth buffer.
+  render(scene, camera, fx, overlay = null) {
     const r = this.renderer;
     const u = this.uniforms;
     u.glitch.value = fx.glitch || 0;
@@ -107,6 +108,12 @@ export class Pipeline {
     u.fade.value = fx.fade ?? 1;
     r.setRenderTarget(this.rt);
     r.render(scene, camera);
+    if (overlay) {
+      r.autoClear = false;
+      r.clearDepth();
+      r.render(overlay.scene, overlay.camera);
+      r.autoClear = true;
+    }
     r.setRenderTarget(null);
     r.render(this.postScene, this.postCam);
   }

@@ -20,7 +20,8 @@ import { HEROES, heroById } from '../data/heroes.js';
 import { levelConfig, endlessConfig, clockFor, TOTAL_LEVELS, DISTRICTS } from '../data/levels.js';
 import { sfx } from '../audio/sfx.js';
 import { music } from '../audio/music.js';
-import { WeaponView } from '../ui/weapon.js';
+import { WeaponView, weaponBob } from '../ui/weapon.js';
+import { ViewModel } from '../gfx/viewmodel.js';
 import { muzzleWorld } from '../data/muzzles.js';
 import { hit } from '../ui/win98.js';
 import * as HUD from '../ui/hud.js';
@@ -44,6 +45,7 @@ export class Game {
     this.g = uiCanvas.getContext('2d');
     this.g.imageSmoothingEnabled = false;
     this.weapon = new WeaponView();
+    this.vm = new ViewModel();
     this.best = store.get('best', 1);
     this.bestScore = store.get('bestScore', 0);
     this.heroId = store.get('hero', 'tina');
@@ -1000,7 +1002,9 @@ export class Game {
     if (m === 'dialup' || m === 'howto') fx.fade = 0.4;
     if (m === 'dead') fx.fade = 0;
     if (!settings.glitch) fx.glitch = 0;
-    this.pipe.render(W3.scene, W3.camera, fx);
+    // 3D first-person weapons ride on top of the world in the same pixel pass.
+    const overlay = sim && (m === 'play' || m === 'paused') ? this.vm.frame(sim, this.t, dt, weaponBob(sim.player)) : null;
+    this.pipe.render(W3.scene, W3.camera, fx, overlay);
     this.drawUI(g);
   }
 

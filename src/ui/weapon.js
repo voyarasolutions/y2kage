@@ -1,9 +1,9 @@
-// First-person weapons, drawn as pixel-art sprites over the 3D view the way the 16-bit shooters did.
+// First-person weapons drawn as pixel-art sprites over the 3D view: Marcus's yo-yos, Dot's floppies and
+// Gus's firework tube. The Soaker, the laser pointer and the handlebars are 3D (gfx/viewmodel.js).
 // Each hero's hands wear their iMac colour.
 import { Pix, micro } from '../gfx/pix.js';
 import { Rig, texture, skew } from '../gfx/model.js';
 import { MUZZLE } from '../data/muzzles.js';
-import { sfx } from '../audio/sfx.js';
 import { LOOKS, ramp } from '../gfx/heroart.js';
 import { PAL, FLAVOURS } from '../core/palette.js';
 import { W, H } from '../core/util.js';
@@ -112,119 +112,6 @@ function arm(p, w, dir, L, i) {
   R.tube(-0.05, 0.14, 0, 8, 9, sk);
   R.tube(0.1, 1.3, 0, 11, 14, sleeve, { stripe, noEdge: true });
   R.render(p);
-}
-
-// One row of a cylinder seen from behind: highlight stripe left of centre, falloff to the right.
-function cyl(p, cx, y, w, r) {
-  const x0 = cx - Math.floor(w / 2);
-  p.rect(x0, y, w, 1, r.base);
-  p.rect(x0, y, Math.max(1, Math.round(w * 0.12)), 1, r.dark);
-  p.rect(x0 + Math.round(w * 0.2), y, Math.max(1, Math.round(w * 0.14)), 1, r.light);
-  p.px(x0 + Math.round(w * 0.24), y, r.hi);
-  p.rect(x0 + Math.round(w * 0.66), y, Math.ceil(w * 0.34), 1, r.dark);
-  p.rect(x0 + w - Math.max(1, Math.round(w * 0.1)), y, Math.max(1, Math.round(w * 0.1)), 1, r.deep);
-}
-
-function screw(p, x, y) {
-  p.px(x, y, PAL.steelLight).px(x + 1, y, PAL.steel).px(x, y + 1, PAL.steel).px(x + 1, y + 1, PAL.steelDark);
-}
-
-// Tina's Soaker 2500, seen from over her shoulder: a long lime barrel with an orange pump slung
-// underneath, a fat pressure chamber, and a see-through reservoir on top whose water drops as she sprays.
-// The body is baked once per water level; the pump and her left hand are a separate sprite that slides.
-// Paste a flat sticker onto a slanted face by shearing its columns (keeps the pixel lettering crisp).
-function shearOn(p, src, x, y, slope) {
-  for (let cx = 0; cx < src.w; cx++) p.g.drawImage(src.c, cx, 0, 1, src.h, x + cx, y + Math.round(cx * slope), 1, src.h);
-}
-
-// Tina's Soaker 2500, held at her right hip and pointing straight ahead, seen from just above and
-// behind: a long lime barrel, an orange pump she works with her left hand, a gold pressure chamber
-// bulging out underneath, and a see-through reservoir on top whose water drops as she sprays.
-// Three layers so the pump can slide between the gun and the tank: base, pump, tank.
-const SOAK = { w: 190, h: 130, a: { x: 44, y: 10 }, b: { x: 96, y: 98 }, far: 0.36, scale: 1.45, levels: 8 };
-
-function soakerRig() {
-  return new Rig(SOAK.w, SOAK.h, SOAK.a, SOAK.b, SOAK.far, { scale: SOAK.scale });
-}
-
-function soakerDecal() {
-  const d = new Pix(29, 14);
-  d.rect(0, 0, 29, 14, PAL.purple).rect(1, 1, 27, 12, PAL.grape);
-  micro(d, 'SOAKER', 3, 2, PAL.gold);
-  micro(d, '2500', 7, 8, PAL.white);
-  return d;
-}
-
-function soakerBase(L, hi) {
-  const R = soakerRig();
-  const lime = ramp(PAL.lime);
-  const org = ramp(PAL.tangerine);
-  const grape = ramp(PAL.grape);
-  // Lowest first: the pressure chamber peeks out on the left, then the pump rod, barrel and body.
-  R.tube(0.34, 0.86, -16, 19, 21, ramp(PAL.gold), { x: -14, round: true, stripe: (t) => (t < 0.05 || (t > 0.47 && t < 0.52) ? grape : null) });
-  R.tube(0.08, 0.5, -9, 3, 3.5, ramp(PAL.steel), { shade: 'chrome' });
-  R.tube(0.02, 0.62, 0, 10, 12, lime, { round: true, stripe: (t) => ((t > 0.1 && t < 0.14) || (t > 0.84 && t < 0.88) ? grape : null) });
-  R.tube(0, 0.06, 0, 11, 12, org, { round: true, cap: 0.3 });
-  R.tube(0.06, 0.085, 0, 13, 13, grape);
-  R.box(0.46, 1.25, -2, 25, 28, lime, { shade: 'top', stripe: (t, v) => (v > 0.62 && v < 0.8 ? grape : v > -0.84 && v < -0.76 ? org : null) });
-  const p = R.render();
-  // Pressure gauge on the side of the chamber, trigger guard edge, and her right hand on the grip.
-  const g = R.at(0.62, -10, -34);
-  p.oval(Math.round(g.x), Math.round(g.y), 5, 4, PAL.steelDark).oval(Math.round(g.x), Math.round(g.y), 4, 3, PAL.cream);
-  p.line(g.x, g.y, g.x + 3, g.y - 2, PAL.red).px(Math.round(g.x), Math.round(g.y), PAL.ink);
-  const h = R.at(0.9, -6, 30);
-  arm(p, { x: h.x + 4, y: h.y + 10 }, { x: 34, y: 60 }, L, hi);
-  fist(p, Math.round(h.x - 10), Math.round(h.y - 6), L, hi, false, true);
-  p.outline(PAL.ink);
-  return p;
-}
-
-// The reservoir on top, baked once per water level. Water fills it from the bottom of the screen up.
-function soakerTank(f) {
-  const R = soakerRig();
-  const grape = ramp(PAL.grape);
-  const water = ramp('#3a8ae8');
-  const air = ramp('#a8dcf4');
-  const top = R.at(0.56, 32, 14).y - 12;
-  const bot = R.at(1, 8, 14).y;
-  const line = top + (1 - f) * (bot - top);
-  R.box(0.62, 0.95, 8, 6, 7, grape, { shade: 'top', x: 10 });
-  R.tube(0.56, 1.02, 20, 12, 13, air, {
-    shade: 'glass', round: true, cap: 0.5, x: 14,
-    stripe: (t, v, key, x, y) => ((t > 0.12 && t < 0.18) || (t > 0.78 && t < 0.84) ? grape : y > line ? (y < line + 1.5 && f < 0.98 ? '#dff4ff' : water) : null),
-  });
-  const p = R.render();
-  const dc = R.at(0.8, 20, 14);
-  p.draw(soakerDecal(), Math.round(dc.x - 14), Math.round(dc.y - 7));
-  p.outline(PAL.ink);
-  return p;
-}
-
-// The pump grip and her left hand. It is wider than the barrel, so it shows on both sides.
-function soakerPump(L, hi) {
-  const R = soakerRig();
-  const org = ramp(PAL.tangerine);
-  const ribs = ramp(PAL.tangerineDark);
-  R.tube(0.2, 0.38, -5, 12.5, 14, org, { round: true, cap: 0.3, stripe: (t) => (t > 0.08 && t < 0.92 && Math.floor(t * 18) % 3 === 0 ? ribs : null) });
-  const p = R.render();
-  const h = R.at(0.33, -4, -16);
-  arm(p, { x: h.x - 2, y: h.y + 10 }, { x: -46, y: 80 }, L, hi);
-  fist(p, Math.round(h.x - 10), Math.round(h.y - 6), L, hi, true, true);
-  p.outline(PAL.ink);
-  return p;
-}
-
-function soaker(L, hi) {
-  const tanks = [];
-  return {
-    base: soakerBase(L, hi),
-    pump: soakerPump(L, hi),
-    rig: soakerRig(),
-    tank: (f) => {
-      const i = Math.max(0, Math.min(SOAK.levels, Math.round(f * SOAK.levels)));
-      return (tanks[i] ||= soakerTank(i / SOAK.levels));
-    },
-  };
 }
 
 // Marcus's yo-yos, turned a little toward you so you see the rim, the gap between the halves, the
@@ -344,8 +231,6 @@ function floppyStack(L, hi) {
   return p;
 }
 
-// Gus's firework mortar: a striped cardboard tube held at an angle on a black grip, a bottle rocket
-// poking out of the end when it is loaded.
 // Gus's firework mortar, held out in front like a bazooka: a striped cardboard tube pointing straight
 // ahead, a bottle rocket's nose poking out when it is loaded, a fuse curling off the top.
 const TUBE = { w: 170, h: 130, a: { x: 40, y: 12 }, b: { x: 90, y: 100 }, far: 0.36, scale: 1.4 };
@@ -384,47 +269,20 @@ function launcher(L, hi) {
   return { loaded: make(true), empty: make(false) };
 }
 
-// Gus steers the pogo stick and Kev the scooter with their free hand: a handlebar across
-// the lower screen, the stem dropping out of view, the grip in their fist.
-function handlebar(L, hi, grip, ribbed) {
-  const p = new Pix(150, 80);
-  const r = ramp(grip);
-  // Stem and clamp.
-  for (let x = 128; x < 140; x++) p.rect(x, 24, 1, 56, x < 130 ? PAL.steelDark : x < 132 ? PAL.steelLight : x < 137 ? PAL.steel : PAL.steelDark);
-  p.rect(126, 22, 16, 8, '#2a2a30').rect(126, 22, 16, 1, '#5a5a66').rect(127, 25, 2, 2, PAL.steel);
-  // The bar, rising slightly toward the stem.
-  for (let k = 0; k < 6; k++) p.line(22, 30 + k, 134, 22 + k, k < 1 ? PAL.steelLight : k < 2 ? PAL.white : k < 4 ? PAL.steel : PAL.steelDark);
-  // Grip under the fist, with an end cap poking out.
-  for (let y = 22; y < 37; y++) cyl(p, 20, y, 28, r);
-  if (ribbed) for (let y = 23; y < 37; y += 3) p.rect(7, y, 26, 1, r.deep);
-  else for (let x = 8; x < 33; x += 3) p.rect(x, 22, 1, 15, r.dark);
-  p.rect(5, 22, 3, 15, '#2a2a30').px(5, 22, '#5a5a66');
-  fist(p, 10, 20, L, hi, true);
-  p.outline(PAL.ink);
-  return p;
-}
-
-// Kev's laser pointer, gripped in his fist and aimed straight ahead: a chrome pen with a knurled grip,
-// a pocket clip and the red button under his thumb.
-const PEN = { w: 140, h: 120, a: { x: 36, y: 10 }, b: { x: 80, y: 96 }, far: 0.36, scale: 1.4 };
-
-function laserPen(L, hi) {
-  const R = new Rig(PEN.w, PEN.h, PEN.a, PEN.b, PEN.far, { scale: PEN.scale });
-  const chrome = ramp(PAL.steel);
-  const knurl = ramp(PAL.steelDark);
-  R.tube(-0.03, 0.06, 0, 8, 8.5, ramp('#2a2a34'), { round: true, cap: 0.3 });
-  R.tube(0.05, 1.2, 0, 8.5, 11, chrome, {
-    shade: 'chrome',
-    stripe: (t) => (t > 0.55 && t < 0.95 && Math.floor(t * 50) % 2 === 0 ? knurl : t > 0.08 && t < 0.11 ? ramp(PAL.lime) : null),
-  });
-  R.box(0.18, 0.5, 9, 2.4, 2.8, chrome, { shade: 'chrome', x: -7 });
-  R.tube(0.36, 0.44, 10, 3.5, 3.5, ramp(PAL.strawberry), { round: true });
-  const p = R.render();
-  const h = R.at(0.74, 0, 2);
-  arm(p, { x: h.x + 2, y: h.y + 10 }, { x: 20, y: 70 }, L, hi);
-  fist(p, Math.round(h.x - 10), Math.round(h.y - 7), L, hi, false, true);
-  p.outline(PAL.ink);
-  return p;
+export function weaponBob(P) {
+  const M = P.hero.move;
+  const sp = Math.min(1, P.speed / 4);
+  let bx = Math.sin(P.stride * 2.2) * 5 * sp;
+  let by = Math.abs(Math.cos(P.stride * 2.2)) * 4 * sp;
+  if (M.type === 'skate' || M.type === 'board') {
+    bx = Math.sin(P.stride * 1.1) * 7 * sp;
+    by = 2 * sp;
+  }
+  if (M.type === 'pogo') by = -P.z * 14 + 6;
+  if (M.type === 'slinky') by += P.charge * 18;
+  if (!P.onGround && M.type !== 'pogo') by -= Math.min(12, P.vz * 2);
+  if (P.dashT > 0) bx -= 10;
+  return { bx, by };
 }
 
 export class WeaponView {
@@ -438,11 +296,11 @@ export class WeaponView {
     const L = LOOKS[heroIdx];
     const fl = heroIdx;
     let a;
-    if (kind === 'soaker') a = soaker(L, fl);
+    if (kind === 'soaker') a = {};
     if (kind === 'yoyo') a = { l: yoyoHand(L, fl, true, PAL.pink, PAL.strawberryDark), r: yoyoHand(L, fl, false, PAL.cyan, PAL.cyanDark) };
     if (kind === 'floppy') a = { r: floppyHand(L, fl), l: floppyStack(L, fl) };
-    if (kind === 'rocket') a = { tube: launcher(L, fl), grip: handlebar(L, fl, PAL.strawberry, true) };
-    if (kind === 'laser') a = { pen: laserPen(L, fl), bar: handlebar(L, fl, PAL.lime, false) };
+    if (kind === 'rocket') a = { tube: launcher(L, fl) };
+    if (kind === 'laser') a = {};
     this.cache[key] = a;
     return a;
   }
@@ -450,45 +308,18 @@ export class WeaponView {
   draw(g, sim, heroIdx, t) {
     const P = sim.player;
     const G = sim.hero.gun;
-    const M = sim.hero.move;
     const a = this.art(heroIdx, G.kind);
-    // Bob with the ride: skates sway, the pogo bounces, the slinky squashes.
-    const sp = Math.min(1, P.speed / 4);
-    let bx = Math.sin(P.stride * 2.2) * 5 * sp;
-    let by = Math.abs(Math.cos(P.stride * 2.2)) * 4 * sp;
-    if (M.type === 'skate' || M.type === 'board') {
-      bx = Math.sin(P.stride * 1.1) * 7 * sp;
-      by = 2 * sp;
-    }
-    if (M.type === 'pogo') by = -P.z * 14 + 6;
-    if (M.type === 'slinky') by += P.charge * 18;
-    if (!P.onGround && M.type !== 'pogo') by -= Math.min(12, P.vz * 2);
-    if (P.dashT > 0) bx -= 10;
+    const { bx, by } = weaponBob(P);
     const kick = P.fireAnim > 0 ? 3 : 0;
     const base = H - 16;
     const d = (p, x, y) => g.drawImage(p.c || p, Math.round(x + bx), Math.round(y + by));
 
     if (G.kind === 'soaker') {
-      // Refilling pressure: she works the pump back and forth until the tank is full again.
-      const pumping = P.pumpT <= 0 && P.tank < G.tank - 0.5 && !P.down;
-      const dt = Math.min(0.1, Math.max(0, t - (this.lastT ?? t)));
-      this.lastT = t;
-      this.pumpPh = pumping ? (this.pumpPh || 0) + dt * 7 : 0;
-      const stroke = pumping ? 0.5 - 0.5 * Math.cos(this.pumpPh) : 0;
-      const half = Math.floor(this.pumpPh / Math.PI);
-      if (pumping && half !== this.pumpHalf && sim.isLocal(P)) sfx.pump(half % 2 === 0);
-      this.pumpHalf = half;
-      const rk = a.rig.slide(kick * 0.01);
-      const x = MUZZLE.soaker.x - SOAK.a.x + rk.x;
-      const y = MUZZLE.soaker.y - SOAK.a.y + rk.y + (pumping ? stroke : 0);
-      d(a.base, x, y);
-      const ps = a.rig.slide(stroke * 0.14);
-      d(a.pump, x + ps.x, y + ps.y);
-      d(a.tank(P.tank / G.tank), x, y);
+      // The gun itself is 3D (gfx/viewmodel.js); spray sparkles at the nozzle.
       if (P.fireAnim > 0) {
         for (let i = 0; i < 5; i++) {
           g.fillStyle = i % 2 ? '#8fd8ff' : '#ffffff';
-          g.fillRect(Math.round(x + SOAK.a.x - 1 + (Math.random() - 0.5) * 5 + bx), Math.round(y + SOAK.a.y - 2 - Math.random() * 5 + by), 2, 2);
+          g.fillRect(Math.round(MUZZLE.soaker.x - 1 + (Math.random() - 0.5) * 5 + bx), Math.round(MUZZLE.soaker.y - 2 - Math.random() * 5 + by), 2, 2);
         }
       }
     } else if (G.kind === 'yoyo') {
@@ -508,7 +339,6 @@ export class WeaponView {
       const tube = loaded ? a.tube.loaded : a.tube.empty;
       const tx = MUZZLE.rocket.x - TUBE.a.x;
       const ty = MUZZLE.rocket.y - TUBE.a.y + kick * 2;
-      d(a.grip, 20, base - 62);
       d(tube, tx, ty);
       if (P.fireAnim > 0.1) {
         const fx = Math.round(MUZZLE.rocket.x + bx);
@@ -522,20 +352,8 @@ export class WeaponView {
         g.fillStyle = PAL.cream;
         g.fillRect(fx - 3, fy - 2, 6, 4);
       }
-    } else if (G.kind === 'laser') {
-      d(a.bar, 20, base - 60);
-      d(a.pen, MUZZLE.laser.x - PEN.a.x, MUZZLE.laser.y - PEN.a.y + kick);
-      if (sim.laser) {
-        const lx = Math.round(MUZZLE.laser.x - 2 + bx);
-        const ly = Math.round(MUZZLE.laser.y - 3 + kick + by);
-        g.fillStyle = '#ff3b3b88';
-        g.fillRect(lx - 2, ly - 2, 9, 9);
-        g.fillStyle = PAL.red;
-        g.fillRect(lx, ly, 5, 5);
-        g.fillStyle = PAL.white;
-        g.fillRect(lx + 1, ly + 1, 2, 2);
-      }
     }
+    // Kev's pointer and both handlebars are 3D (gfx/viewmodel.js).
     return { bx, by };
   }
 }

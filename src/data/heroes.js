@@ -7,7 +7,7 @@ export const HEROES = [
     name: 'TINA',
     nick: 'Turbo',
     ride: 'Rollerblades',
-    weapon: 'Soaker 2000',
+    weapon: 'Soaker 2500',
     blurb: 'Glides on momentum, hard to catch and hard to stop. Hold fire to hose zombies back. Water fries Corrupted zombies.',
     controls: 'SPACE hop',
     stats: { speed: 5, power: 2, range: 3 },

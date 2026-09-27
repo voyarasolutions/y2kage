@@ -134,6 +134,11 @@ export const sfx = {
       noise(0.35, 2000, 0.5, 0.2);
     } else if (weapon === 'laser') tone(1400 + Math.random() * 300, 0.06, 'square', 0.03);
   },
+  // The Soaker's pump: a plastic slide and a hiss of air on each stroke.
+  pump(back) {
+    noise(0.07, back ? 900 : 1300, 1.4, 0.09);
+    if (back) noise(0.12, 5200, 0.6, 0.03, 'highpass', 0.04);
+  },
   splash() {
     noise(0.08, 2600, 1, 0.07);
   },

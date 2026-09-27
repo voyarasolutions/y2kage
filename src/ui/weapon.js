@@ -1,21 +1,23 @@
 // First-person weapons, drawn as pixel-art sprites over the 3D view the way the 16-bit shooters did.
 // Each hero's hands wear their iMac colour.
 import { Pix, micro } from '../gfx/pix.js';
-import { yoyoPix } from '../gfx/sprites.js';
+import { Rig, texture, skew } from '../gfx/model.js';
+import { sfx } from '../audio/sfx.js';
 import { LOOKS, ramp } from '../gfx/heroart.js';
 import { PAL, FLAVOURS } from '../core/palette.js';
 import { W, H } from '../core/util.js';
 
 // A fist seen from behind, knuckles up, three-tone shaded, in the hero's own sleeve.
 // L is the hero look from heroart.js; i picks the sleeve style.
-function fist(p, x, y, L, i, flip = false) {
+function fist(p, x, y, L, i, flip = false, noArm = false) {
   const s = L.skin;
   const t = L.top;
   const side = (a, w) => (flip ? x + 20 - a - w : x + a);
-  // Forearm and sleeve down to the bottom of the sprite.
-  const armTop = y + 13;
+  // Forearm and sleeve down to the bottom of the sprite (angled weapons draw their own with arm()).
+  const armTop = noArm ? p.h : y + 13;
   const armH = p.h - armTop;
   const sleeveTop = i === 1 ? p.h : i === 3 ? armTop + 9 : armTop + 2;
+  if (!noArm) {
   p.rect(x - 1, armTop, 22, armH, s.base);
   p.rect(side(0, 3), armTop, 3, armH, s.light);
   p.rect(side(16, 5), armTop, 5, armH, s.dark);
@@ -58,6 +60,7 @@ function fist(p, x, y, L, i, flip = false) {
       p.rect(sx, sleeveTop, w, 3, '#20202a');
     }
   }
+  }
   // Back of the hand.
   p.oval(x + 10, y + 9, 11, 7, s.base);
   p.oval(flip ? x + 13 : x + 7, y + 8, 6, 4, s.light);
@@ -87,6 +90,29 @@ function fist(p, x, y, L, i, flip = false) {
   p.rect(flip ? tx + 1 : tx, y + 4, 2, 2, s.hi);
 }
 
+// A forearm reaching in at an angle, from the wrist at w toward the edge of the screen along dir,
+// in the hero's own sleeve. Drawn before the fist, which then sits on the wrist.
+function arm(p, w, dir, L, i) {
+  const R = new Rig(p.w, p.h, w, { x: w.x + dir.x, y: w.y + dir.y }, 0.82);
+  const t = L.top;
+  const sk = L.skin;
+  const white = ramp('#f4f4f4');
+  const dark = ramp('#20202a');
+  let sleeve = t;
+  let stripe = null;
+  if (i === 0) stripe = (q, v) => (q < 0.08 ? dark : q < 0.16 ? ramp(PAL.pink) : q < 0.19 ? white : null);
+  if (i === 1) {
+    sleeve = sk;
+    stripe = (q) => (q < 0.13 ? (q > 0.03 && q < 0.05) || (q > 0.09 && q < 0.11) ? ramp(PAL.tangerine) : white : null);
+  }
+  if (i === 2) stripe = (q, v) => (q < 0.1 && Math.floor((v + 1) * 6) % 2 ? ramp(t.light) : null);
+  if (i === 3) stripe = (q, v) => (q < 0.07 ? ramp(t.light) : Math.floor(q * 22) % 4 === 0 || Math.floor((v + 1) * 5) % 3 === 0 ? ramp(t.dark) : null);
+  if (i === 4) stripe = (q, v) => (q < 0.07 ? dark : v > 0.2 && v < 0.34 || v > 0.46 && v < 0.6 ? white : null);
+  R.tube(-0.05, 0.14, 0, 8, 9, sk);
+  R.tube(0.1, 1.3, 0, 11, 14, sleeve, { stripe, noEdge: true });
+  R.render(p);
+}
+
 // One row of a cylinder seen from behind: highlight stripe left of centre, falloff to the right.
 function cyl(p, cx, y, w, r) {
   const x0 = cx - Math.floor(w / 2);
@@ -102,132 +128,259 @@ function screw(p, x, y) {
   p.px(x, y, PAL.steelLight).px(x + 1, y, PAL.steel).px(x, y + 1, PAL.steel).px(x + 1, y + 1, PAL.steelDark);
 }
 
-function soaker(L, hi) {
-  const p = new Pix(110, 96);
-  const cx = 55;
+// Tina's Soaker 2500, seen from over her shoulder: a long lime barrel with an orange pump slung
+// underneath, a fat pressure chamber, and a see-through reservoir on top whose water drops as she sprays.
+// The body is baked once per water level; the pump and her left hand are a separate sprite that slides.
+const SOAK = { w: 196, h: 150, a: { x: 20, y: 28 }, b: { x: 158, y: 116 }, far: 0.6, levels: 8, at: { x: 10, y: 0 } };
+
+const SOAK_SLOPE = (SOAK.b.y - SOAK.a.y) / (SOAK.b.x - SOAK.a.x);
+
+function soakerRig() {
+  return new Rig(SOAK.w, SOAK.h, SOAK.a, SOAK.b, SOAK.far);
+}
+
+// Paste a flat sticker onto a slanted face by shearing its columns (keeps the pixel lettering crisp).
+function shearOn(p, src, x, y, slope) {
+  for (let cx = 0; cx < src.w; cx++) p.g.drawImage(src.c, cx, 0, 1, src.h, x + cx, y + Math.round(cx * slope), 1, src.h);
+}
+
+function soakerDecal() {
+  const d = new Pix(29, 14);
+  d.rect(0, 0, 29, 14, PAL.purple).rect(1, 1, 27, 12, PAL.grape);
+  micro(d, 'SOAKER', 3, 2, PAL.gold);
+  micro(d, '2500', 7, 8, PAL.white);
+  d.px(0, 0, 'rgba(0,0,0,0)').px(28, 0, 'rgba(0,0,0,0)');
+  return d;
+}
+
+function soakerBody(L, hi, f) {
+  const R = soakerRig();
   const lime = ramp(PAL.lime);
   const org = ramp(PAL.tangerine);
-  // Barrel narrowing to the nozzle.
-  for (let y = 4; y < 30; y++) cyl(p, cx, y, 10 + Math.floor((y - 4) / 8), lime);
-  for (let y = 0; y < 7; y++) cyl(p, cx, y, 13, org);
-  p.oval(cx, 2, 3, 1, PAL.ink).px(cx - 1, 1, '#4ab8ff');
-  p.rect(cx - 6, 7, 13, 1, org.deep);
-  // Pressure tank: a fat orange capsule with a see-through window.
-  p.oval(cx, 34, 25, 13, org.deep);
-  p.oval(cx - 1, 33, 23, 11, org.base);
-  p.oval(cx + 6, 36, 16, 8, org.dark);
-  p.oval(cx - 3, 32, 18, 8, org.base);
-  p.oval(cx - 10, 27, 8, 3, org.light).rect(cx - 14, 26, 5, 1, org.hi);
-  p.rect(cx - 13, 29, 26, 10, org.deep);
-  p.rect(cx - 12, 30, 24, 8, '#1a2840');
-  p.rect(cx - 12, 30, 24, 1, '#304870');
-  screw(p, cx - 20, 32);
-  screw(p, cx + 18, 32);
-  // Body: widening down, cylinder shaded, with orange side rails.
-  for (let i = 0; i < 40; i++) cyl(p, cx, 46 + i, 44 + Math.floor(i * 0.6), lime);
-  for (let i = 0; i < 40; i++) {
-    const w = 44 + Math.floor(i * 0.6);
-    const x0 = cx - Math.floor(w / 2);
-    p.rect(x0 + 1, 46 + i, 3, 1, org.base).rect(x0 + w - 4, 46 + i, 3, 1, org.dark);
+  const grape = ramp(PAL.grape);
+  const gold = ramp(PAL.gold);
+  const water = ramp('#3a8ae8');
+  const air = ramp('#a8dcf4');
+  // Back to front: chamber under everything, then the barrel, body, grip and the tank on top.
+  R.tube(0.36, 0.74, 26, 18, 19, gold, { round: true, stripe: (t) => (t < 0.06 || t > 0.94 || (t > 0.46 && t < 0.52) ? grape : null) });
+  R.disc(0.79, 26, 12, PAL.cream, { flat: 0.3, face: (t, v) => (t > 0.8 ? 'dark' : null) });
+  R.tube(0.06, 0.5, 12, 3, 3.5, ramp(PAL.steel), { shade: 'chrome' });
+  R.tube(0.02, 0.6, 0, 8.5, 10, lime, { round: true, stripe: (t) => ((t > 0.1 && t < 0.13) || (t > 0.86 && t < 0.9) ? grape : null) });
+  R.tube(0, 0.07, 0, 10, 10.5, org, { round: true, cap: 0.3 });
+  R.tube(0.07, 0.09, 0, 11.5, 11.5, grape);
+  R.box(0.48, 1.15, 5, 21, 23, lime, {
+    stripe: (t, v) => (v > 0.64 && v < 0.8 ? grape : v > -0.22 && v < -0.15 ? org : null),
+  });
+  R.box(0.8, 0.94, 42, 13, 14, ramp('#5aa032'));
+  R.box(0.6, 0.94, -17, 6, 7, grape);
+  // Reservoir: water fills from the underside; straps and a screw cap in grape.
+  const lvl = 1 - 2 * f;
+  R.tube(0.5, 0.98, -32, 16, 17, air, {
+    shade: 'glass', round: true, cap: 0.35,
+    stripe: (t, v) => ((t > 0.1 && t < 0.17) || (t > 0.8 && t < 0.87) ? grape : v > lvl ? (Math.abs(v - lvl) < 0.08 && f < 0.98 ? '#dff4ff' : water) : null),
+  });
+  R.disc(1.005, -32, 11, grape, { flat: 0.35, face: (t, v) => (t < 0.35 ? (v < 0 ? 'hi' : 'light') : null) });
+  const p = R.render();
+  const dc = R.at(0.63, 8);
+  shearOn(p, soakerDecal(), Math.round(dc.x - 14), Math.round(dc.y - 16), SOAK_SLOPE);
+  // Pressure gauge on the chamber's end: the needle reads the tank.
+  const g = R.at(0.79, 26);
+  const na = Math.PI * (0.85 + 1.3 * f);
+  p.line(g.x, g.y, g.x + Math.cos(na) * 6, g.y + Math.sin(na) * 5, PAL.red);
+  p.px(Math.round(g.x), Math.round(g.y), PAL.ink);
+  // Trigger and her right hand on the grip.
+  const tg = R.at(0.8, 32);
+  p.rect(tg.x - 7, tg.y, 3, 6, PAL.ink).rect(tg.x - 6, tg.y + 1, 1, 4, org.base);
+  const hnd = R.at(0.86, 46);
+  arm(p, { x: hnd.x, y: hnd.y + 8 }, { x: 26, y: 70 }, L, hi);
+  fist(p, Math.round(hnd.x - 10), Math.round(hnd.y - 6), L, hi, false, true);
+  p.outline(PAL.ink);
+  return p;
+}
+
+// The pump grip and her left hand, drawn in the same frame as the body so it can slide along the barrel.
+function soakerPump(L, hi) {
+  const R = soakerRig();
+  const org = ramp(PAL.tangerine);
+  const ribs = ramp(PAL.tangerineDark);
+  R.tube(0.17, 0.36, 12, 11, 12, org, { round: true, cap: 0.3, stripe: (t) => (t > 0.08 && t < 0.92 && Math.floor(t * 18) % 3 === 0 ? ribs : null) });
+  const p = R.render();
+  // Her hand wraps the grip: fingers over the top, the arm dropping away to the bottom of the screen.
+  const h = R.at(0.27, 8);
+  arm(p, { x: h.x, y: h.y + 10 }, { x: -34, y: 80 }, L, hi);
+  fist(p, Math.round(h.x - 10), Math.round(h.y - 4), L, hi, true, true);
+  p.outline(PAL.ink);
+  return p;
+}
+
+function soaker(L, hi) {
+  const levels = [];
+  return {
+    pump: soakerPump(L, hi),
+    rig: soakerRig(),
+    body: (f) => {
+      const i = Math.max(0, Math.min(SOAK.levels, Math.round(f * SOAK.levels)));
+      return (levels[i] ||= soakerBody(L, hi, i / SOAK.levels));
+    },
+  };
+}
+
+// Marcus's yo-yos, turned a little toward you so you see the rim, the gap between the halves, the
+// shiny hub and a sticker that spins. Four frames of spin.
+function yoyoArt(col, rim, f) {
+  const p = new Pix(38, 40);
+  const c = ramp(col);
+  const cx = 17;
+  const cy = 19;
+  // Back half and the gap.
+  p.oval(cx + 5, cy, 13, 17, c.deep).oval(cx + 4, cy, 13, 17, c.dark);
+  p.oval(cx + 3, cy, 12, 16, '#1a1030');
+  // Front half: rim, dished face, inner ring, chrome hub.
+  p.oval(cx, cy, 13, 17, rim);
+  p.oval(cx - 1, cy, 12, 16, c.base);
+  p.oval(cx - 2, cy - 1, 10, 13, c.light);
+  p.oval(cx - 1, cy, 9, 12, c.base);
+  p.oval(cx - 1, cy, 7, 9, c.dark);
+  p.oval(cx - 1, cy, 6, 8, c.base);
+  // Sticker: a four-point star that turns with the spin.
+  const ang = (f / 4) * Math.PI * 0.5;
+  for (let k = 0; k < 4; k++) {
+    const a = ang + (k * Math.PI) / 2;
+    for (let r = 1; r < 7; r++) p.px(Math.round(cx - 1 + Math.cos(a) * r * 0.75), Math.round(cy + Math.sin(a) * r), k % 2 ? PAL.gold : PAL.white);
   }
-  p.rect(cx - 22, 46, 44, 1, lime.hi);
-  // Decal plate and pressure gauge.
-  p.rect(cx - 15, 51, 30, 14, lime.deep).rect(cx - 14, 52, 28, 12, '#20304a');
-  micro(p, 'SOAKER', cx - 12, 53, PAL.tangerine);
-  micro(p, '2000', cx - 8, 59, PAL.gold);
-  p.oval(cx + 21, 57, 4, 4, PAL.steelDark).oval(cx + 21, 57, 3, 3, PAL.cream);
-  p.line(cx + 21, 57, cx + 23, 55, PAL.red).px(cx + 20, 55, PAL.ink).px(cx + 19, 57, PAL.ink);
-  p.rect(cx - 20, 68, 40, 2, lime.deep);
-  // Ribbed pump grip.
-  for (let y = 72; y < 84; y++) cyl(p, cx, y, 26, org);
-  for (let y = 73; y < 84; y += 3) p.rect(cx - 12, y, 25, 1, org.deep);
-  fist(p, cx - 10, 70, L, hi);
+  p.oval(cx - 1, cy, 2, 3, PAL.steel).px(cx - 2, cy - 1, PAL.white).px(cx, cy + 2, PAL.steelDark);
+  // Gloss along the upper-left of the rim.
+  p.px(cx - 9, cy - 9, PAL.white).px(cx - 8, cy - 11, PAL.white).px(cx - 10, cy - 7, PAL.white).px(cx - 11, cy - 4, c.hi).px(cx - 6, cy - 13, c.hi).px(cx - 11, cy - 2, c.hi);
   p.outline(PAL.ink);
   return p;
 }
 
 function yoyoHand(L, hi, flip, col, rim) {
-  const p = new Pix(40, 60);
-  fist(p, 9, 24, L, hi, flip);
+  const p = new Pix(44, 80);
+  fist(p, 11, 40, L, hi, flip);
   p.outline(PAL.ink);
-  const yo = new Pix(40, 60);
-  yo.draw(p, 0, 0);
-  const y1 = yoyoPix(col, rim, 0);
-  yo.draw(y1, 12, 10, 16, 16);
-  yo.px(20, 25, PAL.cream).px(20, 26, PAL.cream);
-  return { empty: p, full: yo };
+  const frames = [0, 1, 2, 3].map((f) => {
+    const yo = new Pix(44, 70);
+    yo.draw(p, 0, 0);
+    yo.draw(yoyoArt(col, rim, f), 5, 2);
+    // String looped over the middle finger, running up to the axle.
+    yo.rect(21, 22, 1, 19, PAL.cream).px(22, 40, PAL.cream).px(20, 41, PAL.cream);
+    return yo;
+  });
+  return { empty: p, frames };
 }
 
-function disk(p, x, y, s, col) {
+// Dot's floppies: a real 3.5" disk, drawn flat once and then tilted into her hand.
+function floppyTex(col, label, k) {
   const r = ramp(col);
-  p.rect(x, y, 14 * s, 14 * s, r.base);
-  p.rect(x, y, 14 * s, s, r.light).rect(x, y, s, 14 * s, r.light);
-  p.rect(x + 13 * s, y, s, 14 * s, r.dark).rect(x, y + 13 * s, 14 * s, s, r.dark);
-  // Sliding metal shutter.
-  p.rect(x + 3 * s, y, 8 * s, 5 * s, PAL.steelLight).rect(x + 3 * s, y + 4 * s, 8 * s, s, PAL.steel);
-  p.rect(x + 7 * s, y + s, 2 * s, 3 * s, PAL.steelDark);
-  // Label.
-  p.rect(x + 2 * s, y + 7 * s, 10 * s, 6 * s, PAL.cream);
-  p.rect(x + 2 * s, y + 7 * s, 10 * s, s, PAL.strawberry);
-  p.rect(x + 3 * s, y + 9 * s, 7 * s, s, '#8a8aa0').rect(x + 3 * s, y + 11 * s, 5 * s, s, '#8a8aa0');
-  p.px(x + s, y + 12 * s, PAL.ink);
+  const p = new Pix(32, 32);
+  p.rect(0, 0, 32, 32, r.base);
+  p.rect(0, 0, 32, 1, r.light).rect(0, 0, 1, 32, r.light).rect(31, 0, 1, 32, r.dark).rect(0, 31, 32, 1, r.dark);
+  // Chamfered corner, write-protect hole and the HD hole.
+  p.clear(30, 0, 2, 1).clear(31, 1, 1, 1);
+  p.rect(2, 26, 3, 3, '#1a1030').rect(27, 26, 3, 3, '#1a1030').rect(27, 26, 2, 1, r.light);
+  // Sliding metal shutter with the window onto the brown disk.
+  p.rect(8, 0, 16, 12, PAL.steel).rect(8, 0, 16, 1, PAL.steelLight).rect(8, 11, 16, 1, PAL.steelDark).rect(23, 0, 1, 12, PAL.steelDark);
+  p.rect(17, 2, 4, 8, '#1a1030').rect(18, 3, 2, 6, '#6a3a1a');
+  p.rect(10, 2, 2, 1, PAL.white);
+  // Label with a coloured strip and handwriting.
+  p.rect(4, 14, 24, 17, PAL.cream).rect(4, 14, 24, 2, PAL.strawberry).rect(4, 30, 24, 1, '#d8ccb0');
+  micro(p, label, 6, 18, '#2a2a6a');
+  p.rect(6, 25, 10 + k * 3, 1, '#8a8aa0').rect(6, 27, 7 + k * 2, 1, '#8a8aa0');
+  p.px(2, 2, PAL.ink).px(3, 3, PAL.ink).px(2, 3, PAL.ink);
+  return texture(p);
 }
+
+// Lay a disk down with its edge showing: the dark side first, then the face on top.
+function tilted(p, tex, o, ux, vx, depth) {
+  const side = { w: tex.w, h: tex.h, d: new Uint8ClampedArray(tex.d.length) };
+  for (let i = 0; i < tex.d.length; i += 4) {
+    side.d[i] = 42;
+    side.d[i + 1] = 30;
+    side.d[i + 2] = 64;
+    side.d[i + 3] = tex.d[i + 3];
+  }
+  for (let k = depth; k > 0; k--) skew(p, side, { x: o.x + k * 0.6, y: o.y + k }, ux, vx);
+  skew(p, tex, o, ux, vx);
+}
+
+const DISKS = [
+  [PAL.bondi, 'DOOM II'],
+  [FLAVOURS[1].base, 'Y2K FIX'],
+  [FLAVOURS[2].base, 'MIXTAPE'],
+  [FLAVOURS[3].base, 'BACKUP'],
+  [FLAVOURS[4].base, 'GAMES'],
+];
 
 function floppyHand(L, hi) {
-  const p = new Pix(64, 70);
-  disk(p, 17, 4, 2, PAL.bondi);
-  fist(p, 14, 26, L, hi);
-  p.outline(PAL.ink);
-  const e = new Pix(64, 70);
-  fist(e, 14, 26, L, hi);
+  const e = new Pix(96, 110);
+  const w = { x: 50, y: 58 };
+  arm(e, w, { x: 30, y: 70 }, L, hi);
+  fist(e, w.x - 10, w.y - 14, L, hi, false, true);
   e.outline(PAL.ink);
+  const p = new Pix(96, 110);
+  const [col, label] = DISKS[0];
+  tilted(p, floppyTex(col, label, 1), { x: 22, y: 14 }, { x: 34, y: -9 }, { x: 11, y: 34 }, 2);
+  p.outline(PAL.ink);
+  p.draw(e, 0, 0);
   return { full: p, empty: e };
 }
 
 function floppyStack(L, hi) {
-  const p = new Pix(56, 60);
-  const cols = [PAL.strawberry, PAL.gold, PAL.lime, FLAVOURS[2].base];
-  cols.forEach((c, i) => {
-    const r = ramp(c);
-    const y = 18 - i * 4;
-    p.rect(8, y, 38, 6, r.base).rect(8, y, 38, 1, r.light).rect(8, y + 5, 38, 1, r.deep).rect(40, y, 6, 6, r.dark);
-    p.rect(20, y + 1, 10, 2, PAL.steelLight).px(29, y + 1, PAL.steel);
-    p.rect(33, y + 2, 5, 2, PAL.cream);
-  });
-  fist(p, 12, 22, L, hi, true);
+  const p = new Pix(90, 90);
+  const w = { x: 36, y: 50 };
+  arm(p, w, { x: -24, y: 60 }, L, hi);
+  const stack = new Pix(90, 90);
+  for (let i = 0; i < 4; i++) {
+    const [col, label] = DISKS[i + 1];
+    tilted(stack, floppyTex(col, label, i), { x: 10, y: 34 - i * 4 }, { x: 44, y: -7 }, { x: 16, y: 13 }, 3);
+  }
+  stack.outline(PAL.ink);
+  p.draw(stack, 0, 0);
+  fist(p, w.x - 10, w.y - 12, L, hi, true, true);
   p.outline(PAL.ink);
   return p;
 }
 
+// Gus's firework mortar: a striped cardboard tube held at an angle on a black grip, a bottle rocket
+// poking out of the end when it is loaded.
+const TUBE = { w: 150, h: 150, a: { x: 22, y: 20 }, b: { x: 104, y: 94 }, far: 0.6 };
+
 function launcher(L, hi) {
-  const p = new Pix(80, 100);
-  const cx = 40;
-  const red = ramp(PAL.strawberry);
-  const crm = ramp('#f4ead0');
-  // Firework tube, striped like the packaging, open end toward you.
-  for (let y = 0; y < 70; y++) {
-    const w = 30 + Math.floor(y * 0.25);
-    const stripe = Math.floor((y + 3) / 7) % 2;
-    cyl(p, cx, 10 + y, w, stripe ? red : crm);
-  }
-  // Star stickers and the label.
-  const star = (x, y, c) => p.px(x, y - 1, c).rect(x - 1, y, 3, 1, c).px(x, y + 1, c);
-  star(cx - 8, 24, PAL.gold);
-  star(cx + 6, 55, PAL.cyan);
-  star(cx - 5, 62, PAL.gold);
-  p.rect(cx - 11, 37, 22, 9, PAL.ink).rect(cx - 10, 38, 20, 7, PAL.gold);
-  micro(p, 'BOOM', cx - 8, 39, PAL.strawberryDark);
-  p.oval(cx, 10, 15, 8, '#6a3a1a').oval(cx, 10, 13, 7, '#8a5a2a').oval(cx, 11, 11, 5, PAL.ink);
-  p.rect(cx - 12, 7, 6, 1, '#b08050');
-  fist(p, cx - 10, 66, L, hi);
-  p.outline(PAL.ink);
-  const loaded = new Pix(80, 100);
-  loaded.draw(p, 0, 0);
-  // Rocket tail in the tube: stick and red body.
-  loaded.oval(cx, 9, 7, 4, red.dark).oval(cx - 1, 8, 6, 3, red.base).oval(cx - 2, 7, 2, 1, red.light);
-  loaded.oval(cx, 8, 3, 2, PAL.gold).px(cx, 8, PAL.ink);
-  loaded.rect(cx - 1, 1, 2, 8, PAL.goldDark).px(cx - 1, 1, PAL.gold);
-  return { loaded, empty: p };
+  const make = (loaded) => {
+    const R = new Rig(TUBE.w, TUBE.h, TUBE.a, TUBE.b, TUBE.far);
+    const red = ramp(PAL.strawberry);
+    const crm = ramp('#f4ead0');
+    const card = ramp('#9a6a3a');
+    const gold = ramp(PAL.gold);
+    if (loaded) {
+      R.tube(-0.2, -0.13, 0, 2, 6, gold, { round: true, cap: 0.6 });
+      R.tube(-0.14, 0.02, 0, 6, 6.5, red, { stripe: (t) => (t > 0.45 && t < 0.6 ? ramp(PAL.cream) : null) });
+    }
+    R.tube(0.6, 0.82, 26, 7, 8, ramp('#34343e'), { round: true, stripe: (t) => (Math.floor(t * 12) % 3 === 0 ? ramp('#20202a') : null) });
+    R.tube(0.54, 0.62, 13, 4, 4, ramp(PAL.steel), { shade: 'chrome' });
+    R.tube(0, 1.25, 0, 14, 17, crm, {
+      stripe: (t, v) => {
+        if (t > 0.34 && t < 0.52) return v > -0.5 && v < 0.5 ? gold : ramp(PAL.purple);
+        if ((t > 0.62 && t < 0.64 && Math.abs(v + 0.2) < 0.1) || (t > 0.2 && t < 0.22 && Math.abs(v - 0.3) < 0.1)) return gold;
+        return Math.floor(t * 14) % 2 ? red : null;
+      },
+    });
+    R.tube(0, 0.035, 0, 15, 15, card);
+    // Fuse wick curling off the top.
+    R.tube(0.66, 0.72, -17, 1.4, 1.4, ramp('#3a2a1a'));
+    const p = R.render();
+    const lb = R.at(0.44, -6);
+    const boom = new Pix(21, 7);
+    micro(boom, 'BOOM', 2, 1, PAL.strawberryDark);
+    shearOn(p, boom, Math.round(lb.x - 10), Math.round(lb.y - 8), (TUBE.b.y - TUBE.a.y) / (TUBE.b.x - TUBE.a.x));
+    const h = R.at(0.72, 30);
+    arm(p, { x: h.x + 2, y: h.y + 10 }, { x: 18, y: 70 }, L, hi);
+    fist(p, Math.round(h.x - 10), Math.round(h.y - 4), L, hi, false, true);
+    p.outline(PAL.ink);
+    return p;
+  };
+  return { loaded: make(true), empty: make(false) };
 }
 
 // Gus steers the pogo stick and Kev the scooter with their free hand: a handlebar across
@@ -250,25 +403,24 @@ function handlebar(L, hi, grip, ribbed) {
   return p;
 }
 
+// Kev's laser pointer: a chrome pen with a knurled grip, pocket clip and a red button under his thumb.
+const PEN = { w: 130, h: 130, a: { x: 18, y: 18 }, b: { x: 96, y: 80 }, far: 0.6 };
+
 function laserPen(L, hi) {
-  const p = new Pix(80, 90);
-  // A chrome pen pointing into the screen, drawn in perspective (tip up and to the left).
-  for (let i = 0; i < 48; i++) {
-    const x = 49 - Math.floor(i * 0.62);
-    const y = 60 - i;
-    const w = 9 - Math.floor(i / 10);
-    p.rect(x, y, w, 2, PAL.steel);
-    p.px(x, y, PAL.steelDark);
-    p.px(x + 1, y, PAL.white).px(x + 2, y, PAL.steelLight);
-    p.px(x + w - 1, y, PAL.steelDark).px(x + w - 2, y, i % 2 ? PAL.steel : '#7a8298');
-  }
-  // Pocket clip, grip rings, the red button and the lens housing.
-  p.line(41, 44, 30, 26, PAL.steelLight).line(42, 44, 31, 26, PAL.steelDark);
-  for (let k = 0; k < 3; k++) p.line(44 - k * 3, 54 - k * 5, 51 - k * 3, 54 - k * 5, '#3a3a48');
-  p.rect(37, 40, 3, 5, PAL.strawberry).px(37, 40, PAL.pinkLight);
-  p.rect(18, 9, 6, 5, PAL.steelDark).rect(18, 9, 6, 1, PAL.steelLight).rect(19, 11, 3, 2, '#5a0a10');
-  micro(p, 'KEV', 44, 66, PAL.lime);
-  fist(p, 34, 54, L, hi);
+  const R = new Rig(PEN.w, PEN.h, PEN.a, PEN.b, PEN.far);
+  const chrome = ramp(PAL.steel);
+  const knurl = ramp(PAL.steelDark);
+  R.tube(-0.06, 0.08, 0, 7.5, 8, ramp('#2a2a34'), { round: true, cap: 0.3 });
+  R.tube(0.06, 1.1, 0, 8, 10, chrome, {
+    shade: 'chrome', round: true,
+    stripe: (t) => (t > 0.5 && t < 0.86 && Math.floor(t * 60) % 2 === 0 ? knurl : t > 0.08 && t < 0.11 ? ramp(PAL.lime) : null),
+  });
+  R.box(0.16, 0.5, -11, 2.4, 2.8, chrome, { shade: 'chrome' });
+  R.tube(0.34, 0.41, -8, 3, 3, ramp(PAL.strawberry), { round: true });
+  const p = R.render();
+  const h = R.at(0.72, 8);
+  arm(p, { x: h.x + 2, y: h.y + 10 }, { x: 14, y: 70 }, L, hi);
+  fist(p, Math.round(h.x - 10), Math.round(h.y - 6), L, hi, false, true);
   p.outline(PAL.ink);
   return p;
 }
@@ -284,7 +436,7 @@ export class WeaponView {
     const L = LOOKS[heroIdx];
     const fl = heroIdx;
     let a;
-    if (kind === 'soaker') a = { gun: soaker(L, fl) };
+    if (kind === 'soaker') a = soaker(L, fl);
     if (kind === 'yoyo') a = { l: yoyoHand(L, fl, true, PAL.pink, PAL.strawberryDark), r: yoyoHand(L, fl, false, PAL.cyan, PAL.cyanDark) };
     if (kind === 'floppy') a = { r: floppyHand(L, fl), l: floppyStack(L, fl) };
     if (kind === 'rocket') a = { tube: launcher(L, fl), grip: handlebar(L, fl, PAL.strawberry, true) };
@@ -322,43 +474,51 @@ export class WeaponView {
     const d = (p, x, y) => g.drawImage(p.c || p, Math.round(x + bx), Math.round(y + by));
 
     if (G.kind === 'soaker') {
-      const gun = a.gun;
-      const pump = P.pumpT <= 0 && P.tank < G.tank ? Math.abs(Math.sin(t * 9)) * 4 : 0;
-      const x = W / 2 + 34;
-      const y = base - gun.h + 10 + kick + pump;
-      d(gun, x - gun.w / 2, y);
-      // Water level in the tank window.
-      const f = P.tank / G.tank;
-      const lw = Math.round(22 * f);
-      g.fillStyle = '#4ab8ff';
-      g.fillRect(Math.round(x - 11 + bx), Math.round(y + 31 + by), lw, 6);
-      g.fillStyle = '#bfe8ff';
-      g.fillRect(Math.round(x - 11 + bx), Math.round(y + 31 + by), lw, 1);
+      // Refilling pressure: she works the pump back and forth until the tank is full again.
+      const pumping = P.pumpT <= 0 && P.tank < G.tank - 0.5 && !P.down;
+      const dt = Math.min(0.1, Math.max(0, t - (this.lastT ?? t)));
+      this.lastT = t;
+      this.pumpPh = pumping ? (this.pumpPh || 0) + dt * 7 : 0;
+      const stroke = pumping ? 0.5 - 0.5 * Math.cos(this.pumpPh) : 0;
+      const half = Math.floor(this.pumpPh / Math.PI);
+      if (pumping && half !== this.pumpHalf && sim.isLocal(P)) sfx.pump(half % 2 === 0);
+      this.pumpHalf = half;
+      const body = a.body(P.tank / G.tank);
+      const rk = a.rig.slide(-kick * 0.012);
+      const x = W / 2 + 30 - SOAK.a.x + SOAK.at.x + rk.x;
+      const y = 100 - SOAK.a.y + SOAK.at.y + rk.y + (pumping ? stroke * 2 : 0);
+      d(body, x, y);
+      const ps = a.rig.slide(stroke * 0.11);
+      d(a.pump, x + ps.x, y + ps.y);
       if (P.fireAnim > 0) {
-        for (let i = 0; i < 6; i++) {
+        const m = a.rig.at(-0.02, 0);
+        for (let i = 0; i < 7; i++) {
           g.fillStyle = i % 2 ? '#8fd8ff' : '#ffffff';
-          g.fillRect(Math.round(x - 2 + (Math.random() - 0.5) * 8 + bx), Math.round(y - 3 - Math.random() * 6 + by), 2, 2);
+          g.fillRect(Math.round(x + m.x - 2 + (Math.random() - 0.7) * 10 + bx), Math.round(y + m.y - 2 - Math.random() * 7 + by), 2, 2);
         }
       }
     } else if (G.kind === 'yoyo') {
       const out = new Set(sim.projs.filter((p) => p.kind === 'yoyo' && p.o === sim.local && !p.orbit).map((p) => p.hand));
-      const L = out.has(0) ? a.l.empty : a.l.full;
-      const R = out.has(1) ? a.r.empty : a.r.full;
-      d(L, 58, base - 52 + (out.has(0) ? -6 : 0));
-      d(R, W - 98, base - 52 + (out.has(1) ? -6 : 0));
+      const f = Math.floor(t * 10) & 3;
+      const L = out.has(0) ? a.l.empty : a.l.frames[f];
+      const R = out.has(1) ? a.r.empty : a.r.frames[(f + 2) & 3];
+      d(L, 52, base - 74 + (out.has(0) ? -6 : 0));
+      d(R, W - 96, base - 74 + (out.has(1) ? -6 : 0));
     } else if (G.kind === 'floppy') {
       const throwing = P.fireAnim > 0;
       const r = throwing ? a.r.empty : a.r.full;
-      d(a.l, 44, base - 46);
-      d(r, W - 130 + (throwing ? -14 : 0), base - 62 + (throwing ? -14 : 0) + (P.fireCd > 0.05 && !throwing ? 10 : 0));
+      d(a.l, 20, base - 76);
+      d(r, W - 128 + (throwing ? -14 : 0), base - 92 + (throwing ? -12 : 0) + (P.fireCd > 0.05 && !throwing ? 12 : 0));
     } else if (G.kind === 'rocket') {
       const loaded = P.fireCd <= 0.05;
       const tube = loaded ? a.tube.loaded : a.tube.empty;
-      d(tube, W / 2 + 40 - tube.w / 2, base - tube.h + 12 + kick * 2);
+      const tx = W / 2 + 38 - TUBE.a.x;
+      const ty = 86 - TUBE.a.y + kick * 2;
+      d(tube, tx, ty);
       d(a.grip, 20, base - 62);
       if (P.fireAnim > 0.1) {
-        const fx = Math.round(W / 2 + 40 + bx);
-        const fy = Math.round(base - 100 + by);
+        const fx = Math.round(tx + TUBE.a.x - 4 + bx);
+        const fy = Math.round(ty + TUBE.a.y - 6 + by);
         g.fillStyle = PAL.tangerine;
         g.fillRect(fx - 16, fy - 6, 32, 12);
         g.fillRect(fx - 10, fy - 12, 20, 24);
@@ -370,12 +530,18 @@ export class WeaponView {
       }
     } else if (G.kind === 'laser') {
       d(a.bar, 20, base - 60);
-      d(a.pen, W / 2 + 20, base - 80 + kick);
+      const px = W / 2 + 44 - PEN.a.x;
+      const py = 98 - PEN.a.y + kick;
+      d(a.pen, px, py);
       if (sim.laser) {
+        const lx = Math.round(px + PEN.a.x - 4 + bx);
+        const ly = Math.round(py + PEN.a.y - 4 + by);
+        g.fillStyle = '#ff3b3b88';
+        g.fillRect(lx - 2, ly - 2, 9, 9);
         g.fillStyle = PAL.red;
-        g.fillRect(Math.round(W / 2 + 38 + bx), Math.round(base - 72 + by), 5, 5);
+        g.fillRect(lx, ly, 5, 5);
         g.fillStyle = PAL.white;
-        g.fillRect(Math.round(W / 2 + 39 + bx), Math.round(base - 71 + by), 2, 2);
+        g.fillRect(lx + 1, ly + 1, 2, 2);
       }
     }
     return { bx, by };

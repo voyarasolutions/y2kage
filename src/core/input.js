@@ -69,6 +69,7 @@ export class Input {
       if (hit(0) || hit(9)) this.h.key('Enter');
       if (hit(1) || hit(8)) this.h.key('Escape');
       if (hit(2)) this.h.key('Tab');
+      if (hit(3)) this.h.key('KeyC');
       // D-pad or stick as arrow keys, repeating while held.
       let dir = null;
       if (down[12] || P.move.y < -0.6) dir = 'ArrowUp';

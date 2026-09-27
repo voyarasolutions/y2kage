@@ -15,6 +15,7 @@ Runs in any modern browser, supports online co-op for up to four players, and sh
 | ![Subway platform](docs/screenshots/subway.png) | ![Game over](docs/screenshots/bsod.png) |
 | ![The Frontman's shockwave](docs/screenshots/boss-frontman.png) | ![The Mainframe firing packets](docs/screenshots/boss-mainframe.png) |
 | ![The Countdown](docs/screenshots/boss-countdown.png) | ![Picking an upgrade](docs/screenshots/upgrades.png) |
+| ![The Soaker 2500 pumping back up](docs/screenshots/soaker-2500.png) | ![Playing with three CPU teammates](docs/screenshots/cpu-crew.png) |
 
 ## Features
 
@@ -28,7 +29,8 @@ Runs in any modern browser, supports online co-op for up to four players, and sh
   fifth wave. Your best wave per district is saved.
 - **Gamepad support.** Plug in any standard controller (Xbox, PlayStation, Switch Pro) and play without the keyboard.
 - **Five heroes, five rides, five weapons.** Every hero moves differently and shoots differently, and each has a
-  special move that charges over time and with kills (R or right-click).
+  special move that charges over time and with kills (R or right-click). Weapons are held at a three-quarter angle:
+  Tina's Soaker 2500 has a see-through reservoir that drains as she sprays and a pump she works to build pressure back up.
 - **A 90s horde.** Party Shamblers, Ravers, Bouncers, Bloaters, Crawlers, CRT-headed Corrupted, and the Millennium Bug,
   dressed for whichever district you're in.
 - **Headshots and combos.** Headshots deal double damage and pop heads off; chained kills build a score multiplier with
@@ -36,7 +38,11 @@ Runs in any modern browser, supports online co-op for up to four players, and sh
 - **Hero progression.** Each hero earns XP that persists between runs; every rank adds 4% damage.
 - **Powerups.** Y2K Patch (invincibility), Multitasking (triple, piercing shots), Screensaver (slow motion) and
   Ctrl+Alt+Del (clears the screen).
+- **CPU teammates.** Play offline with up to three computer-controlled heroes. They stick with you, keep their distance
+  from the horde, pick their own upgrades and fire their specials into crowds.
 - **Online co-op** for up to four players with room codes and join links.
+- **The horde scales with the team.** Every extra player, human or CPU, adds 75% more zombies to each wave, 45% more on
+  screen at once, and 50% more boss health.
 - **Full Y2K presentation.** Power-on BIOS screen, 56k dial-up handshake, Windows 98 taskbar HUD with the countdown in
   the system tray, a Blue Screen of Death when you die, a chiptune soundtrack and an Auld Lang Syne ending.
 
@@ -94,7 +100,7 @@ Cheats are switched on and off in the Trophy Case. In co-op the host's cheats ap
 
 | Hero | Ride | Weapon | Special |
 |---|---|---|---|
-| Tina | Rollerblades | Soaker 2000 | **Tidal Wave**: a firehose blast that shoves the whole street back |
+| Tina | Rollerblades | Soaker 2500 | **Tidal Wave**: a firehose blast that shoves the whole street back |
 | Marcus | Skateboard | Dual Yo-Yos | **Around the World**: both yo-yos orbit you for 6 seconds |
 | Dot | Slinky Springs | Floppy Disks (ricochet) | **Defrag**: two rings of 24 floppies burst out and bounce everywhere |
 | Gus | Pogo Stick | Bottle Rockets | **Grand Finale**: sixteen fireworks rain down around you |
@@ -134,7 +140,7 @@ Add `?skip=title` to the URL to jump past the power-on, BIOS and dial-up intro.
 Up to four players, host plus three guests, over WebRTC (`src/net/net.js`, PeerJS). Online Co-op on the title screen:
 the host gets a five-letter room code and a join link (`?join=CODE`); guests type the code or open the link. The host's
 game runs the level and streams snapshots about 20 times a second; each guest moves themselves locally and sends their
-position and actions. Waves grow 60% per extra player. A player who goes down reboots at the start of the next wave; the
+position and actions. Waves grow 75% per extra player. A player who goes down reboots at the start of the next wave; the
 level is lost only when everyone is down.
 
 Matchmaking uses the free public PeerJS broker, and PeerJS's TURN relay covers strict NATs. For local testing without
@@ -157,6 +163,8 @@ The app is locked to landscape. Fonts are bundled so it works offline.
 - `src/gfx/pipeline.js` renders the scene into a 384x216 target with nearest filtering, then a post pass quantises
   each channel with a 4x4 Bayer dither, adds Y2K glitch tearing and damage flashes. The browser upscales with hard edges.
 - `src/gfx/textures.js` paints every wall, floor, sky and prop skin at 32 texels per map unit.
+- `src/gfx/model.js` is a tiny pixel modeller for the first-person weapons: tubes, boxes and discs laid along a slanted
+  axis and shaded per pixel, so each weapon reads as a solid object seen over the hero's shoulder.
 - `src/gfx/bosses.js` draws the four district bosses after the Millennium Bug, their data packets and burrow mound.
 - `src/gfx/sprites.js` draws the horde (party shamblers, ravers, bouncers, CRT-headed Corrupted, the Millennium Bug),
   projectiles, pickups, hero portraits and icons, all with 1px outlines.
@@ -180,7 +188,9 @@ damage, legs 60%, click fire, Space and Shift for ride tricks, R or right-click 
 is full, P or Esc pause, M mute.
 
 **Gamepad:** left stick moves, right stick aims, RT (or X) fires, A jumps, B or LB for the ride trick, Y or RB for the
-special, Start pauses. In menus the d-pad or left stick moves, A selects, B goes back, and X switches between the
-campaign and Endless on the hero select screen.
+special, Start pauses. In menus the d-pad or left stick moves, A selects, B goes back, X switches between the
+campaign and Endless on the hero select screen, and Y changes the number of CPU teammates.
+
+**Hero select:** C (or the CPU button) cycles 0 to 3 CPU teammates; they play the next heroes along from yours.
 
 **Touch:** left thumb moves, right thumb looks, with on-screen fire, jump and boost buttons.

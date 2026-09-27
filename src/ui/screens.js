@@ -316,6 +316,13 @@ export function drawSelect(g, ui, t, S) {
     text(g, hero.name, x + cw / 2, y + 79, { font: 'big', color: PAL.white, outline: fl.dark, align: 'center' });
     text(g, String(i + 1), x + cw - 8, y + 7, { font: 'small', color: fl.light, align: 'center' });
     text(g, `LV${rankFor(heroXp(hero.id))}`, x + 8, y + 7, { font: 'small', color: PAL.gold, outline: PAL.ink });
+    // CPU teammates play the next heroes along from yours.
+    const pick = HEROES.findIndex((h) => h.id === game.heroId);
+    const k = (i - pick + HEROES.length) % HEROES.length;
+    if (k > 0 && k <= game.cpu) {
+      rect(g, x + cw / 2 - 12, y + 16, 24, 9, PAL.ink);
+      text(g, 'CPU', x + cw / 2, y + 18, { font: 'small', color: PAL.gold, align: 'center' });
+    }
     if (sel) {
       rect(g, x - 2, y - 2, cw + 4, 1, PAL.white);
       rect(g, x - 2, y + h + 1, cw + 4, 1, PAL.white);
@@ -376,20 +383,24 @@ export function drawSelect(g, ui, t, S) {
     bevel(g, pin.x + 18, pin.y + 2, pin.w - 36, 14, true, PAL.white);
     text(g, `LVL ${n}`, pin.x + pin.w / 2, pin.y + 6, { font: 'big', color: PAL.ink, align: 'center' });
     text(g, c.label, pin.x + pin.w / 2, pin.y + 20, { font: 'small', color: PAL.winNavy, align: 'center' });
-    text(g, d.name.toUpperCase(), pin.x + pin.w / 2, pin.y + 29, { font: 'small', color: PAL.strawberryDark, align: 'center' });
-    if (n % 10 === 0 && !canEndless) text(g, 'BOSS LEVEL', pin.x + pin.w / 2, pin.y + 38, { font: 'small', color: PAL.red, align: 'center' });
+    text(g, n % 10 === 0 ? 'BOSS LEVEL' : d.name.toUpperCase(), pin.x + pin.w / 2, pin.y + 29, { font: 'small', color: n % 10 === 0 ? PAL.red : PAL.strawberryDark, align: 'center' });
   }
   ui.addButton(bl, () => game.stepLevel(-1), 20);
   ui.addButton(br, () => game.stepLevel(1), 21);
+  // CPU teammates (C) and, once unlocked, the Endless toggle (TAB) share a row.
+  const half = canEndless ? Math.floor((pin.w - 10) / 2) : pin.w - 8;
+  const cb = { x: pin.x + 4, y: pin.y + 37, w: half, h: 11 };
+  button(g, cb.x, cb.y, cb.w, cb.h, game.cpu ? `CPU x${game.cpu}` : 'No CPU', {});
+  ui.addButton(cb, () => game.cycleCpu(), 32);
   if (canEndless) {
-    const eb = { x: pin.x + 4, y: pin.y + 37, w: pin.w - 8, h: 11 };
-    button(g, eb.x, eb.y, eb.w, eb.h, endless ? 'Campaign (TAB)' : 'Endless (TAB)', {});
+    const eb = { x: pin.x + 6 + half, y: pin.y + 37, w: half, h: 11 };
+    button(g, eb.x, eb.y, eb.w, eb.h, endless ? 'Campaign' : 'Endless', {});
     ui.addButton(eb, () => game.toggleEndless(), 31);
   }
   const go = { x: pin.x + 4, y: pin.y + pin.h - 17, w: pin.w - 8, h: 15 };
   button(g, go.x, go.y, go.w, go.h, 'PLAY', { font: 'big', focus: true });
   ui.addButton(go, () => game.startRun(), 30);
-  text(g, 'ARROWS pick  ENTER play  ESC back', W / 2, H - 11, { font: 'small', color: PAL.cream, outline: PAL.ink, align: 'center' });
+  text(g, `ARROWS pick  C cpu${canEndless ? '  TAB endless' : ''}  ENTER play  ESC back`, W / 2, H - 11, { font: 'small', color: PAL.cream, outline: PAL.ink, align: 'center' });
 }
 
 // ---------------------------------------------------------------- pause, clear

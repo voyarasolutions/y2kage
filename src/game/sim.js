@@ -49,8 +49,12 @@ export const SP_MAX = 100;
 const SP_PER_SEC = 1.4;
 const SP_PER_SCORE = 0.45;
 // Co-op: every extra player adds this share of a wave again, and more of the horde on screen.
-const COOP_WAVE = 0.6;
-const COOP_ALIVE = 0.4;
+// Every extra player on the team (a friend or a CPU teammate) brings more of the horde.
+const COOP_WAVE = 0.75;
+const COOP_ALIVE = 0.45;
+const COOP_BOSS_HP = 0.5;
+// How far each weapon is worth firing from, for CPU teammates.
+const BOT_RANGE = { soaker: 7.5, yoyo: 6.2, floppy: 11, rocket: 13, laser: 15 };
 const REVIVE_HP = 60;
 // Hit zones: the top of a zombie takes double, the legs a bit over half.
 export const HEAD_MUL = 2;
@@ -158,7 +162,7 @@ export class Sim {
       idx: i, name: e.name || `P${i + 1}`, hero, heroIdx: Math.max(0, HEROES.findIndex((h) => h.id === hero.id)),
       xp, rank, dmgMul: dmgMulFor(rank) * mods.dmg, lvlUp: null, ups, mods, maxHp: mods.maxHp,
       sp: Math.max(0, Math.min(SP_MAX, e.sp || 0)), spKind: null, pitch: 0, spT: 0, spStep: 0, spCall: null, iT: 0,
-      down: false, remote: false, input: { move: { f: 0, s: 0 }, turn: 0, fire: false, look: 0 },
+      down: false, remote: false, bot: !!e.bot, input: { move: { f: 0, s: 0 }, turn: 0, fire: false, look: 0 },
       x, y, a: face, z: 0, vz: 0, vx: 0, vy: 0,
       hp: mods.maxHp, armor: mods.armor, hurtT: 0, overclock: 0, charge: 0, charging: false, boostCd: 0,
       charges: hero.move.charges || 0, rechargeT: 0, mega: false, bob: 0, onGround: true, dashT: 0,
@@ -331,6 +335,7 @@ export class Sim {
     if (!L.down) this.updatePlayer(L, dt);
     for (const P of this.players) {
       this.tickPlayer(P, dt);
+      if (P.bot && !P.down) this.updateBot(P, dt);
       if (!P.down) this.updateWeapon(P, dt);
       this.updateSpecial(P, dt);
     }
@@ -657,6 +662,157 @@ export class Sim {
       P.iT = 2;
       this.personal(P, 'revive');
     }
+  }
+
+  // ------------------------------------------------------------ CPU teammates
+  // A CPU teammate sticks near the lead player, backs off when the horde gets close, and shoots
+  // whatever it can see. It drives its ride directly rather than through the controls.
+  updateBot(P, dt) {
+    const B = (P.ai ||= { t: 0, target: null, strafe: Math.random() < 0.5 ? 1 : -1, strafeT: rand(1, 3), lostT: 0, stuckT: 0, lx: P.x, ly: P.y, err: 0, dry: false });
+    const G = P.hero.gun;
+    const M = P.hero.move;
+    const range = BOT_RANGE[G.kind];
+    // Pick a target a few times a second: the nearest zombie in plain sight, preferring the boss.
+    B.t -= dt;
+    if (B.t <= 0 || !B.target || B.target.hp <= 0 || B.target.bs || !this.zombies.includes(B.target)) {
+      B.t = rand(0.25, 0.45);
+      B.target = null;
+      let bd = Infinity;
+      for (const z of this.zombies) {
+        if (z.bs || z.spawnT > 0.2) continue;
+        const d = Math.hypot(z.x - P.x, z.y - P.y);
+        if (d > range + 5) continue;
+        if (this.wallDistance(P.x, P.y, Math.atan2(z.y - P.y, z.x - P.x), d) < d - 0.4) continue;
+        const score = d - (z.kind === 'boss' ? 4 : 0);
+        if (score < bd) {
+          bd = score;
+          B.target = z;
+        }
+      }
+      B.err = rand(-0.06, 0.06);
+    }
+    // Aim: turn toward the target at a human-ish rate, pitch toward the middle of its body.
+    let fire = false;
+    const T = B.target;
+    if (T) {
+      const d = Math.hypot(T.x - P.x, T.y - P.y);
+      const ta = Math.atan2(T.y - P.y, T.x - P.x) + B.err;
+      const da = Math.atan2(Math.sin(ta - P.a), Math.cos(ta - P.a));
+      P.a += clamp(da, -6 * dt, 6 * dt);
+      const hz = ZHEIGHT[T.kind] * (T.sc || 1) * (T.kind === 'crawler' ? 0.5 : 0.62);
+      P.pitch = clamp(Math.atan2(hz - (EYE + P.z), Math.max(0.6, d)), -MAX_PITCH, MAX_PITCH);
+      fire = Math.abs(da) < 0.12 + 0.35 / Math.max(1, d) && d < range && !(G.kind === 'rocket' && d < 2.6);
+    } else P.pitch *= 1 - Math.min(1, 4 * dt);
+    // The Soaker runs dry: let go and pump back up before spraying again.
+    if (G.kind === 'soaker') {
+      if (P.tank < G.drain * 3) B.dry = true;
+      if (B.dry && P.tank > G.tank * 0.7) B.dry = false;
+      if (B.dry) fire = false;
+    }
+    P.input = { move: { f: 0, s: 0 }, turn: 0, fire, look: 0 };
+    // Specials: save them for a crowd or the boss.
+    if (P.sp >= SP_MAX && !P.spKind) {
+      const near = this.zombies.filter((z) => !z.bs && Math.hypot(z.x - P.x, z.y - P.y) < 7);
+      if (near.length >= 4 || this.zombies.some((z) => z.kind === 'boss' && !z.bs && Math.hypot(z.x - P.x, z.y - P.y) < 9)) this.special(P);
+    }
+
+    // Where to go: a spot beside the lead player, away from anything too close, sidestepping in a fight.
+    let wx = 0;
+    let wy = 0;
+    const lead = this.players.find((Q) => !Q.bot && !Q.down) || this.players.find((Q) => Q !== P && !Q.down);
+    if (lead) {
+      const dl = Math.hypot(lead.x - P.x, lead.y - P.y);
+      const seen = this.wallDistance(P.x, P.y, Math.atan2(lead.y - P.y, lead.x - P.x), dl) >= dl - 0.3;
+      B.lostT = seen ? 0 : B.lostT + dt;
+      // Lost behind the buildings or left far behind: catch up the way game sidekicks do.
+      if (dl > 16 || B.lostT > 4) {
+        const back = lead.a + Math.PI + (P.idx % 2 ? 0.5 : -0.5);
+        const nx = lead.x + Math.cos(back) * 1.2;
+        const ny = lead.y + Math.sin(back) * 1.2;
+        if (!this.wallAt(nx, ny)) {
+          P.x = nx;
+          P.y = ny;
+          P.vx = P.vy = 0;
+          B.lostT = 0;
+          this.fx('spawn', r2(nx), r2(ny));
+        }
+      }
+      const slot = lead.a + Math.PI + (P.idx % 2 ? 1 : -1) * (0.8 + 0.4 * Math.floor((P.idx - 1) / 2));
+      let gx = lead.x + Math.cos(slot) * 2;
+      let gy = lead.y + Math.sin(slot) * 2;
+      if (this.wallAt(gx, gy)) {
+        gx = lead.x;
+        gy = lead.y;
+      }
+      const dg = Math.hypot(gx - P.x, gy - P.y);
+      if (dg > 0.7) {
+        const k = Math.min(1.3, (dg - 0.7) / 2.5 + (T ? 0 : 0.4));
+        wx += ((gx - P.x) / dg) * k;
+        wy += ((gy - P.y) / dg) * k;
+      }
+    }
+    for (const z of this.zombies) {
+      if (z.spawnT > 0.3) continue;
+      const keep = z.kind === 'boss' ? 5 : z.kind === 'brute' || z.kind === 'bloater' ? 3.4 : 2.6;
+      const d = Math.hypot(z.x - P.x, z.y - P.y);
+      if (d < keep && d > 0.01) {
+        const f = ((keep - d) / keep) * 1.8;
+        wx -= ((z.x - P.x) / d) * f;
+        wy -= ((z.y - P.y) / d) * f;
+      }
+    }
+    if (T) {
+      // Short-range weapons step in to reach their target.
+      const d = Math.hypot(T.x - P.x, T.y - P.y);
+      if (d > range * 0.85) {
+        wx += ((T.x - P.x) / d) * 0.7;
+        wy += ((T.y - P.y) / d) * 0.7;
+      }
+      B.strafeT -= dt;
+      if (B.strafeT <= 0) {
+        B.strafeT = rand(1.2, 3);
+        B.strafe *= -1;
+      }
+      wx += -Math.sin(P.a) * B.strafe * 0.35;
+      wy += Math.cos(P.a) * B.strafe * 0.35;
+    }
+    // Stuck on a wall or a prop: slide sideways for a moment.
+    B.stuckT += dt;
+    if (B.stuckT > 0.6) {
+      if (Math.hypot(wx, wy) > 0.4 && Math.hypot(P.x - B.lx, P.y - B.ly) < 0.15) B.strafe *= -1;
+      B.stuckT = 0;
+      B.lx = P.x;
+      B.ly = P.y;
+    }
+    const m = Math.hypot(wx, wy);
+    if (m > 1) {
+      wx /= m;
+      wy /= m;
+    }
+    const vmax = M.max * P.mods.speed * 0.85;
+    const k = Math.min(1, (P.onGround ? 5 : 1.5) * dt);
+    P.vx += (wx * vmax - P.vx) * k;
+    P.vy += (wy * vmax - P.vy) * k;
+    const hit = this.moveCircle(P, P.vx * dt, P.vy * dt, 0.24);
+    if (hit.hx) P.vx *= -0.2;
+    if (hit.hy) P.vy *= -0.2;
+    if (!P.onGround || P.vz > 0) {
+      P.vz -= GRAV * this.grav * dt;
+      P.z += P.vz * dt;
+      if (P.z <= 0) {
+        P.z = 0;
+        P.vz = 0;
+        P.onGround = true;
+      }
+    }
+    if (M.type === 'pogo' && P.onGround) {
+      P.vz = 2.3;
+      P.onGround = false;
+    }
+    const sp = Math.hypot(P.vx, P.vy);
+    P.stride += sp * dt;
+    P.speed = sp;
+    P.dashT = Math.max(0, P.dashT - dt);
   }
 
   // ------------------------------------------------------------ weapons
@@ -1258,7 +1414,7 @@ export class Sim {
       s = pickOne(pts);
     }
     const B = kind === 'boss' ? this.bossDef : null;
-    const hp = base.hp * cfg.hpMul * (B ? B.hpMul : 1);
+    const hp = base.hp * cfg.hpMul * (B ? B.hpMul * (1 + COOP_BOSS_HP * (this.players.length - 1)) : 1);
     const z = {
       id: this.nextZid++, kind, x: s.x + rand(-0.2, 0.2), y: s.y + rand(-0.2, 0.2),
       hp, max: hp, bs: 0,
@@ -2152,6 +2308,8 @@ export class Sim {
     P.fireAnim = Math.max(0, P.fireAnim - dt);
     const G = P.hero.gun;
     if (input.fire && !P.down && (G.kind === 'soaker' ? P.tank > G.drain : G.kind === 'laser' ? !P.overheated : false)) P.fireAnim = 0.06;
+    // The pump animation needs to know when the guest last sprayed.
+    P.pumpT = input.fire && !P.down ? 0.35 : P.pumpT - dt;
     // Draw our own laser from where we are now, not where the host last saw us.
     this.lasers = this.lasers.filter((l) => l.o !== this.local || l.sp);
     if (G.kind === 'laser' && input.fire && !P.overheated && !P.down) {

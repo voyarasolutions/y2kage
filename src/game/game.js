@@ -49,6 +49,9 @@ export class Game {
     this.pickLevel = this.best;
     // Upgrades picked this run, Endless mode, trophy pop-ups waiting to show.
     this.runUps = [];
+    // CPU teammates for offline play, and the upgrades each one has picked this run.
+    this.cpu = clamp(store.get('cpu', 0) || 0, 0, 3);
+    this.botUps = [[], [], []];
     this.endless = false;
     this.endlessOn = false;
     this.pickDistrict = 0;
@@ -203,6 +206,8 @@ export class Game {
     this.hero = heroById(this.heroId);
     this.runScore = 0;
     this.runUps = [];
+    this.botUps = [[], [], []];
+    this.sim = null;
     sfx.select();
     if (this.endlessOn && extraUnlocked('endless')) return this.startEndless(this.pickDistrict);
     this.startLevel(this.pickLevel);
@@ -219,7 +224,8 @@ export class Game {
     this.levelStartUps = [];
     const cfg = endlessConfig(d);
     this.loadWorld(d, this.levelN);
-    this.sim = new Sim(this.map, cfg, [{ hero: this.hero, xp: heroXp(this.hero.id), sp: heroSp(this.hero.id), name: 'YOU', ups: [] }], this.levelN, { cheats: cheats() });
+    this.botUps = [[], [], []];
+    this.sim = new Sim(this.map, cfg, this.soloParty([]), this.levelN, { cheats: cheats() });
     this.levelStartScore = 0;
     this.setMode('play');
     music.play('play', { transpose: [0, 2, -2, 3, 5][d], tempo: 1 + d * 0.04 });
@@ -238,11 +244,30 @@ export class Game {
     sfx.click();
   }
 
+  cycleCpu() {
+    this.cpu = (this.cpu + 1) % 4;
+    store.set('cpu', this.cpu);
+    sfx.click();
+  }
+
+  // Offline party: you, then a CPU teammate on each of the next heroes in the roster.
+  soloParty(ups, prev) {
+    const party = [{ hero: this.hero, xp: heroXp(this.hero.id), sp: heroSp(this.hero.id), name: 'YOU', ups }];
+    const i = HEROES.findIndex((h) => h.id === this.hero.id);
+    for (let k = 1; k <= this.cpu; k++) {
+      const hero = HEROES[(i + k) % HEROES.length];
+      const was = prev?.find((Q) => Q.bot && Q.hero.id === hero.id);
+      party.push({ hero, xp: heroXp(hero.id), sp: was && !was.spKind ? was.sp : 0, name: hero.name, ups: this.botUps[k - 1].slice(), bot: true });
+    }
+    return party;
+  }
+
   startLevel(n) {
     this.saveXp();
     this.endless = false;
     this.levelN = n;
     this.levelStartUps = this.runUps.slice();
+    this.levelStartBotUps = this.botUps.map((l) => l.slice());
     const cfg = levelConfig(n);
     const mapIdx = Math.min(this.maps.length - 1, Math.floor((n - 1) / 10));
     this.loadWorld(mapIdx, n);
@@ -258,7 +283,7 @@ export class Game {
       this.sim.out = [];
       this.net.guests.forEach((g) => this.net.send({ t: 'start', level: n, party, you: g.slot, cheats: ch }, g));
       this.snapT = 0;
-    } else this.sim = new Sim(this.map, cfg, [{ hero: this.hero, xp: heroXp(this.hero.id), sp: heroSp(this.hero.id), name: 'YOU', ups: this.runUps }], n, { cheats: cheats() });
+    } else this.sim = new Sim(this.map, cfg, this.soloParty(this.runUps, this.sim?.players), n, { cheats: cheats() });
     this.levelStartScore = this.runScore;
     this.setMode('play');
     const d = Math.floor((n - 1) / 10);
@@ -283,6 +308,8 @@ export class Game {
     store.set('bestScore', this.bestScore);
     this.pickLevel = Math.min(this.best, n + 1);
     this.upOffer = n < TOTAL_LEVELS ? offer(this.runUps) : [];
+    // CPU teammates take one of their own three.
+    if (n < TOTAL_LEVELS) for (const l of this.botUps) l.push(...offer(l, 1));
     this.upPicked = null;
     this.checkClearAch(s, this.clearStats);
     this.input.unlock();
@@ -319,6 +346,7 @@ export class Game {
     if (this.endless) return this.startEndless(this.endlessD);
     this.runScore = this.levelStartScore;
     this.runUps = (this.levelStartUps || []).slice();
+    if (this.levelStartBotUps) this.botUps = this.levelStartBotUps.map((l) => l.slice());
     this.startLevel(this.levelN);
   }
 
@@ -426,6 +454,7 @@ export class Game {
       if (code === 'ArrowDown' || code === 'KeyS') this.stepLevel(-1);
       if (code === 'Enter' || code === 'Space') this.startRun();
       if (code === 'Tab' || code === 'KeyE') this.toggleEndless();
+      if (code === 'KeyC') this.cycleCpu();
       if (code === 'Escape') this.setMode('title');
       return;
     }

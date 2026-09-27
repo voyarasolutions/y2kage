@@ -182,6 +182,29 @@ export const sfx = {
   hurt() {
     tone(220, 0.2, 'square', 0.2, 110);
   },
+  // Wave cleared: a rising fanfare; the last wave of a level gets a longer one with a cymbal.
+  waveClear(last) {
+    const notes = last ? [523, 659, 784, 1046, 1318, 1568] : [659, 784, 1046, 1318];
+    notes.forEach((f, i) => tone(f, 0.14, 'square', 0.12, null, i * 0.08));
+    tone(notes[notes.length - 1] * 1.5, last ? 0.7 : 0.4, 'triangle', 0.12, null, notes.length * 0.08);
+    noise(last ? 1.2 : 0.6, 6000, 0.4, 0.08, 'highpass', notes.length * 0.08);
+  },
+  // Break countdown: 3, 2, 1 low beeps, then a high GO.
+  countdown(n) {
+    if (n > 0) tone(660, 0.1, 'square', 0.1);
+    else tone(1320, 0.3, 'square', 0.12);
+  },
+  // A lethal headshot: a wet pop and a bright ding.
+  headshot() {
+    noise(0.12, 900, 1.2, 0.26, 'bandpass');
+    tone(220, 0.1, 'square', 0.1, 90);
+    tone(1760, 0.18, 'triangle', 0.14, null, 0.04);
+    tone(2637, 0.22, 'triangle', 0.08, null, 0.08);
+  },
+  // A non-lethal hit to the head.
+  headTick() {
+    tone(2093, 0.05, 'triangle', 0.08);
+  },
   // Meter full: a bright two-note chime.
   spReady() {
     tone(1318, 0.08, 'square', 0.1);

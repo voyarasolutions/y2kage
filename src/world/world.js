@@ -745,6 +745,9 @@ export class World {
     s.material.color.setRGB(tint ? tint[0] : 1, tint ? tint[1] : 1, tint ? tint[2] : 1);
     s.position.set(x, y, z);
     s.scale.set(w, h, 1);
+    // Pooled sprites are reused, so reset anything a caller may have changed last frame.
+    s.material.rotation = 0;
+    s.center.set(0.5, 0);
     return s;
   }
 
@@ -821,6 +824,8 @@ export class World {
   setCamera(x, y, z, yaw, pitch = 0, roll = 0) {
     const c = this.camera;
     c.position.set(x, y, z);
+    // Yaw first, then pitch, like any first-person camera.
+    c.rotation.order = 'YXZ';
     // Map heading a: forward is (cos a, sin a) in x/z. Three's camera looks down -z, so yaw = -a - 90deg.
     c.rotation.set(pitch, -yaw - Math.PI / 2, roll);
     if (this.sky) this.sky.position.set(x, 28, z);

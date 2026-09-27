@@ -48,6 +48,17 @@ const SP_PER_SCORE = 0.45;
 const COOP_WAVE = 0.6;
 const COOP_ALIVE = 0.4;
 const REVIVE_HP = 60;
+// Hit zones: the top of a zombie takes double, the legs a bit over half.
+export const HEAD_MUL = 2;
+export const LEG_MUL = 0.6;
+const HEAD_FRAC = 0.76;
+const LEG_FRAC = 0.36;
+// Shots converge on the crosshair this far out, so what you aim at is what you hit.
+const CONVERGE = 5;
+export const MAX_PITCH = 0.55;
+// Seconds of countdown between waves (the level keeps running), and the victory lap after the last one.
+const BREAK_T = 6;
+const OUTRO_T = 2.8;
 
 const r2 = (v) => Math.round(v * 100) / 100;
 
@@ -96,6 +107,7 @@ export class Sim {
     this.splats = [];
     this.particles = [];
     this.corpses = [];
+    this.heads = [];
     this.lasers = [];
     this.boss = null;
     this.shake = 0;
@@ -130,7 +142,7 @@ export class Sim {
     return {
       idx: i, name: e.name || `P${i + 1}`, hero, heroIdx: Math.max(0, HEROES.findIndex((h) => h.id === hero.id)),
       xp, rank, dmgMul: dmgMulFor(rank), lvlUp: null,
-      sp: 0, spKind: null, spT: 0, spStep: 0, spCall: null, iT: 0,
+      sp: Math.max(0, Math.min(SP_MAX, e.sp || 0)), spKind: null, pitch: 0, spT: 0, spStep: 0, spCall: null, iT: 0,
       down: false, remote: false, input: { move: { f: 0, s: 0 }, turn: 0, fire: false, look: 0 },
       x, y, a: face, z: 0, vz: 0, vx: 0, vy: 0,
       hp: 100, armor: 0, hurtT: 0, overclock: 0, charge: 0, charging: false, boostCd: 0,
@@ -333,8 +345,39 @@ export class Sim {
       p.z += dt * 0.6;
     }
     this.popups = this.popups.filter((p) => p.t > 0);
-    for (const c of this.corpses) c.t += dt;
-    this.corpses = this.corpses.filter((c) => c.t < 0.5);
+    for (const c of this.corpses) {
+      c.t += dt;
+      // The headless body keeps spurting until it drops.
+      if (c.headless && c.t < 0.4 && Math.random() < 0.8) {
+        const H = ZHEIGHT[c.kind] * (c.sc || 1);
+        this.particles.push({ x: c.x + rand(-0.05, 0.05), y: c.y + rand(-0.05, 0.05), z: H * 0.74, vx: rand(-0.5, 0.5), vy: rand(-0.5, 0.5), vz: rand(2, 3.4), life: rand(0.4, 0.8), color: Math.random() < 0.7 ? '#9be04a' : '#ff2e88' });
+      }
+    }
+    this.corpses = this.corpses.filter((c) => c.t < (c.headless ? 0.9 : 0.5));
+    for (const h of this.heads) {
+      h.t += dt;
+      h.vz -= 9 * dt;
+      h.x += h.vx * dt;
+      h.y += h.vy * dt;
+      h.z += h.vz * dt;
+      h.spin += h.vs * dt;
+      if (this.wallAt(h.x, h.y)) {
+        h.x -= h.vx * dt;
+        h.y -= h.vy * dt;
+        h.vx *= -0.4;
+        h.vy *= -0.4;
+      }
+      if (h.z < 0) {
+        h.z = 0;
+        h.vz = Math.abs(h.vz) > 1 ? -h.vz * 0.35 : 0;
+        h.vx *= 0.55;
+        h.vy *= 0.55;
+        h.vs *= 0.5;
+      }
+      if (Math.random() < 0.3 && h.t < 0.8) this.particles.push({ x: h.x, y: h.y, z: h.z, vx: 0, vy: 0, vz: 0, life: 0.3, color: '#9be04a' });
+    }
+    this.heads = this.heads.filter((h) => h.t < 2.2);
+    this.headT = Math.max(0, (this.headT || 0) - dt);
     for (const s of this.splats) s.t -= dt;
     this.splats = this.splats.filter((s) => s.t > 0);
     // Y2K glitches get more frequent toward midnight.
@@ -609,7 +652,7 @@ export class Sim {
           const a = P.a + rand(-G.spread, G.spread);
           for (const off of this.spread()) {
             const b = a + off;
-            this.projs.push({ kind: 'water', o: P.idx, x: P.x + dx * 0.4 - dy * 0.12, y: P.y + dy * 0.4 + dx * 0.12, z: eyeZ - 0.22, vx: Math.cos(b) * G.speed + P.vx * 0.5, vy: Math.sin(b) * G.speed + P.vy * 0.5, vz: rand(0.3, 0.9), life: G.life, r: 0.12, dmg: G.dmg, knock: G.knock });
+            this.projs.push({ kind: 'water', o: P.idx, x: P.x + dx * 0.4 - dy * 0.12, y: P.y + dy * 0.4 + dx * 0.12, z: eyeZ - 0.22, vx: Math.cos(b) * G.speed + P.vx * 0.5, vy: Math.sin(b) * G.speed + P.vy * 0.5, vz: rand(0.3, 0.9) + this.aimVz(P, eyeZ - 0.22, G.speed), life: G.life, r: 0.12, dmg: G.dmg, knock: G.knock });
           }
           if (Math.random() < 0.35) this.snd('shoot', 'soaker');
         }
@@ -631,7 +674,7 @@ export class Sim {
           const side = hand ? 1 : -1;
           this.spread().forEach((off, k) => {
             const b = a + off;
-            this.projs.push({ kind: 'yoyo', o: P.idx, hand: k ? 2 : hand, x: P.x + dx * 0.3 - dy * 0.15 * side, y: P.y + dy * 0.3 + dx * 0.15 * side, z: eyeZ - 0.18, vx: Math.cos(b) * G.speed, vy: Math.sin(b) * G.speed, vz: 0, travel: 0, back: false, hits: new Set(), r: 0.22, dmg: G.dmg, knock: G.knock, spin: 0 });
+            this.projs.push(this.aimRay({ kind: 'yoyo', o: P.idx, hand: k ? 2 : hand, x: P.x + dx * 0.3 - dy * 0.15 * side, y: P.y + dy * 0.3 + dx * 0.15 * side, z: eyeZ - 0.18, vx: Math.cos(b) * G.speed, vy: Math.sin(b) * G.speed, vz: this.aimVz(P, eyeZ - 0.18, G.speed), travel: 0, back: false, hits: new Set(), r: 0.22, dmg: G.dmg, knock: G.knock, spin: 0 }, P));
           });
           this.snd('shoot', 'yoyo');
         }
@@ -640,7 +683,7 @@ export class Sim {
       if (firing && P.fireCd <= 0) {
         P.fireCd = G.every * oc;
         P.fireAnim = 0.16;
-        for (const off of this.spread()) this.throwFloppy(P, P.a + off, G.dmg, G.bounces, G.life);
+        for (const off of this.spread()) this.throwFloppy(P, P.a + off, G.dmg, G.bounces, G.life, true);
         this.snd('shoot', 'floppy');
       }
     } else if (G.kind === 'rocket') {
@@ -649,7 +692,7 @@ export class Sim {
         P.fireAnim = 0.2;
         for (const off of this.spread()) {
           const b = P.a + off;
-          this.projs.push({ kind: 'rocket', o: P.idx, x: P.x + dx * 0.3 - dy * 0.12, y: P.y + dy * 0.3 + dx * 0.12, z: eyeZ - 0.12, vx: Math.cos(b) * G.speed, vy: Math.sin(b) * G.speed, vz: 0, life: G.life, r: 0.2, dmg: G.direct, knock: 0 });
+          this.projs.push(this.aimRay({ kind: 'rocket', o: P.idx, x: P.x + dx * 0.3 - dy * 0.12, y: P.y + dy * 0.3 + dx * 0.12, z: eyeZ - 0.12, vx: Math.cos(b) * G.speed, vy: Math.sin(b) * G.speed, vz: this.aimVz(P, eyeZ - 0.12, G.speed), life: G.life, r: 0.2, dmg: G.direct, knock: 0 }, P));
         }
         this.snd('shoot', 'rocket');
         if (this.isLocal(P)) this.shake = Math.min(1, this.shake + 0.15);
@@ -666,8 +709,8 @@ export class Sim {
           if (this.isLocal(P)) sfx.overheat();
         }
         const pierce = this.buffs.multi > 0;
-        const d = this.beam(P, P.x, P.y, P.a, G.range, G.dps * dt, pierce);
-        this.lasers.push({ o: P.idx, x: P.x, y: P.y, z: eyeZ, a: P.a, d });
+        const d = this.beam(P, P.x, P.y, P.a, G.range, G.dps * dt, pierce, P.pitch);
+        this.lasers.push({ o: P.idx, x: P.x, y: P.y, z: eyeZ, a: P.a, d, pt: P.pitch });
         if (P.fireCd <= 0) {
           this.snd('shoot', 'laser');
           P.fireCd = 0.07;
@@ -680,10 +723,14 @@ export class Sim {
   }
 
   // Burn along a line. Returns how far the beam reaches: the first zombie, or the wall when piercing.
-  beam(P, x, y, a, range, dmg, pierce) {
+  // Pitched beams (the pointer) also stop at the floor and pick a hit zone by height.
+  beam(P, x, y, a, range, dmg, pierce, pitch = null) {
     const dx = Math.cos(a);
     const dy = Math.sin(a);
-    const wallD = Math.min(range, this.wallDistance(x, y, a, range));
+    const eyeZ = EYE + P.z;
+    const slope = pitch == null ? 0 : Math.tan(pitch);
+    let wallD = Math.min(range, this.wallDistance(x, y, a, range));
+    if (slope < -0.01) wallD = Math.min(wallD, eyeZ / -slope);
     let best = null;
     let bestT = wallD;
     const inLine = [];
@@ -692,29 +739,65 @@ export class Sim {
       const ry = z.y - y;
       const t = rx * dx + ry * dy;
       if (t > 0 && t < wallD && Math.abs(rx * dy - ry * dx) < ZRAD[z.kind] * 1.15) {
-        inLine.push(z);
+        const hz = pitch == null ? null : eyeZ + t * slope;
+        if (hz != null && !this.inHeight(z, hz)) continue;
+        inLine.push([z, hz]);
         if (t < bestT) {
-          best = z;
+          best = [z, hz];
           bestT = t;
         }
       }
     }
     const reach = pierce ? wallD : bestT;
-    if (Math.random() < 0.7) this.puff(x + dx * (reach - 0.1), y + dy * (reach - 0.1), EYE + P.z - 0.1, Math.random() < 0.5 ? '#ff3b3b' : '#fff4d6', 2);
-    for (const z of pierce ? inLine : best ? [best] : []) this.hurtZombie(z, dmg, dx, dy, 0.3, P);
+    if (Math.random() < 0.7) this.puff(x + dx * (reach - 0.1), y + dy * (reach - 0.1), Math.max(0.05, eyeZ + reach * slope - 0.1), Math.random() < 0.5 ? '#ff3b3b' : '#fff4d6', 2);
+    for (const [z, hz] of pierce ? inLine : best ? [best] : []) this.hurtZombie(z, dmg, dx, dy, 0.3, P, this.zoneAt(z, hz));
     return reach;
   }
 
-  throwFloppy(P, a, dmg, bounces, life) {
+  throwFloppy(P, a, dmg, bounces, life, aimed = false) {
     const dx = Math.cos(a);
     const dy = Math.sin(a);
     const S = P.hero.gun.speed;
-    this.projs.push({ kind: 'floppy', o: P.idx, x: P.x + dx * 0.3, y: P.y + dy * 0.3, z: EYE + P.z - 0.14, vx: dx * S, vy: dy * S, vz: 0, life, bounces, r: 0.18, dmg, knock: P.hero.gun.knock, spin: rand(0, 4) });
+    const z0 = EYE + P.z - 0.14;
+    const p = { kind: 'floppy', o: P.idx, x: P.x + dx * 0.3, y: P.y + dy * 0.3, z: z0, vx: dx * S, vy: dy * S, vz: aimed ? this.aimVz(P, z0, S) : 0, life, bounces, r: 0.18, dmg, knock: P.hero.gun.knock, spin: rand(0, 4) };
+    this.projs.push(aimed ? this.aimRay(p, P) : p);
   }
 
   // Angle offsets for each shot: one normally, a fan of three while Multitasking.
   spread() {
     return this.buffs.multi > 0 ? [0, -0.2, 0.2] : [0];
+  }
+
+  // Vertical speed for a shot leaving the hand at startZ so it crosses the crosshair CONVERGE units out.
+  aimVz(P, startZ, hspeed) {
+    return hspeed * (Math.tan(P.pitch || 0) + (EYE + P.z - startZ) / CONVERGE);
+  }
+
+  // Tag a shot with the crosshair ray it was aimed along. Hits are judged on that ray, so a head
+  // under the crosshair is a head hit even though the shot leaves from the hand below it.
+  aimRay(p, P) {
+    p.ox = P.x;
+    p.oy = P.y;
+    p.rz = EYE + P.z;
+    p.rs = Math.tan(P.pitch || 0);
+    return p;
+  }
+
+  hitZ(p) {
+    return p.rs == null ? p.z : p.rz + p.rs * Math.hypot(p.x - p.ox, p.y - p.oy);
+  }
+
+  // Which part of a zombie a hit at height hz lands on. Crawlers are all body.
+  zoneAt(z, hz) {
+    if (hz == null || z.kind === 'crawler') return 'body';
+    const f = hz / (ZHEIGHT[z.kind] * (z.sc || 1));
+    return f > HEAD_FRAC ? 'head' : f < LEG_FRAC ? 'legs' : 'body';
+  }
+
+  // Can a shot at height hz touch this zombie at all?
+  inHeight(z, hz) {
+    const top = ZHEIGHT[z.kind] * (z.sc || 1) + (z.kind === 'crawler' ? 0.12 : 0.06);
+    return hz > -0.05 && hz < top;
   }
 
   // ------------------------------------------------------------ specials
@@ -867,9 +950,11 @@ export class Sim {
         } else {
           const nx = p.x + p.vx * dt;
           const ny = p.y + p.vy * dt;
+          p.z = Math.max(0.08, p.z + (p.vz || 0) * dt);
           p.travel += G.speed * dt;
           if (this.wallAt(nx, ny) || p.travel > G.range) {
             p.back = true;
+            p.rs = null;
             p.hits.clear();
             if (this.wallAt(nx, ny)) this.puff(p.x, p.y, p.z, '#fff4d6', 4);
           } else {
@@ -877,12 +962,13 @@ export class Sim {
             p.y = ny;
           }
         }
-        for (const z of this.zombies) {
+        for (const z of this.zombies.slice()) {
           if (p.hits.has(z)) continue;
-          if (Math.hypot(z.x - p.x, z.y - p.y) < ZRAD[z.kind] + p.r) {
+          const hz = this.hitZ(p);
+          if (Math.hypot(z.x - p.x, z.y - p.y) < ZRAD[z.kind] + p.r && this.inHeight(z, hz)) {
             p.hits.add(z);
             const d = Math.hypot(p.vx, p.vy) || 1;
-            this.hurtZombie(z, p.dmg * ocMul, p.vx / d, p.vy / d, p.knock, P);
+            this.hurtZombie(z, p.dmg * ocMul, p.vx / d, p.vy / d, p.knock, P, this.zoneAt(z, hz));
             this.puff(p.x, p.y, p.z, '#9be04a', 5);
           }
         }
@@ -902,10 +988,29 @@ export class Sim {
           if (!p.fx || Math.random() < 0.3) this.puff(p.x, p.y, 0.02, '#8fd8ff', 1);
         }
       }
-      if (p.kind === 'floppy') p.spin += dt * 16;
+      if (p.kind === 'floppy') {
+        p.spin += dt * 16;
+        p.z += p.vz * dt;
+        // Aimed at the floor: skip off it (counts as a bounce).
+        if (p.z < 0.06 && p.vz < 0) {
+          p.z = 0.06;
+          p.vz = -p.vz * 0.7;
+          p.bounces--;
+          p.rs = null;
+          this.puff(p.x, p.y, 0.06, '#3de0e0', 3);
+          if (p.bounces < 0) dead = true;
+        }
+      }
       if (p.kind === 'rocket') {
         p.spin = (p.spin || 0) + dt * 12;
         this.rocketTrail(p);
+        if (!p.fall) {
+          p.z += p.vz * dt;
+          if (p.z <= 0.06 && !dead) {
+            this.explode(p.x, p.y, 0.1, P, p.big);
+            dead = true;
+          }
+        }
         if (p.fall) {
           p.z += p.vz * dt;
           if (p.z <= 0.15 && !dead) {
@@ -931,6 +1036,7 @@ export class Sim {
         }
         if (bounced) {
           p.bounces--;
+          p.rs = null;
           this.puff(p.x, p.y, p.z, '#3de0e0', 4);
           if (this.isLocal(P)) sfx.tick();
           if (p.bounces < 0) dead = true;
@@ -938,7 +1044,7 @@ export class Sim {
           p.x = nx;
           p.y = ny;
         }
-      } else if (this.wallAt(nx, ny)) {
+      } else if (!dead && this.wallAt(nx, ny)) {
         dead = true;
         if (p.kind === 'rocket') this.explode(p.x, p.y, p.z, P, p.big);
         if (p.kind === 'water' && !p.fx) this.puff(p.x, p.y, p.z, '#8fd8ff', 3);
@@ -949,11 +1055,12 @@ export class Sim {
 
       if (!dead && !p.fx) {
         for (const z of this.zombies) {
-          if (Math.hypot(z.x - p.x, z.y - p.y) < ZRAD[z.kind] + p.r && p.z < Math.max(0.72, ZHEIGHT[z.kind] + 0.1)) {
+          const hz = this.hitZ(p);
+          if (Math.hypot(z.x - p.x, z.y - p.y) < ZRAD[z.kind] + p.r && this.inHeight(z, hz)) {
             const d = Math.hypot(p.vx, p.vy) || 1;
             let dmg = p.dmg * ocMul;
             if (p.kind === 'water' && z.kind === 'glitch') dmg *= 2.5;
-            this.hurtZombie(z, dmg, p.vx / d, p.vy / d, p.knock, P);
+            this.hurtZombie(z, dmg, p.vx / d, p.vy / d, p.knock, P, this.zoneAt(z, hz));
             if (p.kind === 'water') {
               this.puff(p.x, p.y, p.z, '#8fd8ff', 2);
               if (Math.random() < 0.15) this.snd('splash');
@@ -1054,6 +1161,25 @@ export class Sim {
       const a = rand(0, TAU);
       const s = rand(0.8, kind === 'boss' ? 5 : 2.5);
       this.particles.push({ x, y, z: rand(0.3, 0.9), vx: Math.cos(a) * s, vy: Math.sin(a) * s, vz: rand(0.5, 3), life: rand(0.5, 1.1), color: i % 2 ? '#9be04a' : PARTY[i % PARTY.length] });
+    }
+    if (kind === 'boss') {
+      this.shake = 1;
+      this.flash = { color: '#ffffff', t: 0.25, amt: 0.6 };
+    }
+  }
+
+  // Headshot: the head pops off spinning, a fountain of goo and confetti, the body stands a beat, then drops.
+  fx_headshot(kind, x, y, look, sc, nx, ny) {
+    sfx.headshot();
+    const H = ZHEIGHT[kind] * (sc || 1);
+    this.corpses.push({ kind, x, y, t: 0, look, sc, headless: true });
+    this.splats.push({ x, y, t: 14, big: kind === 'boss' || kind === 'brute', rot: rand(0, TAU) });
+    if (this.splats.length > 40) this.splats.shift();
+    this.heads.push({ kind, look, sc, x, y, z: H * 0.84, vx: nx * 2.2 + rand(-0.6, 0.6), vy: ny * 2.2 + rand(-0.6, 0.6), vz: rand(3.6, 4.6), spin: 0, vs: rand(-14, 14), t: 0 });
+    for (let i = 0; i < 36; i++) {
+      const a = rand(0, TAU);
+      const s = rand(0.4, 1.6);
+      this.particles.push({ x, y, z: H * 0.78, vx: Math.cos(a) * s, vy: Math.sin(a) * s, vz: rand(1.5, 4), life: rand(0.5, 1.1), color: i % 3 ? '#9be04a' : PARTY[i % PARTY.length] });
     }
     if (kind === 'boss') {
       this.shake = 1;
@@ -1347,19 +1473,27 @@ export class Sim {
     }
   }
 
-  hurtZombie(z, dmg, nx, ny, knock, P = this.player) {
+  hurtZombie(z, dmg, nx, ny, knock, P = this.player, zone = 'body') {
     if (z.dead) return;
+    if (zone === 'head') dmg *= HEAD_MUL;
+    else if (zone === 'legs') dmg *= LEG_MUL;
     z.hp -= dmg * P.dmgMul;
     z.hurtT = 0.08;
-    if (this.isLocal(P)) this.hitT = 0.12;
+    if (this.isLocal(P)) {
+      this.hitT = 0.12;
+      if (zone === 'head') {
+        if (this.headT <= 0.02) sfx.headTick();
+        this.headT = 0.15;
+      }
+    }
     const k = (knock * 6) / ZMASS[z.kind];
     z.kx += nx * k;
     z.ky += ny * k;
     if (dmg > 3) this.snd('hit');
-    if (z.hp <= 0) this.killZombie(z, P);
+    if (z.hp <= 0) this.killZombie(z, P, zone === 'head', nx, ny);
   }
 
-  killZombie(z, P = this.player) {
+  killZombie(z, P = this.player, head = false, nx = 0, ny = 0) {
     z.dead = true;
     this.zombies.splice(this.zombies.indexOf(z), 1);
     const base = ENEMIES[z.kind];
@@ -1368,9 +1502,15 @@ export class Sim {
     C.t = COMBO_WINDOW;
     this.lv.bestCombo = Math.max(this.lv.bestCombo, C.n);
     const mult = comboMult(C.n);
-    const gain = Math.round(base.score * (1 + Math.floor(this.levelN / 10)) * mult);
+    // Headshot kills are worth half again, in score and XP.
+    const hs = head ? 1.5 : 1;
+    const gain = Math.round(base.score * (1 + Math.floor(this.levelN / 10)) * mult * hs);
     this.score += gain;
     this.fx('popup', r2(z.x), r2(z.y), r2(ZHEIGHT[z.kind] * 0.8), `+${gain}`, mult > 1);
+    if (head) {
+      this.fx('popup', r2(z.x), r2(z.y), r2(ZHEIGHT[z.kind] * (z.sc || 1) + 0.25), 'HEADSHOT!', true);
+      this.lv.headshots = (this.lv.headshots || 0) + 1;
+    }
     const call = COMBO_CALLS.find((c) => c.n === C.n);
     if (call) {
       this.comboCall = { text: call.text, mult, t: 1.6 };
@@ -1380,10 +1520,11 @@ export class Sim {
     // The killer gets full XP and meter; teammates get half.
     for (const Q of this.players) {
       const share = Q === P ? 1 : 0.5;
-      this.gainXp(Q, base.score * share);
+      this.gainXp(Q, base.score * share * hs);
       if (!Q.down && !Q.spKind) this.chargeSpecial(Q, base.score * SP_PER_SCORE * share);
     }
-    this.fx('death', z.kind, r2(z.x), r2(z.y), z.look, z.sc);
+    if (head) this.fx('headshot', z.kind, r2(z.x), r2(z.y), z.look, z.sc, r2(nx), r2(ny));
+    else this.fx('death', z.kind, r2(z.x), r2(z.y), z.look, z.sc);
     if (z.kind === 'bloater') this.pop(z, P);
     if (z.kind === 'boss') {
       this.boss = this.zombies.find((o) => o.kind === 'boss') || null;
@@ -1484,6 +1625,19 @@ export class Sim {
     }
   }
 
+  fx_waveClear(n, last) {
+    sfx.waveClear(!!last);
+    this.flash = { color: '#f6c945', t: 0.25, amt: 0.3 };
+    this.shake = Math.min(1, this.shake + 0.2);
+    // Confetti rains down around this player.
+    const P = this.player;
+    for (let i = 0; i < 160; i++) {
+      const a = rand(0, TAU);
+      const r = rand(0.5, 5);
+      this.particles.push({ x: P.x + Math.cos(a) * r, y: P.y + Math.sin(a) * r, z: rand(1.6, 3.2), vx: rand(-0.3, 0.3), vy: rand(-0.3, 0.3), vz: rand(-0.4, 0.4), life: rand(1.4, 2.6), color: PARTY[i % PARTY.length], float: true, fall: true });
+    }
+  }
+
   fx_flash(color, t, amt) {
     this.flash = { color, t, amt };
   }
@@ -1512,7 +1666,9 @@ export class Sim {
     L.total = q.length;
     L.phase = 'wave';
     L.spawnT = 0.3;
+    L.shown = 0;
     this.banner = { kind: 'wave', t: 2, dur: 2 };
+    this.snd('countdown', 0);
     this.snd('wave');
     this.reviveAll();
   }
@@ -1526,8 +1682,19 @@ export class Sim {
     const cfg = this.cfg;
     if (L.phase === 'done') return;
     if (L.phase === 'intro' || L.phase === 'break') {
+      const was = Math.ceil(L.t);
       L.t -= dt;
+      // Beep down the last three seconds of a break.
+      if (L.phase === 'break' && Math.ceil(L.t) !== was && was <= 4 && was > 1) this.snd('countdown', was - 1);
       if (L.t <= 0) this.startWave(L.wave + 1);
+      return;
+    }
+    if (L.phase === 'outro') {
+      L.t -= dt;
+      if (L.t <= 0) {
+        L.phase = 'done';
+        this.emit('clear');
+      }
       return;
     }
     L.spawnT -= dt;
@@ -1536,16 +1703,23 @@ export class Sim {
       L.spawnT = ((cfg.spawnEvery / 1000) * rand(0.6, 1.3)) / (1 + 0.3 * (this.players.length - 1));
     }
     if (!L.queue.length && !this.zombies.length) {
-      if (L.wave + 1 < cfg.waves.length) {
+      // Wave cleared: a jingle, confetti and a score bonus, then either a live countdown to the next
+      // wave or a short victory lap before the level-clear screen. Nothing pauses.
+      const last = L.wave + 1 >= cfg.waves.length;
+      const bonus = 100 * (L.wave + 1) * (1 + Math.floor(this.levelN / 10));
+      this.score += bonus;
+      this.fx('waveClear', L.wave + 1, last ? 1 : 0);
+      this.banner = { kind: last ? 'final' : 'cleared', t: 2.6, dur: 2.6, wave: L.wave + 1, bonus };
+      for (const P of this.alive()) this.chargeSpecial(P, 10);
+      if (!last) {
         L.phase = 'break';
-        L.t = 3.5;
-        this.banner = { kind: 'cleared', t: 2.4, dur: 2.4, next: clockFor(Math.min(50, this.levelN + 1)).label };
+        L.t = BREAK_T;
         for (const P of this.alive()) {
           if (P.hp < 70) this.dropPickup(P.x + rand(-1, 1), P.y + rand(-1, 1), 'health');
         }
       } else {
-        L.phase = 'done';
-        this.emit('clear');
+        L.phase = 'outro';
+        L.t = OUTRO_T;
       }
     }
   }
@@ -1561,7 +1735,8 @@ export class Sim {
       if (p.life <= 0) continue;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
-      if (!p.float) p.vz -= 7 * dt;
+      if (p.fall) p.vz = -0.9 + Math.sin((p.life + p.x) * 6) * 0.3;
+      else if (!p.float) p.vz -= 7 * dt;
       p.z += p.vz * dt;
       if (p.z < 0) {
         p.z = 0;
@@ -1583,6 +1758,7 @@ export class Sim {
     P.remote = true;
     if (!P.down) {
       [P.x, P.y, P.a, P.z] = s.p;
+      P.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, Number(s.p[4]) || 0));
       P.vx = s.v[0];
       P.vy = s.v[1];
       P.dashT = s.dash ? 0.1 : 0;
@@ -1602,13 +1778,13 @@ export class Sim {
     const L = this.lv;
     const snap = {
       t: 'snap',
-      p: this.players.map((P) => [r2(P.x), r2(P.y), r2(P.a), r2(P.z), Math.ceil(P.hp), Math.ceil(P.armor), P.down ? 1 : 0, Math.floor(P.sp), Math.floor(P.xp), r2(P.overclock), r2(P.tank), r2(P.heat), P.overheated ? 1 : 0, r2(P.fireCd), P.fireAnim > 0 ? 1 : 0, P.spKind ? 1 : 0, r2(P.iT)]),
+      p: this.players.map((P) => [r2(P.x), r2(P.y), r2(P.a), r2(P.z), Math.ceil(P.hp), Math.ceil(P.armor), P.down ? 1 : 0, Math.floor(P.sp), Math.floor(P.xp), r2(P.overclock), r2(P.tank), r2(P.heat), P.overheated ? 1 : 0, r2(P.fireCd), P.fireAnim > 0 ? 1 : 0, P.spKind ? 1 : 0, r2(P.iT), r2(P.pitch || 0)]),
       z: this.zombies.map((z) => [z.id, ZKINDS.indexOf(z.kind), r2(z.x), r2(z.y), r2(z.hp / z.max), ZSTATES.indexOf(z.state), r2(z.atkT), r2(z.anim), z.hurtT > 0 ? 1 : 0, r2(z.spawnT), z.look, z.sc, z.warp ? 1 : 0]),
       pr: this.projs.filter((p) => !p.fx || Math.random() < 0.5).map((p) => [PROJ_KINDS.indexOf(p.kind), r2(p.x), r2(p.y), r2(p.z), Math.floor(p.spin || 0), p.hand ?? 0, p.o, p.orbit ? 1 : 0]),
       pk: this.pickups.map((p) => [PICK_KINDS.indexOf(p.kind), r2(p.x), r2(p.y), r2(p.t), p.ph]),
-      lz: this.lasers.map((l) => [l.o, l.sp ? 1 : 0, r2(l.x), r2(l.y), r2(l.z), r2(l.a), r2(l.d)]),
+      lz: this.lasers.map((l) => [l.o, l.sp ? 1 : 0, r2(l.x), r2(l.y), r2(l.z), r2(l.a), r2(l.d), r2(l.pt || 0)]),
       b: [r2(this.buffs.patch), r2(this.buffs.multi), r2(this.buffs.freeze)],
-      lv: [L.phase, L.wave, L.queue.length, L.total, L.kills, L.bestCombo, r2(L.time)],
+      lv: [L.phase, L.wave, L.queue.length, L.total, L.kills, L.bestCombo, r2(L.time), r2(L.t || 0), L.headshots || 0],
       sc: this.score,
       cb: [this.combo.n, r2(this.combo.t)],
       cc: this.comboCall,
@@ -1665,6 +1841,7 @@ export class Sim {
       if (a[14]) P.fireAnim = Math.max(P.fireAnim, 0.06);
       P.spKind = a[15] ? P.hero.gun.kind : null;
       P.iT = a[16];
+      if (!me) P.pitch = a[17] || 0;
     });
     const old = new Map(this.zombies.map((z) => [z.id, z]));
     this.zombies = s.z.map((a) => {
@@ -1690,10 +1867,10 @@ export class Sim {
     this.projs = s.pr.map((a) => ({ kind: PROJ_KINDS[a[0]], x: a[1], y: a[2], z: a[3], spin: a[4], hand: a[5], o: a[6], orbit: !!a[7] }));
     this.pickups = s.pk.map((a) => ({ kind: PICK_KINDS[a[0]], x: a[1], y: a[2], t: a[3], ph: a[4] }));
     const mine = this.lasers.filter((l) => l.o === this.local && !l.sp);
-    this.lasers = s.lz.filter((a) => a[0] !== this.local || a[1]).map((a) => ({ o: a[0], sp: !!a[1], x: a[2], y: a[3], z: a[4], a: a[5], d: a[6] })).concat(mine);
+    this.lasers = s.lz.filter((a) => a[0] !== this.local || a[1]).map((a) => ({ o: a[0], sp: !!a[1], x: a[2], y: a[3], z: a[4], a: a[5], d: a[6], pt: a[7] })).concat(mine);
     [this.buffs.patch, this.buffs.multi, this.buffs.freeze] = s.b;
     const L = this.lv;
-    [L.phase, L.wave, , L.total, L.kills, L.bestCombo, L.time] = s.lv;
+    [L.phase, L.wave, , L.total, L.kills, L.bestCombo, L.time, L.t, L.headshots] = s.lv;
     L.queue = { length: s.lv[2] };
     this.score = s.sc;
     this.combo.n = s.cb[0];
@@ -1723,17 +1900,18 @@ export class Sim {
     if (G.kind === 'laser' && input.fire && !P.overheated && !P.down) {
       const dx = Math.cos(P.a);
       const dy = Math.sin(P.a);
-      const wallD = Math.min(G.range, this.wallDistance(P.x, P.y, P.a, G.range));
-      let d = wallD;
+      const slope = Math.tan(P.pitch);
+      let d = Math.min(G.range, this.wallDistance(P.x, P.y, P.a, G.range));
+      if (slope < -0.01) d = Math.min(d, (EYE + P.z) / -slope);
       if (this.buffs.multi <= 0) {
         for (const z of this.zombies) {
           const rx = z.x - P.x;
           const ry = z.y - P.y;
           const t = rx * dx + ry * dy;
-          if (t > 0 && t < d && Math.abs(rx * dy - ry * dx) < ZRAD[z.kind] * 1.15) d = t;
+          if (t > 0 && t < d && Math.abs(rx * dy - ry * dx) < ZRAD[z.kind] * 1.15 && this.inHeight(z, EYE + P.z + t * slope)) d = t;
         }
       }
-      this.lasers.push({ o: this.local, x: P.x, y: P.y, z: EYE + P.z, a: P.a, d });
+      this.lasers.push({ o: this.local, x: P.x, y: P.y, z: EYE + P.z, a: P.a, d, pt: P.pitch });
     }
     const k = Math.min(1, dt * 12);
     for (const Q of this.players) {
@@ -1760,7 +1938,7 @@ export class Sim {
   // Guest side: what we send the host about ourselves.
   inputState() {
     const P = this.player;
-    return { t: 'in', p: [r2(P.x), r2(P.y), r2(P.a), r2(P.z)], v: [r2(P.vx), r2(P.vy)], fire: P.input.fire && !P.down ? 1 : 0, dash: P.dashT > 0 ? 1 : 0 };
+    return { t: 'in', p: [r2(P.x), r2(P.y), r2(P.a), r2(P.z), r2(P.pitch)], v: [r2(P.vx), r2(P.vy)], fire: P.input.fire && !P.down ? 1 : 0, dash: P.dashT > 0 ? 1 : 0 };
   }
 }
 

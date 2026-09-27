@@ -247,7 +247,7 @@ const HOWTO = [
   'Phone: left thumb moves, right thumb aims, tap FIRE.',
   'ONLINE CO-OP: host a room, up to 3 friends join by code.',
   'Each hero has a ride and a weapon of their own.',
-  'Water fries Corrupted zombies. Every 10th level: boss.',
+  'Headshots do double damage. Water fries Corrupted zombies.',
   'Kills earn XP. Every LEVEL UP makes that hero hit harder.',
   'Powerups: FIX disk invincible, x3 triple shot,',
   'toaster slow-mo, C-A-D ends every zombie in sight.',
@@ -388,7 +388,7 @@ export function drawClear(g, ui, t, stats) {
   const inner = window98(g, x, 30, w, 134, `Level ${stats.level} complete`);
   iconInfo(g, inner.x + 4, inner.y + 4);
   text(g, `${clockFor(stats.level).label} SURVIVED`, inner.x + 22, inner.y + 4, { font: 'big', color: PAL.winNavy });
-  const rows = [['Zombies deleted', stats.kills], ['Time', `${Math.floor(stats.time / 60)}:${String(Math.floor(stats.time % 60)).padStart(2, '0')}`], ['Best combo', `${stats.combo || 0} hits`], ['Level score', stats.levelScore], ['Total score', stats.score]];
+  const rows = [['Zombies deleted', stats.kills], ['Time', `${Math.floor(stats.time / 60)}:${String(Math.floor(stats.time % 60)).padStart(2, '0')}`], ['Best combo, headshots', `${stats.combo || 0} hits, ${stats.headshots || 0}`], ['Level score', stats.levelScore], ['Total score', stats.score]];
   rows.forEach(([k, v], i) => {
     text(g, k, inner.x + 22, inner.y + 20 + i * 10, { font: 'small', color: PAL.ink });
     text(g, String(v), inner.x + inner.w - 6, inner.y + 20 + i * 10, { font: 'small', color: PAL.ink, align: 'right' });

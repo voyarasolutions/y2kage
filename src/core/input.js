@@ -9,6 +9,7 @@ export class Input {
     this.mouse = { x: W / 2, y: H / 2, down: false, dx: 0 };
     this.touch = { on: false, move: null, look: null, fire: null, jump: null, mo: null, vec: { x: 0, y: 0 }, lx: 0, knob: null };
     this.lookDX = 0;
+    this.lookDY = 0;
     this.noLock = false;
     this.playing = false;
     this.spReady = false;
@@ -40,7 +41,10 @@ export class Input {
       const p = this.toScreen(e.clientX, e.clientY);
       this.mouse.x = p.x;
       this.mouse.y = p.y;
-      if (this.playing && (document.pointerLockElement === cv || this.mouse.down || this.noLock)) this.lookDX += e.movementX;
+      if (this.playing && (document.pointerLockElement === cv || this.mouse.down || this.noLock)) {
+        this.lookDX += e.movementX;
+        this.lookDY += e.movementY;
+      }
     });
     cv.addEventListener('mousedown', (e) => {
       e.preventDefault();
@@ -87,6 +91,7 @@ export class Input {
         } else if (this.touch.look == null) {
           this.touch.look = t.identifier;
           this.touch.lx = p.x;
+          this.touch.ly = p.y;
         }
       }
     };
@@ -102,7 +107,9 @@ export class Input {
           this.touch.knob = { x: this.touch.mo.x + this.touch.vec.x * 24, y: this.touch.mo.y + this.touch.vec.y * 24 };
         } else if (t.identifier === this.touch.look) {
           this.lookDX += (p.x - this.touch.lx) * 4.2;
+          this.lookDY += (p.y - this.touch.ly) * 4.2;
           this.touch.lx = p.x;
+          this.touch.ly = p.y;
         }
       }
     };
@@ -153,7 +160,9 @@ export class Input {
     const turn = (k.has('ArrowLeft') || k.has('KeyQ') ? -1 : 0) + (k.has('ArrowRight') || k.has('KeyE') ? 1 : 0);
     const fire = this.mouse.down || this.touch.fire != null || k.has('KeyF') || k.has('ControlLeft') || k.has('Enter');
     const look = this.lookDX;
+    const lookY = this.lookDY;
     this.lookDX = 0;
-    return { move: { f: clamp(f, -1, 1), s: clamp(s, -1, 1) }, turn, fire, look };
+    this.lookDY = 0;
+    return { move: { f: clamp(f, -1, 1), s: clamp(s, -1, 1) }, turn, fire, look, lookY };
   }
 }

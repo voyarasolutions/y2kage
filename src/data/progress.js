@@ -33,3 +33,15 @@ export function saveHeroXp(id, xp) {
   all[id] = Math.max(all[id] || 0, Math.round(xp));
   store.set('xp', all);
 }
+
+// Special meter, saved per hero so it carries over between waves, levels and sessions.
+export function heroSp(id) {
+  const v = (store.get('sp', {}) || {})[id];
+  return Math.max(0, Math.min(100, Number(v) || 0));
+}
+
+export function saveHeroSp(id, sp) {
+  const all = store.get('sp', {}) || {};
+  all[id] = Math.round(Math.max(0, Math.min(100, sp)));
+  store.set('sp', all);
+}

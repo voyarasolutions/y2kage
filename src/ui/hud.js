@@ -10,14 +10,16 @@ import { ENEMIES } from '../data/levels.js';
 
 export const TASKBAR_H = 16;
 
-export function drawCrosshair(g, kind, over, hit = 0) {
+export function drawCrosshair(g, kind, over, hit = 0, headHit = 0) {
   const cx = W / 2;
-  const cy = H / 2 - 8;
-  const col = over ? PAL.red : kind === 'laser' ? PAL.red : PAL.cream;
+  const cy = H / 2;
+  // Gold over a head, red over the body.
+  const col = over === 'head' ? PAL.gold : over ? PAL.red : kind === 'laser' ? PAL.red : PAL.cream;
   if (hit > 0) {
-    // Hitmarker: four diagonal ticks around the crosshair.
+    // Hitmarker: four diagonal ticks around the crosshair, bigger and gold for a headshot.
+    const n = headHit > 0 ? 8 : 6;
     for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-      for (let k = 3; k < 6; k++) rect(g, cx + sx * k, cy + sy * k, 1, 1, PAL.white);
+      for (let k = 3; k < n; k++) rect(g, cx + sx * k, cy + sy * k, 1, 1, headHit > 0 ? PAL.gold : PAL.white);
     }
   }
   rect(g, cx - 4, cy, 3, 1, PAL.ink);
@@ -124,6 +126,16 @@ export function drawTopHud(g, sim, t) {
     const r = `${sim.remaining()} LEFT`;
     text(g, s, W / 2, 5, { font: 'big', color: PAL.cream, outline: PAL.ink, align: 'center' });
     text(g, r, W / 2, 15, { font: 'small', color: PAL.cyan, outline: PAL.ink, align: 'center' });
+  } else if (L.phase === 'break') {
+    // Live countdown: the level keeps running, grab pickups and reposition.
+    const n = Math.max(1, Math.ceil(L.t));
+    const pulse = L.t % 1 > 0.8;
+    text(g, `NEXT WAVE IN ${n}`, W / 2, 5, { font: 'big', color: n <= 3 ? (pulse ? PAL.white : PAL.gold) : PAL.cream, outline: PAL.ink, align: 'center' });
+    text(g, `WAVE ${L.wave + 2}/${sim.cfg.waves.length} INCOMING`, W / 2, 15, { font: 'small', color: PAL.pinkLight, outline: PAL.ink, align: 'center' });
+    rect(g, W / 2 - 40, 24, 80, 2, PAL.ink);
+    rect(g, W / 2 - 40, 24, Math.round(80 * Math.max(0, L.t) / 6), 2, PAL.gold);
+  } else if (L.phase === 'outro') {
+    text(g, 'LEVEL CLEAR!', W / 2, 5, { font: 'big', color: PARTY[Math.floor(t * 8) % PARTY.length], outline: PAL.ink, align: 'center' });
   }
   text(g, `LVL ${sim.levelN}`, W - 5, 5, { font: 'big', color: PAL.cream, outline: PAL.ink, align: 'right' });
   text(g, sim.map.name.toUpperCase(), W - 5, 15, { font: 'small', color: PAL.pinkLight, outline: PAL.ink, align: 'right' });
@@ -162,21 +174,23 @@ export function drawBanner(g, sim, t) {
     rect(g, inner.x + 22, inner.y + 25, inner.w - 26, 1, PAL.white);
     lines.forEach((l, i) => text(g, l, inner.x + 22, inner.y + 29 + i * 9, { font: 'small', color: PAL.winDark }));
   } else if (b.kind === 'wave') {
+    // Slams in, then fades, so it never feels like a pause.
     const L = sim.lv;
-    const w = 170;
-    const x = Math.round(W / 2 - w / 2);
-    const inner = window98(g, x, 50, w, 40, 'Incoming');
-    iconWarn(g, inner.x + 4, inner.y + 3);
-    text(g, `WAVE ${L.wave + 1} OF ${cfg.waves.length}`, inner.x + 22, inner.y + 3, { font: 'big', color: PAL.ink });
-    text(g, `${L.total} zombies inbound`, inner.x + 22, inner.y + 13, { font: 'small', color: PAL.winDark });
-  } else if (b.kind === 'cleared') {
-    const w = 170;
-    const x = Math.round(W / 2 - w / 2);
-    const inner = window98(g, x, 50, w, 40, 'Wave cleared');
-    iconInfo(g, inner.x + 4, inner.y + 3);
-    text(g, 'WAVE CLEARED', inner.x + 22, inner.y + 3, { font: 'big', color: PAL.winNavy });
-    const left = cfg.waves.length - sim.lv.wave - 1;
-    text(g, `${left} more wave${left === 1 ? '' : 's'} this minute`, inner.x + 22, inner.y + 13, { font: 'small', color: PAL.winDark });
+    const s = age < 0.1 ? 3 : 2;
+    g.globalAlpha = Math.min(1, b.t / 0.5);
+    const last = L.wave + 1 === cfg.waves.length;
+    text(g, last ? 'FINAL WAVE' : `WAVE ${L.wave + 1}`, W / 2, 56, { font: 'big', color: last ? PAL.red : PAL.cream, outline: PAL.ink, align: 'center', scale: s });
+    text(g, `${L.total} zombies inbound`, W / 2, 56 + 8 * s + 4, { font: 'small', color: PAL.cyan, outline: PAL.ink, align: 'center' });
+    g.globalAlpha = 1;
+  } else if (b.kind === 'cleared' || b.kind === 'final') {
+    const s = age < 0.12 ? 3 : 2;
+    const y = 52 - Math.round(Math.max(0, 0.25 - age) * 40);
+    g.globalAlpha = Math.min(1, b.t / 0.5);
+    const title = b.kind === 'final' ? 'ALL WAVES CLEARED!' : `WAVE ${b.wave} CLEARED!`;
+    text(g, title, W / 2, y, { font: 'big', color: PARTY[Math.floor(t * 10) % PARTY.length], outline: PAL.ink, align: 'center', scale: s });
+    const sub = b.kind === 'final' ? `${cfg.clock.label} SURVIVED   +${b.bonus} BONUS` : `+${b.bonus} WAVE BONUS`;
+    text(g, sub, W / 2, y + 8 * s + 4, { font: 'small', color: PAL.gold, outline: PAL.ink, align: 'center' });
+    g.globalAlpha = 1;
   } else if (b.kind === 'boss') {
     const w = 210;
     const x = Math.round(W / 2 - w / 2);

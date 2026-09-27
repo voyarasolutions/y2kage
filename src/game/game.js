@@ -5,9 +5,9 @@ import { buildTextures } from '../gfx/textures.js';
 import { buildSprites } from '../gfx/sprites.js';
 import { buildHorde } from '../gfx/horde.js';
 import { settings, saveSettings, SENS_STEPS } from '../core/settings.js';
-import { heroXp, saveHeroXp } from '../data/progress.js';
+import { heroXp, saveHeroXp, heroSp, saveHeroSp } from '../data/progress.js';
 import { World } from '../world/world.js';
-import { Sim, EYE, ZRAD, ZHEIGHT } from './sim.js';
+import { Sim, EYE, ZRAD, ZHEIGHT, MAX_PITCH } from './sim.js';
 import { Input } from '../core/input.js';
 import { W, H, TAU, rand, clamp, store, pickOne } from '../core/util.js';
 import { PAL, PARTY } from '../core/palette.js';
@@ -201,12 +201,15 @@ export class Game {
     if (this.net.role === 'host') {
       // Online host: everyone in the lobby joins the level; each guest learns which slot is theirs.
       const party = this.lobbyPlayers();
+      // Special meters carry over from the level just played.
+      const prev = this.sim?.players;
+      if (prev && prev.length === party.length) party.forEach((p, i) => (p.sp = prev[i].spKind ? 0 : prev[i].sp));
       this.net.guests.forEach((g, i) => (g.slot = i + 1));
-      this.sim = new Sim(this.map, cfg, party.map((p) => ({ hero: heroById(p.heroId), xp: p.xp, name: p.name })), n, { mode: 'host', local: 0 });
+      this.sim = new Sim(this.map, cfg, party.map((p) => ({ hero: heroById(p.heroId), xp: p.xp, sp: p.sp, name: p.name })), n, { mode: 'host', local: 0 });
       this.sim.out = [];
       this.net.guests.forEach((g) => this.net.send({ t: 'start', level: n, party, you: g.slot }, g));
       this.snapT = 0;
-    } else this.sim = new Sim(this.map, cfg, [{ hero: this.hero, xp: heroXp(this.hero.id), name: 'YOU' }], n);
+    } else this.sim = new Sim(this.map, cfg, [{ hero: this.hero, xp: heroXp(this.hero.id), sp: heroSp(this.hero.id), name: 'YOU' }], n);
     this.levelStartScore = this.runScore;
     this.setMode('play');
     const d = Math.floor((n - 1) / 10);
@@ -218,7 +221,7 @@ export class Game {
     const s = this.sim;
     this.runScore += s.score;
     const n = this.levelN;
-    this.clearStats = stats || { level: n, kills: s.lv.kills, time: s.lv.time, levelScore: s.score, score: this.runScore, combo: s.lv.bestCombo };
+    this.clearStats = stats || { level: n, kills: s.lv.kills, time: s.lv.time, levelScore: s.score, score: this.runScore, combo: s.lv.bestCombo, headshots: s.lv.headshots || 0 };
     if (this.net.role === 'host') {
       this.net.send(s.snapshot());
       this.net.send({ t: 'end', kind: 'clear', stats: this.clearStats });
@@ -454,7 +457,7 @@ export class Game {
     try {
       await this.net.join(this.joinCode);
       this.netNote('Connected! Saying hello...');
-      this.net.send({ t: 'hello', hero: this.heroId, xp: heroXp(this.heroId) });
+      this.net.send({ t: 'hello', hero: this.heroId, xp: heroXp(this.heroId), sp: heroSp(this.heroId) });
     } catch (e) {
       this.netNote(String(e), true);
     }
@@ -473,8 +476,8 @@ export class Game {
 
   // Host: the lobby roster, host first then guests in join order.
   lobbyPlayers() {
-    const list = [{ name: 'P1', heroId: this.heroId, xp: heroXp(this.heroId) }];
-    this.net.guests.forEach((g, i) => list.push({ name: `P${i + 2}`, heroId: g.info?.heroId || 'tina', xp: g.info?.xp || 0 }));
+    const list = [{ name: 'P1', heroId: this.heroId, xp: heroXp(this.heroId), sp: heroSp(this.heroId) }];
+    this.net.guests.forEach((g, i) => list.push({ name: `P${i + 2}`, heroId: g.info?.heroId || 'tina', xp: g.info?.xp || 0, sp: g.info?.sp || 0 }));
     return list;
   }
 
@@ -502,7 +505,7 @@ export class Game {
     sfx.click();
     if (this.net.role === 'host') this.broadcastLobby();
     else {
-      this.net.send({ t: 'pick', hero: this.heroId, xp: heroXp(this.heroId) });
+      this.net.send({ t: 'pick', hero: this.heroId, xp: heroXp(this.heroId), sp: heroSp(this.heroId) });
       // Show the change straight away; the host's next roster confirms it.
       const me = this.lobby?.players[this.lobby.you];
       if (me) {
@@ -551,7 +554,7 @@ export class Game {
 
   fromGuest(g, m) {
     if (m.t === 'hello' || m.t === 'pick') {
-      g.info = { heroId: heroById(m.hero).id, xp: Math.max(0, Number(m.xp) || 0) };
+      g.info = { heroId: heroById(m.hero).id, xp: Math.max(0, Number(m.xp) || 0), sp: Math.max(0, Math.min(100, Number(m.sp) || 0)) };
       this.broadcastLobby();
     } else if (m.t === 'in') {
       if (this.sim && g.slot != null && Array.isArray(m.p) && Array.isArray(m.v)) this.sim.applyRemoteInput(g.slot, m);
@@ -586,6 +589,7 @@ export class Game {
         if (this.mapIdx !== 0) this.loadWorld(0, 1);
         this.setMode('lobby');
         if (first) sfx.select();
+        else this.net.send({ t: 'pick', hero: this.heroId, xp: heroXp(this.heroId), sp: heroSp(this.heroId) });
       }
     } else if (m.t === 'start') {
       this.saveXp();
@@ -595,7 +599,7 @@ export class Game {
       this.levelN = m.level;
       const cfg = levelConfig(m.level);
       this.loadWorld(Math.min(this.maps.length - 1, Math.floor((m.level - 1) / 10)), m.level);
-      this.sim = new Sim(this.map, cfg, m.party.map((p) => ({ hero: heroById(p.heroId), xp: p.xp, name: p.name })), m.level, { mode: 'client', local: m.you });
+      this.sim = new Sim(this.map, cfg, m.party.map((p) => ({ hero: heroById(p.heroId), xp: p.xp, sp: p.sp, name: p.name })), m.level, { mode: 'client', local: m.you });
       this.sim.act = (a, ...args) => this.net.send({ t: 'act', a, args });
       this.runScore = this.runScore || 0;
       this.levelStartScore = this.runScore;
@@ -697,7 +701,9 @@ export class Game {
     const online = this.net.active && this.sim && m === 'paused';
     if (m === 'play' || online) {
       const inp = m === 'play' ? this.input.state() : { move: { f: 0, s: 0 }, turn: 0, fire: false, look: 0 };
-      this.sim.player.a += inp.look * 0.0026 * settings.sens;
+      const LP = this.sim.player;
+      LP.a += inp.look * 0.0026 * settings.sens;
+      LP.pitch = clamp((LP.pitch || 0) - (inp.lookY || 0) * 0.0026 * settings.sens, -MAX_PITCH, MAX_PITCH);
       this.input.spReady = this.sim.player.sp >= 100 && !this.sim.player.spKind;
       this.sim.update(dt, inp);
       this.netTick(dt);
@@ -714,7 +720,11 @@ export class Game {
   }
 
   saveXp() {
-    if (this.sim && this.hero) saveHeroXp(this.hero.id, this.sim.xp);
+    if (this.sim && this.hero) {
+      saveHeroXp(this.hero.id, this.sim.xp);
+      const P = this.sim.player;
+      if (P.hero.id === this.hero.id) saveHeroSp(this.hero.id, P.spKind ? 0 : P.sp);
+    }
   }
 
   handleEvents() {
@@ -829,7 +839,7 @@ export class Game {
     const eye = EYE + P.z + P.bob;
     this.camX = P.x;
     this.camZ = P.y;
-    W3.setCamera(P.x + sx, eye + sy, P.y, P.a, 0, roll);
+    W3.setCamera(P.x + sx, eye + sy, P.y, P.a, P.pitch || 0, roll);
     const cam = W3.camera;
     cam.updateMatrixWorld();
     // Zombies.
@@ -853,7 +863,23 @@ export class Game {
     for (const c of sim.corpses) {
       const Z = look(c);
       const h = ZHEIGHT[c.kind] * (Z.hmul || 1) * (c.sc || 1);
-      W3.sprite(Z.die[Math.min(2, Math.floor(c.t / 0.17))], c.x, 0, c.y, h * Z.aspect, h);
+      if (c.headless) {
+        // Stands headless for a beat, twitching, then crumples into the goo.
+        const body = this.headless(Z.walk[0]);
+        const k = c.t < 0.4 ? 1 : Math.max(0, 1 - (c.t - 0.4) / 0.5);
+        const jx = c.t < 0.4 ? Math.sin(c.t * 60) * 0.02 : 0;
+        if (k > 0.05) W3.sprite(body, c.x + jx, 0, c.y, h * Z.aspect * (1 + (1 - k) * 0.5), h * k);
+      } else W3.sprite(Z.die[Math.min(2, Math.floor(c.t / 0.17))], c.x, 0, c.y, h * Z.aspect, h);
+    }
+    for (const hd of sim.heads) {
+      const Z = look(hd);
+      const h = ZHEIGHT[hd.kind] * (Z.hmul || 1) * (hd.sc || 1);
+      const head = this.headOf(Z.walk[0]);
+      const hh = h * head.frac;
+      const sp = W3.sprite(head.tex, hd.x, hd.z, hd.y, hh * head.aspect, hh);
+      sp.center.set(0.5, 0.5);
+      sp.material.rotation = hd.spin;
+      W3.decal(S.shadow, hd.x, hd.y, 0.3, 0, 0.35);
     }
     for (const s of sim.splats) W3.decal(s.big ? S.gooBig : S.goo, s.x, s.y, s.big ? 1.6 : 0.9, s.rot, Math.min(1, s.t / 2));
     for (const p of sim.pickups) {
@@ -911,7 +937,7 @@ export class Game {
       const hx = ox + fx2 * l.d;
       const hy = oy + fy2 * l.d;
       const top = l.sp ? oe - 0.3 : oe - 0.17;
-      const end = l.sp ? oe - 0.3 : oe - 0.08;
+      const end = l.sp ? oe - 0.3 : oe + l.d * Math.tan(l.pt || 0) - (mine ? 0.02 : 0.08);
       if (l.sp) {
         // Light Show beams cycle through the party colours and are drawn thick.
         const c = PARTY[(Math.floor(this.t * 8) + Math.round(l.a * 3)) % PARTY.length];
@@ -986,7 +1012,7 @@ export class Game {
     const heroIdx = HEROES.findIndex((h) => h.id === this.hero.id);
     if (m === 'play' || m === 'paused') {
       this.weapon.draw(g, sim, heroIdx, this.t);
-      HUD.drawCrosshair(g, sim.hero.gun.kind, this.aimingAtZombie(sim), sim.hitT);
+      HUD.drawCrosshair(g, sim.hero.gun.kind, this.aimingAtZombie(sim), sim.hitT, sim.headT);
       HUD.drawPopups(g, this.projectPopups(sim));
     }
     HUD.drawHurt(g, sim, this.t);
@@ -1040,17 +1066,91 @@ export class Game {
     return out;
   }
 
+  // What the crosshair is over: 'head', true for any other part, or false.
   aimingAtZombie(sim) {
     const P = sim.player;
     const dx = Math.cos(P.a);
     const dy = Math.sin(P.a);
+    const eyeZ = EYE + P.z;
+    const slope = Math.tan(P.pitch || 0);
     const wall = sim.wallDistance(P.x, P.y, P.a, 16);
+    let best = null;
+    let bestT = wall;
     for (const z of sim.zombies) {
       const rx = z.x - P.x;
       const ry = z.y - P.y;
       const t = rx * dx + ry * dy;
-      if (t > 0 && t < wall && Math.abs(rx * dy - ry * dx) < ZRAD[z.kind]) return true;
+      if (t > 0 && t < bestT && Math.abs(rx * dy - ry * dx) < ZRAD[z.kind] && sim.inHeight(z, eyeZ + t * slope)) {
+        best = z;
+        bestT = t;
+      }
     }
-    return false;
+    if (!best) return false;
+    return sim.zoneAt(best, eyeZ + bestT * slope) === 'head' ? 'head' : true;
   }
+
+  // Top rows of a zombie frame (its head) as a separate texture, for headshot pops.
+  headOf(tex) {
+    if (tex.userData.head) return tex.userData.head;
+    const src = tex.image;
+    const { top, bh } = spriteBounds(src);
+    const hh = Math.max(3, Math.round(bh * 0.26));
+    const g0 = src.getContext('2d').getImageData(0, top, src.width, hh).data;
+    let minX = src.width;
+    let maxX = 0;
+    for (let y = 0; y < hh; y++) for (let x = 0; x < src.width; x++) if (g0[(y * src.width + x) * 4 + 3] > 0) {
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+    }
+    if (maxX < minX) {
+      minX = 0;
+      maxX = src.width - 1;
+    }
+    const c = document.createElement('canvas');
+    c.width = maxX - minX + 1;
+    c.height = hh;
+    c.getContext('2d').drawImage(src, minX, top, c.width, hh, 0, 0, c.width, hh);
+    const t = pixelTex(c);
+    tex.userData.head = { tex: t, aspect: c.width / hh, frac: hh / src.height };
+    return tex.userData.head;
+  }
+
+  // The same frame with the head cleared away.
+  headless(tex) {
+    if (tex.userData.headless) return tex.userData.headless;
+    const src = tex.image;
+    const { top, bh } = spriteBounds(src);
+    const c = document.createElement('canvas');
+    c.width = src.width;
+    c.height = src.height;
+    const g = c.getContext('2d');
+    g.drawImage(src, 0, 0);
+    g.clearRect(0, 0, c.width, top + Math.round(bh * 0.24));
+    tex.userData.headless = pixelTex(c);
+    return tex.userData.headless;
+  }
+}
+
+// First opaque row of a sprite canvas and the height from there to the bottom.
+function spriteBounds(c) {
+  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  let top = 0;
+  outer: for (let y = 0; y < c.height; y++) {
+    for (let x = 0; x < c.width; x++) {
+      if (d[(y * c.width + x) * 4 + 3] > 0) {
+        top = y;
+        break outer;
+      }
+    }
+  }
+  return { top, bh: c.height - top };
+}
+
+function pixelTex(c) {
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = THREE.NearestFilter;
+  t.minFilter = THREE.NearestFilter;
+  t.generateMipmaps = false;
+  t.colorSpace = THREE.NoColorSpace;
+  return t;
 }

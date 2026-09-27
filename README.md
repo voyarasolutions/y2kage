@@ -70,5 +70,5 @@ The app is locked to landscape. Fonts are bundled so it works offline.
 
 ## Controls
 
-WASD move, arrows or Q/E turn, mouse look (click to lock), click fire, Space and Shift for ride tricks, R or right-click
+WASD move, arrows or Q/E turn, mouse look up/down/around (click to lock); headshots do double damage, legs 60%, click fire, Space and Shift for ride tricks, R or right-click
 for the hero's special once its meter is full, P or Esc pause, M mute. On touch screens: left thumb moves, right thumb looks, with on-screen fire, jump and boost buttons.

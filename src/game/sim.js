@@ -138,7 +138,7 @@ export class Sim {
     this.flash = null;
     this.glitchT = 0;
     this.score = 0;
-    this.lv = { phase: 'intro', t: 3.4, wave: -1, queue: [], spawnT: 0, time: 0, kills: 0, bestCombo: 0, total: 0 };
+    this.lv = { phase: 'intro', t: 2.8, wave: -1, queue: [], spawnT: 0, time: 0, kills: 0, bestCombo: 0, total: 0 };
     // Chain kills inside the window to build a combo and a score multiplier.
     this.combo = { n: 0, t: 0 };
     this.comboCall = null;
@@ -642,6 +642,20 @@ export class Sim {
     P.hp -= dmg;
     P.hurtT = 0.4;
     this.personal(P, 'hurt');
+    if (P.hp <= 0 && P.mods.backup && !P.backupUsed) {
+      // Backup Disk: restored from floppy, once per level.
+      P.backupUsed = true;
+      P.hp = Math.round(P.maxHp * 0.5);
+      P.iT = 2.5;
+      this.personal(P, 'toast', 'BACKUP RESTORED', 'Saved by the floppy. Once per level.');
+      this.personal(P, 'flash', '#7ac943', 0.4, 0.6);
+      this.fx('stomp', r2(P.x), r2(P.y));
+      for (const z of this.zombies.slice()) {
+        const d = Math.hypot(z.x - P.x, z.y - P.y);
+        if (d < 3 && !z.bs) this.hurtZombie(z, 0, (z.x - P.x) / (d || 1), (z.y - P.y) / (d || 1), 3, P, 'chain');
+      }
+      return;
+    }
     if (P.hp <= 0) {
       P.hp = 0;
       P.down = true;
@@ -1295,6 +1309,32 @@ export class Sim {
     }
   }
 
+  // An upgrade explosion: hurts zombies only, not tied to anyone's weapon.
+  blast(x, y, R, dmg, P) {
+    this.fx('explode', r2(x), r2(y), 0.5, '#f6c945', '#ff8a2a');
+    for (const zb of this.zombies.slice()) {
+      const d = Math.hypot(zb.x - x, zb.y - y);
+      if (d < R + ZRAD[zb.kind]) this.hurtZombie(zb, dmg / P.dmgMul * (1 + (P.dmgMul - 1) * 0.5), (zb.x - x) / (d || 1), (zb.y - y) / (d || 1), 1.6, P, 'chain');
+    }
+  }
+
+  fx_zap(x1, y1, z1, x2, y2, z2) {
+    const n = 10;
+    for (let i = 0; i <= n; i++) {
+      const f = i / n;
+      const j = i === 0 || i === n ? 0 : 0.12;
+      this.particles.push({ x: x1 + (x2 - x1) * f + rand(-j, j), y: y1 + (y2 - y1) * f + rand(-j, j), z: z1 + (z2 - z1) * f + rand(-j, j), vx: 0, vy: 0, vz: 0, life: rand(0.1, 0.22), color: i % 3 ? '#4ab8ff' : '#ffffff', float: true });
+    }
+    sfx.arc();
+  }
+
+  fx_infect(x, y) {
+    for (let i = 0; i < 14; i++) {
+      const a = rand(0, TAU);
+      this.particles.push({ x, y, z: rand(0.3, 1), vx: Math.cos(a) * 1.4, vy: Math.sin(a) * 1.4, vz: rand(0, 0.8), life: rand(0.3, 0.6), color: i % 2 ? '#e8344e' : '#ff8fc4', float: true });
+    }
+  }
+
   // A bloater bursts in a shower of confetti and goo, hurting anything standing too close, players included.
   pop(z, P) {
     const R = 1.7;
@@ -1433,7 +1473,7 @@ export class Sim {
       speed: Math.min(kind === 'runner' ? 4.2 : 3.6, (base.speed / 40) * cfg.speedMul * rand(0.88, 1.12)) * (B ? B.speed : 1),
       dmg: base.damage * cfg.damageMul, state: 'walk', atkT: 0, cd: 0.5, kx: 0, ky: 0, hurtT: 0,
       look: Math.floor(Math.random() * 1000), sc: B ? B.scale : r2(rand(0.92, 1.08)),
-      anim: rand(0, 4), spawnT: 0.6, blinkT: rand(2, 3.5), chargeT: rand(4, 6), chargeLeft: 0, groanT: rand(2, 9), wob: rand(0, TAU),
+      anim: rand(0, 4), spawnT: 0.6, hitAt: this.t, blinkT: rand(2, 3.5), chargeT: rand(4, 6), chargeLeft: 0, groanT: rand(2, 9), wob: rand(0, TAU),
     };
     if (B) {
       z.ab = {};
@@ -1536,6 +1576,18 @@ export class Sim {
       z.anim += dt * frz * (z.kind === 'runner' ? 7 : z.kind === 'boss' ? 4 : z.kind === 'crawler' ? 6 : z.kind === 'bloater' ? 3 : 4.2) * (z.spawnT > 0 ? 0 : 1);
       z.hurtT = Math.max(0, z.hurtT - dt);
       z.spawnT = Math.max(0, z.spawnT - dt);
+      if (z.infected) {
+        const I = z.infected;
+        I.t -= dt;
+        if (Math.random() < dt * 8) this.particles.push({ x: z.x + rand(-0.2, 0.2), y: z.y + rand(-0.2, 0.2), z: rand(0.4, ZHEIGHT[z.kind]), vx: 0, vy: 0, vz: 0.6, life: 0.4, color: '#e8344e', float: true });
+        if (I.t <= 0) z.infected = null;
+        else {
+          const hz = z.hurtT;
+          this.hurtZombie(z, I.dps * dt, 0, 0, 0, I.P, 'chain');
+          z.hurtT = hz;
+          if (z.dead) continue;
+        }
+      }
       z.cd = Math.max(0, z.cd - dt);
       const P = this.nearestPlayer(z.x, z.y);
       if (!P) continue;
@@ -1621,7 +1673,16 @@ export class Sim {
       if (z.spawnT > 0) speed = 0;
       if (z.state === 'attack') speed *= 0.15;
 
-      // Bosses run their own move set.
+      // Bosses run their own move set. One that nobody has managed to hurt for a long while
+      // (lost behind the scenery) blinks back into the fight.
+      if (z.kind === 'boss' && !z.bs && this.t - (z.hitAt ?? this.t) > 25 && z.spawnT <= 0) {
+        const s = this.spawnPoint('shambler', true);
+        this.fx('blink', r2(z.x), r2(z.y));
+        z.x = s.x;
+        z.y = s.y;
+        z.hitAt = this.t;
+        this.fx('blink', r2(z.x), r2(z.y));
+      }
       if (z.kind === 'boss') {
         const o = this.updateBoss(z, P, dist, tx, ty, dt);
         if (o.speed != null) speed = o.speed * frz;
@@ -1668,7 +1729,15 @@ export class Sim {
         if (z.atkT <= 0) {
           z.state = 'walk';
           z.cd = 0.9;
-          if (dist < r + 0.75 && P.z < 0.3) this.hurtPlayer(P, z.dmg);
+          if (dist < r + 0.75 && P.z < 0.3) {
+            this.hurtPlayer(P, z.dmg);
+            // Firewall: whatever bit you gets a jolt and a shove.
+            if (P.mods.firewall && !P.down) {
+              this.fx('zap', r2(P.x), r2(P.y), 0.5, r2(z.x), r2(z.y), r2(ZHEIGHT[z.kind] * 0.6));
+              this.hurtZombie(z, P.mods.firewall * (1 + this.levelN * 0.03), -tx / (dist || 1), -ty / (dist || 1), 2.2, P, 'chain');
+              if (z.dead) continue;
+            }
+          }
         }
       }
       // Keep out of the player's body.
@@ -1933,8 +2002,37 @@ export class Sim {
     if (zone === 'head') dmg *= HEAD_MUL * P.mods.head;
     else if (zone === 'legs') dmg *= LEG_MUL;
     if (this.cheats.onehit && dmg > 0) dmg = z.kind === 'boss' ? dmg * 8 : 1e6;
+    // Lucky Pager: now and then a hit lands three times as hard.
+    if (P.mods.crit && dmg > 0 && Math.random() < P.mods.crit) {
+      dmg *= 3;
+      if (this.t - (P.critAt || -1) > 0.5) {
+        P.critAt = this.t;
+        this.fx('popup', r2(z.x), r2(z.y), r2(ZHEIGHT[z.kind] * (z.sc || 1) + 0.1), 'CRIT!', true);
+      }
+    }
+    // Dial-Up Chain: the hit jumps to the next zombie over (not more than a few times a second).
+    if (P.mods.chain && zone !== 'chain' && dmg > 2 && this.t - (P.chainAt || -1) > 0.12 && Math.random() < P.mods.chain) {
+      P.chainAt = this.t;
+      let o = null;
+      let od = 3.2;
+      for (const c of this.zombies) {
+        if (c === z || c.bs) continue;
+        const d = Math.hypot(c.x - z.x, c.y - z.y);
+        if (d < od) {
+          od = d;
+          o = c;
+        }
+      }
+      if (o) {
+        this.fx('zap', r2(z.x), r2(z.y), r2(ZHEIGHT[z.kind] * 0.6), r2(o.x), r2(o.y), r2(ZHEIGHT[o.kind] * 0.6));
+        const zd = Math.max(12, dmg * 0.6);
+        this.pendingZaps = this.pendingZaps || [];
+        this.pendingZaps.push([o, zd, P]);
+      }
+    }
     z.hp -= dmg * P.dmgMul;
     z.hurtT = 0.08;
+    z.hitAt = this.t;
     if (this.isLocal(P)) {
       this.hitT = 0.12;
       if (zone === 'head') {
@@ -1947,6 +2045,11 @@ export class Sim {
     z.ky += ny * k;
     if (dmg > 3) this.snd('hit');
     if (z.hp <= 0) this.killZombie(z, P, zone === 'head', nx, ny);
+    // Chain zaps land after the hit that caused them, so a kill never happens mid-loop twice.
+    if (this.pendingZaps?.length && zone !== 'chain') {
+      const zaps = this.pendingZaps.splice(0);
+      for (const [o, zd, Q] of zaps) if (!o.dead) this.hurtZombie(o, zd, 0, 0, 0.3, Q, 'chain');
+    }
   }
 
   killZombie(z, P = this.player, head = false, nx = 0, ny = 0) {
@@ -1983,6 +2086,18 @@ export class Sim {
     if (head) this.fx('headshot', z.kind, r2(z.x), r2(z.y), z.look, z.sc, r2(nx), r2(ny));
     else this.fx('death', z.kind, r2(z.x), r2(z.y), z.look, z.sc);
     if (z.kind === 'bloater') this.pop(z, P);
+    // Millennium Bomb: the kill goes off like a firework and takes the crowd with it.
+    if (P.mods.boom && Math.random() < P.mods.boom) this.blast(z.x, z.y, 1.9, 40 + this.levelN * 1.5, P);
+    // ILOVEYOU.VBS: the kill infects zombies nearby; they sicken, glow and take damage over time.
+    if (P.mods.virus) {
+      let n = 0;
+      for (const o of this.zombies) {
+        if (o.bs || o.infected || Math.hypot(o.x - z.x, o.y - z.y) > 2.4) continue;
+        o.infected = { t: 3, dps: (10 + this.levelN * 0.6) * P.mods.virus, P };
+        if (++n >= 2 + P.mods.virus) break;
+      }
+      if (n) this.fx('infect', r2(z.x), r2(z.y));
+    }
     if (z.kind === 'boss') {
       this.boss = this.zombies.find((o) => o.kind === 'boss') || null;
       for (const k of ['health', 'armor', 'overclock']) this.dropPickup(z.x + rand(-0.8, 0.8), z.y + rand(-0.8, 0.8), k);

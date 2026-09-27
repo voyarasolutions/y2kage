@@ -5,9 +5,9 @@ import { W, H, TAU } from '../core/util.js';
 import { text, textCanvas, textWidth, wrap } from '../core/pixelfont.js';
 import { bevel, rect, button, progress, window98, iconInfo, iconError, startFlag, titleBar } from './win98.js';
 import { HEROES } from '../data/heroes.js';
-import { heroXp, rankFor, dmgMulFor } from '../data/progress.js';
+import { heroXp, rankFor, dmgMulFor, xpForRank, MAX_RANK } from '../data/progress.js';
 import { clockFor, DISTRICTS, TOTAL_LEVELS, BOSSES } from '../data/levels.js';
-import { UPGRADES, upgradeById, stacks } from '../data/upgrades.js';
+import { UPGRADES, upgradeById, stacks, rarityOf, RARITY } from '../data/upgrades.js';
 import { ACHIEVEMENTS, EXTRAS, unlocked, extraUnlocked, cheats } from '../data/achievements.js';
 import { store } from '../core/util.js';
 
@@ -455,6 +455,7 @@ export function drawClear(g, ui, t, stats) {
   const nextLine = `Next: ${clockFor(next).label}, ${DISTRICTS[nd].name}${next % 10 === 0 ? `. BOSS: ${BOSSES[nd].name}` : ''}`;
   let y = inner.y + 44;
   text(g, nextLine, inner.x + 22, y, { font: 'small', color: PAL.strawberryDark });
+  if (game.sim) drawRankBar(g, game.sim.player.xp, inner.x + inner.w - 84, y - 1, 80, PAL.ink);
   y += 11;
   if (offerIds.length) {
     // Three upgrade cards: pick one before moving on.
@@ -462,6 +463,11 @@ export function drawClear(g, ui, t, stats) {
     rect(g, inner.x, y, inner.w, 1, PAL.winShadow);
     rect(g, inner.x, y + 1, inner.w, 1, PAL.white);
     text(g, picked ? 'Upgrade installed. It lasts the rest of the run.' : 'INSTALL AN UPGRADE (pick one)', inner.x + inner.w / 2, y + 5, { font: 'small', color: picked ? PAL.winNavy : PAL.strawberryDark, align: 'center' });
+    if (!picked && game.rerolls > 0) {
+      const rb = { x: inner.x + inner.w - 50, y: y + 3, w: 46, h: 11 };
+      button(g, rb.x, rb.y, rb.w, rb.h, 'Reroll R', {});
+      ui.addButton(rb, () => game.rerollUpgrades(), 45);
+    }
     const st = stacks(game.runUps);
     const cw = Math.floor((inner.w - 16) / 3);
     offerIds.forEach((id, i) => {
@@ -472,7 +478,24 @@ export function drawClear(g, ui, t, stats) {
       const mine = picked === id;
       const dim = picked && !mine;
       const focus = !picked && (game.upFocus || 0) === i;
+      const rar = rarityOf(u);
+      // Cards flip up one after another; rarer ones glint.
+      const age = ui.t - (game.upRevealT ?? -9) - i * 0.12;
+      if (age < 0) return;
       bevel(g, cx, cy, cw, ch, mine, dim ? '#a8a8a8' : PAL.winFace);
+      if (rar !== 'common' && !dim) {
+        const rc = RARITY[rar].color;
+        const glow = rar === 'legendary' && Math.floor(ui.t * 6) % 2 ? PAL.white : rc;
+        rect(g, cx, cy, cw, 2, glow);
+        rect(g, cx, cy + ch - 2, cw, 2, glow);
+        rect(g, cx, cy, 2, ch, glow);
+        rect(g, cx + cw - 2, cy, 2, ch, glow);
+        if (rar === 'legendary') {
+          // A glint sweeping across the card.
+          const gx = Math.floor(((ui.t * 70) % (cw + 40)) - 20);
+          for (let k = 0; k < 6; k++) if (gx + k > 2 && gx + k < cw - 2) rect(g, cx + gx + k, cy + 18, 1, ch - 21, '#ffffff33');
+        }
+      }
       if (focus) {
         rect(g, cx - 1, cy - 1, cw + 2, 1, PAL.ink);
         rect(g, cx - 1, cy + ch, cw + 2, 1, PAL.ink);
@@ -486,6 +509,7 @@ export function drawClear(g, ui, t, stats) {
       wrap(u.desc, cw - 8).slice(0, 2).forEach((l, k) => text(g, l, cx + cw / 2, cy + 40 + k * 8, { font: 'small', color: dim ? PAL.winShadow : PAL.winNavy, align: 'center' }));
       const have = st[id] || 0;
       if (have) text(g, mine ? `NOW x${have}` : `HAVE x${have}`, cx + cw / 2, cy + ch - 10, { font: 'small', color: PAL.goldDark, align: 'center' });
+      else if (rar !== 'common') text(g, RARITY[rar].label, cx + cw / 2, cy + ch - 10, { font: 'small', color: dim ? PAL.winShadow : rar === 'legendary' ? PAL.goldDark : PAL.winNavy, align: 'center' });
       if (!picked) ui.addButton({ x: cx, y: cy, w: cw, h: ch }, () => game.pickUpgrade(id), 40 + i);
     });
     y += 87;
@@ -538,11 +562,55 @@ function upgradeGlyph(g, u, x, y, dim) {
     rect(g, x + 2, y + 2, 2, 2, l);
     rect(g, x + 5, y + 2, 2, 2, l);
     rect(g, x + 2, y + 6, 5, 2, c);
+  } else if (id === 'chain') {
+    // A lightning bolt.
+    rect(g, x + 4, y, 4, 2, c);
+    rect(g, x + 3, y + 2, 3, 2, c);
+    rect(g, x + 2, y + 4, 6, 1, c);
+    rect(g, x + 4, y + 5, 3, 2, c);
+    rect(g, x + 3, y + 7, 2, 2, c);
+  } else if (id === 'boom') {
+    rect(g, x + 1, y + 3, 6, 6, c);
+    rect(g, x + 3, y + 2, 2, 1, c);
+    rect(g, x + 5, y, 1, 2, c);
+    rect(g, x + 6, y, 2, 1, PAL.gold);
+    rect(g, x + 2, y + 4, 1, 2, l);
+  } else if (id === 'backup') {
+    rect(g, x, y, 9, 9, c);
+    rect(g, x + 2, y, 5, 3, l);
+    rect(g, x + 2, y + 5, 5, 4, l);
+  } else if (id === 'virus') {
+    rect(g, x + 1, y + 1, 3, 3, c);
+    rect(g, x + 5, y + 1, 3, 3, c);
+    rect(g, x, y + 2, 9, 3, c);
+    rect(g, x + 1, y + 5, 7, 1, c);
+    rect(g, x + 2, y + 6, 5, 1, c);
+    rect(g, x + 3, y + 7, 3, 1, c);
+    rect(g, x + 4, y + 2, 1, 4, l);
+  } else if (id === 'firewall') {
+    for (let k = 0; k < 3; k++) rect(g, x, y + k * 3, 9, 2, c);
+    rect(g, x + 4, y + 2, 1, 1, c);
+    rect(g, x + 2, y + 5, 1, 1, c);
+    rect(g, x + 6, y + 5, 1, 1, c);
   } else {
-    const glyph = { regen: 'D', magnet: '~', luck: 'F', sp: '!', combo: 'C', buff: '+' }[id] || '?';
+    const glyph = { regen: 'D', magnet: '~', luck: 'F', sp: '!', combo: 'C', buff: '+', crit: '*' }[id] || '?';
     rect(g, x, y, 9, 9, c);
     text(g, glyph, x + 2, y + 1, { font: 'small', color: l });
   }
+}
+
+// Hero rank and a bar filling toward the next one.
+function drawRankBar(g, xp, x, y, w, color) {
+  const r = rankFor(xp);
+  const a = xpForRank(r);
+  const b = xpForRank(r + 1);
+  const f = r >= MAX_RANK ? 1 : Math.max(0, Math.min(1, (xp - a) / (b - a)));
+  text(g, `RANK ${r}`, x, y + 1, { font: 'small', color });
+  const bx = x + 34;
+  const bw = w - 34;
+  rect(g, bx, y + 1, bw, 6, PAL.winShadow);
+  rect(g, bx + 1, y + 2, bw - 2, 4, PAL.ink);
+  rect(g, bx + 1, y + 2, Math.round((bw - 2) * f), 4, PAL.gold);
 }
 
 // ---------------------------------------------------------------- death: the Blue Screen
@@ -558,7 +626,7 @@ export function drawBsod(g, ui, t, stats) {
     `ZOMBIE(01) + ${String(stats.kills).padStart(8, '0')}. ${stats.hero} has been terminated.`,
     '',
     `Reached ${clockFor(stats.level).label}, level ${stats.level}. Score ${stats.score}.`,
-    '',
+    stats.left != null ? `Crashed in wave ${stats.wave} of ${stats.waves} with ${stats.left} zombie${stats.left === 1 ? '' : 's'} left.${stats.left <= 5 && stats.wave === stats.waves ? ' SO CLOSE.' : ''}` : '',
     '*  Press ENTER (or tap) to try this minute again.',
     '*  Press ESC to return to the menu. You will lose',
     '   any unsaved dignity.',
@@ -572,6 +640,11 @@ export function drawBsod(g, ui, t, stats) {
   const guest = ui.game.isGuest();
   if (guest) lines.splice(5, 3, '*  The whole crew crashed. Waiting for the host', '   to try again...');
   lines.forEach((l, i) => text(g, l, 26, 46 + i * 11, { font: 'small', color: PAL.white }));
+  if (stats.xp != null && !stats.endless) {
+    const r = rankFor(stats.xp);
+    const need = Math.max(0, Math.round(xpForRank(r + 1) - stats.xp));
+    text(g, `${stats.me || stats.hero} is rank ${r}. ${need} XP to rank ${r + 1}.`, 26, 46 + lines.length * 11 + 4, { font: 'small', color: PAL.gold });
+  }
   const msg = 'Press any key to continue ';
   text(g, msg, W / 2, 158, { font: 'small', color: PAL.white, align: 'center' });
   if (Math.floor(t * 2) % 2) rect(g, W / 2 + textWidth(msg, 'small') / 2, 158, 5, 7, PAL.white);

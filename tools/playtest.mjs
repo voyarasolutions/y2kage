@@ -39,7 +39,7 @@ for (const hid of heroes) {
     rows.push(res);
     console.log(hid, JSON.stringify(res));
     if (!res.clear) break;
-    ups = ups.concat(offer(ups, 1));
+    ups = ups.concat(offer(ups, 1, n));
   }
   out[hid] = rows;
 }

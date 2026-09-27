@@ -310,9 +310,10 @@ export class Game {
     this.bestScore = Math.max(this.bestScore, this.runScore);
     store.set('bestScore', this.bestScore);
     this.pickLevel = Math.min(this.best, n + 1);
-    this.upOffer = n < TOTAL_LEVELS ? offer(this.runUps) : [];
+    this.upOffer = n < TOTAL_LEVELS ? offer(this.runUps, 3, n) : [];
+    this.rerolls = 1;
     // CPU teammates take one of their own three.
-    if (n < TOTAL_LEVELS) for (const l of this.botUps) l.push(...offer(l, 1));
+    if (n < TOTAL_LEVELS) for (const l of this.botUps) l.push(...offer(l, 1, n));
     this.upPicked = null;
     this.checkClearAch(s, this.clearStats);
     this.input.unlock();
@@ -326,6 +327,8 @@ export class Game {
     }
     music.stop();
     this.setMode('clear');
+    this.upRevealT = this.t;
+    if (this.upOffer.some((id) => upgradeById(id).rarity === 'legendary')) sfx.legendary();
   }
 
   // Take one of the three upgrades offered on the level-clear screen.
@@ -337,6 +340,15 @@ export class Game {
     this.focus = 0;
     if (this.net.role === 'guest') this.net.send({ t: 'ups', ups: this.runUps });
     if (this.runUps.length >= 10) this.award('loaded');
+  }
+
+  // Swap the three cards for three new ones, once per cleared level.
+  rerollUpgrades() {
+    if (this.upPicked || !(this.rerolls > 0) || !this.upOffer?.length) return;
+    this.rerolls--;
+    this.upOffer = offer(this.runUps, 3, this.levelN);
+    this.upRevealT = this.t;
+    sfx.reroll();
   }
 
   nextLevel() {
@@ -468,6 +480,7 @@ export class Game {
       if (code === 'ArrowRight' || code === 'KeyD' || code === 'Tab' || code === 'ArrowDown') this.upFocus = ((this.upFocus || 0) + 1) % n;
       if (code === 'ArrowLeft' || code === 'KeyA' || code === 'ArrowUp') this.upFocus = ((this.upFocus || 0) + n - 1) % n;
       if (code === 'Enter' || code === 'Space') this.pickUpgrade(this.upOffer[this.upFocus || 0]);
+      if (code === 'KeyR' || code === 'KeyC') this.rerollUpgrades();
       if (code === 'Escape') this.toSelect();
       sfx.click();
       return;
@@ -906,7 +919,7 @@ export class Game {
     for (const e of this.sim.events.splice(0)) {
       if (e.type === 'levelup' || e.type === 'dead' || e.type === 'clear') this.saveXp();
       if (e.type === 'dead') {
-        this.deadStats = { level: this.levelN, kills: this.sim.lv.kills, score: this.runScore + this.sim.score, hero: this.sim.players.length > 1 ? 'The crew' : this.hero.name };
+        this.deadStats = { level: this.levelN, kills: this.sim.lv.kills, score: this.runScore + this.sim.score, hero: this.sim.players.length > 1 ? 'The crew' : this.hero.name, wave: this.sim.lv.wave + 1, waves: this.sim.cfg.waves.length, left: this.sim.remaining(), xp: this.sim.player.xp, me: this.hero.name, best: this.best };
         if (this.endless) {
           const wave = this.sim.lv.wave + 1;
           const best = store.get('endless', {}) || {};

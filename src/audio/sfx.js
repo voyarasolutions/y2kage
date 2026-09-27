@@ -257,6 +257,19 @@ export const sfx = {
     [784, 988, 1175, 1568].forEach((f, i) => tone(f, i === 3 ? 0.5 : 0.12, 'square', 0.12, null, i * 0.1));
     tone(2349, 0.4, 'triangle', 0.08, null, 0.4);
   },
+  // A small electric crackle for Dial-Up Chain arcs.
+  arc() {
+    tone(2400, 0.06, 'square', 0.05, 900);
+  },
+  // Shuffling the upgrade cards.
+  reroll() {
+    [440, 660, 550, 880].forEach((f, i) => tone(f, 0.05, 'square', 0.09, null, i * 0.04));
+  },
+  // A legendary card turned up: a shimmering fanfare.
+  legendary() {
+    [1047, 1319, 1568, 2093].forEach((f, i) => tone(f, 0.22, 'triangle', 0.1, null, 0.15 + i * 0.07));
+    noise(0.6, 6000, 0.4, 0.06, 'highpass', 0.15);
+  },
   // Picking an upgrade.
   upgrade() {
     [659, 880, 1109, 1319].forEach((f, i) => tone(f, 0.1, 'triangle', 0.14, null, i * 0.05));

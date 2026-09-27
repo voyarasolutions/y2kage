@@ -1,11 +1,55 @@
 # Y2Kage
 
-A 16-bit first-person zombie horde shooter set on New Year's Eve 1999. Five heroes, each with their own ride and weapon,
-hold out through 50 levels, one per minute from 11:10 PM, until the ball drops and the clocks roll over to 2000.
+**A 16-bit first-person zombie horde shooter set on New Year's Eve 1999.** The Y2K bug is real, it turned the party into
+a horde, and you have until midnight. Pick one of five 90s kids, each with their own ride and their own ridiculous
+weapon, and hold out through 50 levels, one per minute from 11:10 PM, until the ball drops and the clocks roll over to 2000.
 
 Built from scratch in Three.js. The city is real 3D geometry rendered at 384x216 and crushed to a dithered 16-bit
-palette; everything you see (textures, zombies, weapons, Windows 98 interface) is pixel art painted in code at boot.
-Runs in any modern browser and ships to iOS with Capacitor.
+palette; everything you see (textures, zombies, weapons, the Windows 98 interface) is pixel art painted in code at boot.
+Runs in any modern browser, supports online co-op for up to four players, and ships to iOS with Capacitor.
+
+| | |
+|---|---|
+| ![Hero select](docs/screenshots/hero-select.png) | ![Broadway horde](docs/screenshots/broadway-horde.png) |
+| ![Tidal Wave special](docs/screenshots/special-tidal-wave.png) | ![Online co-op](docs/screenshots/coop.png) |
+| ![Subway platform](docs/screenshots/subway.png) | ![Game over](docs/screenshots/bsod.png) |
+
+## Features
+
+- **50 levels, 5 districts.** Level *n* takes place at 11:(09+*n*) PM on December 31, 1999. The district changes every
+  ten levels, each ending in a boss fight with the Millennium Bug. Beat level 50 at 11:59 and the year rolls over.
+- **Five heroes, five rides, five weapons.** Every hero moves differently and shoots differently, and each has a
+  special move that charges over time and with kills (R or right-click).
+- **A 90s horde.** Party Shamblers, Ravers, Bouncers, Bloaters, Crawlers, CRT-headed Corrupted, and the Millennium Bug,
+  dressed for whichever district you're in.
+- **Headshots and combos.** Headshots deal double damage and pop heads off; chained kills build a score multiplier with
+  90s call-outs.
+- **Hero progression.** Each hero earns XP that persists between runs; every rank adds 4% damage.
+- **Powerups.** Y2K Patch (invincibility), Multitasking (triple, piercing shots), Screensaver (slow motion) and
+  Ctrl+Alt+Del (clears the screen).
+- **Online co-op** for up to four players with room codes and join links.
+- **Full Y2K presentation.** Power-on BIOS screen, 56k dial-up handshake, Windows 98 taskbar HUD with the countdown in
+  the system tray, a Blue Screen of Death when you die, a chiptune soundtrack and an Auld Lang Syne ending.
+
+## The roster
+
+| Hero | Ride | Weapon | Special |
+|---|---|---|---|
+| Tina | Rollerblades | Soaker 2000 | **Tidal Wave**: a firehose blast that shoves the whole street back |
+| Marcus | Skateboard | Dual Yo-Yos | **Around the World**: both yo-yos orbit you for 6 seconds |
+| Dot | Slinky Springs | Floppy Disks (ricochet) | **Defrag**: two rings of 24 floppies burst out and bounce everywhere |
+| Gus | Pogo Stick | Bottle Rockets | **Grand Finale**: sixteen fireworks rain down around you |
+| Kev | Kick Scooter | Laser Pointer | **Light Show**: six spinning beams cut through everything |
+
+## Districts
+
+| Levels | District |
+|---|---|
+| 1 to 10 | Times Square |
+| 11 to 20 | Broadway |
+| 21 to 30 | Subway Platform |
+| 31 to 40 | Bank Server Room |
+| 41 to 50 | The Ball Drop |
 
 ## Run it
 

@@ -165,6 +165,8 @@ export class Sim {
     const rank = rankFor(xp);
     const ups = (e.ups || []).slice();
     const mods = upgradeMods(ups);
+    // Daily twist: Glass Cannon doubles everyone's damage, both ways.
+    if (this.cheats.glass) mods.dmg *= 2;
     return {
       idx: i, name: e.name || `P${i + 1}`, hero, heroIdx: Math.max(0, HEROES.findIndex((h) => h.id === hero.id)),
       xp, rank, dmgMul: dmgMulFor(rank) * mods.dmg, lvlUp: null, ups, mods, maxHp: mods.maxHp,
@@ -633,6 +635,7 @@ export class Sim {
       return;
     }
     if (this.cheats.onehit) dmg = 9999;
+    if (this.cheats.glass) dmg *= 2;
     this.hurtTaken += dmg;
     if (P.armor > 0) {
       const soak = Math.min(P.armor, dmg * 0.5);
@@ -1466,7 +1469,7 @@ export class Sim {
     let s = at;
     if (!s) s = this.spawnPoint(kind);
     const B = kind === 'boss' ? this.bossDef : null;
-    const hp = base.hp * cfg.hpMul * (B ? B.hpMul * (1 + COOP_BOSS_HP * (this.players.length - 1)) : 1);
+    const hp = base.hp * cfg.hpMul * (B ? B.hpMul * (1 + COOP_BOSS_HP * (this.players.length - 1)) : this.cheats.swarm ? 0.65 : 1);
     const z = {
       id: this.nextZid++, kind, x: s.x + rand(-0.2, 0.2), y: s.y + rand(-0.2, 0.2),
       hp, max: hp, bs: 0,
@@ -2234,7 +2237,7 @@ export class Sim {
     }
     const base = this.cfg.waves[i];
     const q = base.slice();
-    const extra = Math.round(base.length * COOP_WAVE * (this.players.length - 1));
+    const extra = Math.round(base.length * (COOP_WAVE * (this.players.length - 1) + (this.cheats.swarm ? 0.5 : 0)));
     for (let k = 0; k < extra; k++) {
       const pick = base[Math.floor(Math.random() * base.length)];
       q.splice(Math.floor(q.length * (0.3 + Math.random() * 0.7)), 0, pick === 'boss' ? 'brute' : pick);
@@ -2251,7 +2254,7 @@ export class Sim {
   }
 
   maxAlive() {
-    return Math.round(this.cfg.maxAlive * (1 + COOP_ALIVE * (this.players.length - 1)));
+    return Math.round(this.cfg.maxAlive * (1 + COOP_ALIVE * (this.players.length - 1)) * (this.cheats.swarm ? 1.5 : 1));
   }
 
   updateWaves(dt) {

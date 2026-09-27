@@ -22,11 +22,11 @@ export const ENEMIES = {
 export const BOSSES = [
   { id: 'bug', scale: 1, name: 'The Millennium Bug', short: 'MILLENNIUM BUG', file: 'MILLENNIUM.BUG', hpMul: 1, speed: 1,
     tag: 'It thinks it is 1900. Delete it.', moves: ['charge'], summon: null },
-  { id: 'frontman', scale: 1.35, name: 'The Frontman', short: 'THE FRONTMAN', file: 'BOYBAND.MP3', hpMul: 1.1, speed: 1.1,
+  { id: 'frontman', scale: 1.7, name: 'The Frontman', short: 'THE FRONTMAN', file: 'BOYBAND.MP3', hpMul: 1.1, speed: 1.1,
     tag: 'Encore! Jump his sonic booms.', moves: ['ring', 'summon'], summon: 'runner' },
   { id: 'conductor', scale: 1.3, name: 'The Conductor', short: 'THE CONDUCTOR', file: 'LASTTRAIN.EXE', hpMul: 1.2, speed: 1,
     tag: 'Stand clear of the closing doors.', moves: ['burrow', 'summon'], summon: 'crawler' },
-  { id: 'mainframe', scale: 1.3, name: 'The Mainframe', short: 'THE MAINFRAME', file: 'BIGIRON.SYS', hpMul: 1.3, speed: 0.8,
+  { id: 'mainframe', scale: 1.65, name: 'The Mainframe', short: 'THE MAINFRAME', file: 'BIGIRON.SYS', hpMul: 1.3, speed: 0.8,
     tag: 'Dodge the packets. Pull the plug.', moves: ['bolts', 'blink', 'summon'], summon: 'glitch' },
   { id: 'countdown', scale: 1.4, name: 'The Countdown', short: 'THE COUNTDOWN', file: 'MIDNIGHT.DAT', hpMul: 1.45, speed: 1,
     tag: 'The ball itself. Everything at once.', moves: ['charge', 'ring', 'bolts', 'summon'], summon: 'runner' },
@@ -143,8 +143,8 @@ export function levelConfig(n) {
 
 // Endless: pick a district, then waves keep coming and keep getting harder. Every fifth wave
 // brings that district's boss. The sim asks for each wave as it needs it.
-export function endlessConfig(dIdx) {
-  const n0 = dIdx * 10 + 3;
+export function endlessConfig(dIdx, start = null) {
+  const n0 = start ?? dIdx * 10 + 3;
   const cfg = {
     level: dIdx * 10 + 1,
     district: DISTRICTS[dIdx],

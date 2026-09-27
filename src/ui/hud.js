@@ -138,21 +138,26 @@ export function drawTopHud(g, sim, t) {
   } else if (L.phase === 'outro') {
     text(g, 'LEVEL CLEAR!', W / 2, 5, { font: 'big', color: PARTY[Math.floor(t * 8) % PARTY.length], outline: PAL.ink, align: 'center' });
   }
-  text(g, sim.endless ? 'ENDLESS' : `LVL ${sim.levelN}`, W - 5, 5, { font: 'big', color: PAL.cream, outline: PAL.ink, align: 'right' });
+  text(g, sim.cfg.daily ? 'DAILY' : sim.endless ? 'ENDLESS' : `LVL ${sim.levelN}`, W - 5, 5, { font: 'big', color: PAL.cream, outline: PAL.ink, align: 'right' });
   text(g, sim.map.name.toUpperCase(), W - 5, 15, { font: 'small', color: PAL.pinkLight, outline: PAL.ink, align: 'right' });
 }
 
 export function drawBossBar(g, sim, t) {
   const z = sim.boss;
   if (!z) return;
-  const w = 180;
-  const x = W / 2 - w / 2;
-  const y = 26;
+  // A slim Win98 progress strip under the wave counter, clear of the boss's head.
+  const w = 176;
+  const x = Math.round(W / 2 - w / 2);
+  const y = 24;
   const B = sim.bossDef;
-  const inner = window98(g, x, y, w, 38, `Deleting ${B.file}`);
-  text(g, B.name, inner.x + 2, inner.y + 1, { font: 'small', color: PAL.ink });
-  if (z.hp < z.max * 0.5 && !sim.endless) text(g, 'ENRAGED', inner.x + inner.w - 2, inner.y + 1, { font: 'small', color: Math.floor(t * 4) % 2 ? PAL.red : PAL.strawberryDark, align: 'right' });
-  progress(g, inner.x + 2, inner.y + 10, inner.w - 4, 10, 1 - z.hp / z.max, PAL.winNavy);
+  const enraged = z.hp < z.max * 0.5 && !sim.endless;
+  rect(g, x - 1, y - 1, w + 2, 15, PAL.ink);
+  rect(g, x, y, w, 13, PAL.winFace);
+  rect(g, x, y, w, 1, PAL.white);
+  text(g, `DELETING ${B.file}`, x + 3, y + 2, { font: 'small', color: PAL.winNavy });
+  if (enraged) text(g, 'ENRAGED', x + w - 3, y + 2, { font: 'small', color: Math.floor(t * 4) % 2 ? PAL.red : PAL.strawberryDark, align: 'right' });
+  rect(g, x + 2, y + 9, w - 4, 3, PAL.winShadow);
+  rect(g, x + 2, y + 9, Math.round((w - 4) * Math.max(0, z.hp / z.max)), 3, enraged ? PAL.red : PAL.winNavy);
 }
 
 // Centre-screen dialog banners for level start, waves and the boss.

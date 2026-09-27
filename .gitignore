@@ -2,3 +2,4 @@ node_modules/
 dist/
 ios/App/App/public/
 .DS_Store
+playtest.json

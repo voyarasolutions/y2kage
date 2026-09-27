@@ -10,6 +10,7 @@ import { clockFor, DISTRICTS, TOTAL_LEVELS, BOSSES } from '../data/levels.js';
 import { UPGRADES, upgradeById, stacks, rarityOf, RARITY } from '../data/upgrades.js';
 import { ACHIEVEMENTS, EXTRAS, unlocked, extraUnlocked, cheats } from '../data/achievements.js';
 import { store } from '../core/util.js';
+import { dailyFor, dailyRecord } from '../data/daily.js';
 
 // ---------------------------------------------------------------- chrome logo
 let chromeCache = null;
@@ -204,23 +205,29 @@ export function drawTitle(g, ui, t) {
   const w = 128;
   const x = W / 2 - w / 2;
   const y = 100;
-  const inner = window98(g, x, y - 6, w, 97, 'Y2KAGE.EXE');
+  const inner = window98(g, x, y - 6, w, 104, 'Y2KAGE.EXE');
   const got = Object.keys(unlocked()).length;
   const items = [
     ['Start Game', () => ui.game.toSelect()],
+    ['Daily Challenge', () => ui.game.startDaily()],
     ['Online Co-op', () => ui.game.setMode('mp')],
     [`Trophies ${got}/${ACHIEVEMENTS.length}`, () => ui.game.setMode('trophies')],
     ['How to Play', () => ui.game.setMode('howto')],
     ['Options', () => ui.game.openOptions()],
   ];
   items.forEach(([label, on], i) => {
-    const b = { x: inner.x + 6, y: inner.y + 1 + i * 15, w: inner.w - 12, h: 13 };
+    const b = { x: inner.x + 6, y: inner.y + 1 + i * 14, w: inner.w - 12, h: 13 };
     button(g, b.x, b.y, b.w, b.h, label, { focus: ui.focus === i });
     ui.addButton(b, on, i);
   });
   if (ui.game.input.pad.on) text(g, 'GAMEPAD READY', W - 4, 4, { font: 'small', color: PAL.lime, outline: PAL.ink, align: 'right' });
   const best = ui.game.best;
-  if (best > 1) text(g, `Furthest: level ${best}  ${clockFor(best).label}`, W / 2, y + 93, { font: 'small', color: PAL.gold, outline: PAL.ink, align: 'center' });
+  if (best > 1) {
+    text(g, 'FURTHEST', x - 10, y + 60, { font: 'small', color: PAL.gold, outline: PAL.ink, align: 'right' });
+    text(g, `LEVEL ${best}`, x - 10, y + 70, { font: 'small', color: PAL.cream, outline: PAL.ink, align: 'right' });
+    text(g, clockFor(best).label, x - 10, y + 80, { font: 'small', color: PAL.cream, outline: PAL.ink, align: 'right' });
+  }
+  drawDailyCard(g, x + w + 8, y - 6, t, ui.focus === 1);
 
   // News ticker along the bottom.
   const ty = H - 12;
@@ -237,6 +244,23 @@ export function drawTitle(g, ui, t) {
   text(g, TICKER + '   +++   ' + TICKER, 36 - off + W, ty + 3, { font: 'small', color: PAL.cream });
   text(g, TICKER, 36 - off + W - tw, ty + 3, { font: 'small', color: PAL.cream });
   g.restore();
+}
+
+// Today's Daily Bug Report beside the title menu: who, where, the twist, your best and streak.
+function drawDailyCard(g, x, y, t, focus) {
+  const D = dailyFor();
+  const R = dailyRecord();
+  const w = W - x - 6;
+  const inner = window98(g, x, y, w, 70, 'DAILY.BUG', { active: focus || Math.floor(t * 2) % 2 === 0 });
+  const hero = D.hero.name;
+  const lines = [
+    [`${hero} IN`, PAL.ink],
+    [DISTRICTS[D.district].name.toUpperCase(), PAL.winNavy],
+    [D.twist.name.toUpperCase(), PAL.strawberryDark],
+    [R.today.best ? `BEST TODAY: WAVE ${R.today.best}` : 'NOT PLAYED TODAY', R.today.best ? PAL.goldDark : PAL.winShadow],
+    [R.streak ? `STREAK: ${R.streak} DAY${R.streak > 1 ? 'S' : ''}` : 'START A STREAK', PAL.ink],
+  ];
+  lines.forEach(([l, c], i) => text(g, l, inner.x + 3, inner.y + 2 + i * 10, { font: 'small', color: c }));
 }
 
 // ---------------------------------------------------------------- how to play (Notepad)
@@ -631,7 +655,12 @@ export function drawBsod(g, ui, t, stats) {
     '*  Press ESC to return to the menu. You will lose',
     '   any unsaved dignity.',
   ];
-  if (stats.endless) {
+  if (stats.daily) {
+    const d = stats.daily;
+    lines[3] = `Daily Bug Report ${d.key} (${d.twist}): reached wave ${d.wave}.`;
+    lines[4] = d.newBest ? '*** NEW BEST TODAY ***' : `Best today: wave ${d.best}. Streak: ${d.streak} day${d.streak === 1 ? '' : 's'}.`;
+    lines[5] = '*  Press ENTER (or tap) to try the daily again.';
+  } else if (stats.endless) {
     const e = stats.endless;
     lines[3] = `Endless, ${e.district}: survived to wave ${e.wave}. Score ${stats.score}.`;
     lines[4] = e.newBest ? '*** NEW BEST WAVE ***' : `Best in this district: wave ${e.best}.`;
@@ -640,7 +669,7 @@ export function drawBsod(g, ui, t, stats) {
   const guest = ui.game.isGuest();
   if (guest) lines.splice(5, 3, '*  The whole crew crashed. Waiting for the host', '   to try again...');
   lines.forEach((l, i) => text(g, l, 26, 46 + i * 11, { font: 'small', color: PAL.white }));
-  if (stats.xp != null && !stats.endless) {
+  if (stats.xp != null && !stats.endless && !stats.daily) {
     const r = rankFor(stats.xp);
     const need = Math.max(0, Math.round(xpForRank(r + 1) - stats.xp));
     text(g, `${stats.me || stats.hero} is rank ${r}. ${need} XP to rank ${r + 1}.`, 26, 46 + lines.length * 11 + 4, { font: 'small', color: PAL.gold });

@@ -9,6 +9,7 @@ import { tex as pixTex } from '../gfx/sprites.js';
 import { settings, saveSettings, SENS_STEPS } from '../core/settings.js';
 import { heroXp, saveHeroXp, heroSp, saveHeroSp, rankFor } from '../data/progress.js';
 import { offer, upgradeById } from '../data/upgrades.js';
+import { dailyFor, dailyStarted, dailyFinished, dailyRecord } from '../data/daily.js';
 import { grant, achById, cheats, addStat, stat, markHeroCleared, extraUnlocked, EXTRAS, toggleCheat } from '../data/achievements.js';
 import { World } from '../world/world.js';
 import { Sim, EYE, ZRAD, ZHEIGHT, MAX_PITCH } from './sim.js';
@@ -28,7 +29,7 @@ import * as HUD from '../ui/hud.js';
 import * as SCR from '../ui/screens.js';
 import { Net } from '../net/net.js';
 
-const MENU_COUNT = { title: 5, paused: 4, clear: 2, dead: 2, mp: 3 };
+const MENU_COUNT = { title: 6, paused: 4, clear: 2, dead: 2, mp: 3 };
 
 export class Game {
   constructor(glCanvas, uiCanvas) {
@@ -189,6 +190,7 @@ export class Game {
     this.input.unlock();
     if (this.mapIdx !== 0) this.loadWorld(0, 1);
     this.sim = null;
+    this.daily = null;
     this.pickLevel = clamp(this.pickLevel, 1, this.best);
     this.setMode('select');
   }
@@ -211,6 +213,7 @@ export class Game {
     this.runUps = [];
     this.botUps = [[], [], []];
     this.sim = null;
+    this.daily = null;
     sfx.select();
     if (this.endlessOn && extraUnlocked('endless')) return this.startEndless(this.pickDistrict);
     this.startLevel(this.pickLevel);
@@ -223,16 +226,32 @@ export class Game {
     this.endlessD = d;
     this.levelN = d * 10 + 1;
     this.runScore = 0;
-    this.runUps = [];
+    const D = this.daily;
+    this.runUps = D ? D.ups.slice() : [];
     this.levelStartUps = [];
-    const cfg = endlessConfig(d);
+    // The daily starts gentle in any district, so it is fair on day one.
+    const cfg = endlessConfig(d, D ? 4 + d * 2 : null);
+    cfg.daily = !!D;
+    if (D) cfg.radio = `DAILY BUG REPORT ${D.key}: ${D.twist.name}. ${D.twist.desc}`;
     this.loadWorld(d, this.levelN);
     this.botUps = [[], [], []];
-    this.sim = new Sim(this.map, cfg, this.soloParty([]), this.levelN, { cheats: cheats() });
+    this.sim = new Sim(this.map, cfg, this.soloParty(this.runUps.slice()), this.levelN, { cheats: D ? { ...D.twist.cheats } : cheats() });
     this.levelStartScore = 0;
     this.setMode('play');
     music.play('play', { transpose: [0, 2, -2, 3, 5][d], tempo: 1 + d * 0.04 });
     this.input.lock();
+  }
+
+  // The Daily Bug Report: today's hero, district, twist and starting upgrades, the same for everyone.
+  startDaily() {
+    const D = dailyFor();
+    this.daily = D;
+    this.hero = D.hero;
+    this.runScore = 0;
+    this.sim = null;
+    this.dailyStreak = dailyStarted();
+    sfx.select();
+    this.startEndless(D.district);
   }
 
   // Endless districts you can pick: any you have reached in the campaign.
@@ -358,6 +377,7 @@ export class Game {
 
   retry() {
     if (this.net.role === 'guest') return;
+    if (this.daily) return this.startDaily();
     if (this.endless) return this.startEndless(this.endlessD);
     this.runScore = this.levelStartScore;
     this.runUps = (this.levelStartUps || []).slice();
@@ -920,7 +940,13 @@ export class Game {
       if (e.type === 'levelup' || e.type === 'dead' || e.type === 'clear') this.saveXp();
       if (e.type === 'dead') {
         this.deadStats = { level: this.levelN, kills: this.sim.lv.kills, score: this.runScore + this.sim.score, hero: this.sim.players.length > 1 ? 'The crew' : this.hero.name, wave: this.sim.lv.wave + 1, waves: this.sim.cfg.waves.length, left: this.sim.remaining(), xp: this.sim.player.xp, me: this.hero.name, best: this.best };
-        if (this.endless) {
+        if (this.daily) {
+          const wave = this.sim.lv.wave + 1;
+          const score = this.runScore + this.sim.score;
+          const newBest = dailyFinished(wave, score);
+          const rec = dailyRecord();
+          this.deadStats.daily = { wave, newBest, best: rec.today.best, streak: rec.streak, key: this.daily.key, twist: this.daily.twist.name };
+        } else if (this.endless) {
           const wave = this.sim.lv.wave + 1;
           const best = store.get('endless', {}) || {};
           this.deadStats.endless = { wave, district: DISTRICTS[this.endlessD].name, best: Math.max(wave, best[this.endlessD] || 0), newBest: wave > (best[this.endlessD] || 0) };

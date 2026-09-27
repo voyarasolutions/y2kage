@@ -22,8 +22,14 @@ Runs in any modern browser, supports online co-op for up to four players, and sh
 - **50 levels, 5 districts, 5 bosses.** Level *n* takes place at 11:(09+*n*) PM on December 31, 1999. The district
   changes every ten levels, and each district ends in a fight with its own boss. Beat level 50 at 11:59 and the year
   rolls over.
-- **Upgrades between levels.** Clear a level and install one of three random upgrades (fire rate, damage, max health,
-  regeneration, pickup range and more). They stack for the rest of the run.
+- **Upgrades between levels.** Clear a level and install one of three random upgrades. Most are stat boosts that
+  stack for the rest of the run; rare and legendary cards change how you play (chain lightning, exploding kills, a
+  virus that spreads through the horde, a backup disk that cheats death). One free reroll per level.
+- **Daily Challenge.** The Daily Bug Report is the same run for everyone on a given day: a set hero, district, twist
+  (Big Head Mode, Moon Party, Overclocked, Swarm, Glass Cannon or Lucky Day) and two starting upgrades. Beat your best
+  wave for the day and keep your streak of days played going.
+- **No dead air.** Zombies close in from the streets around you as well as the map edges, and the last three of a
+  wave hurry toward you with arrows pointing the way. Levels run about two minutes.
 - **Trophies and unlockables.** 17 trophies. Beating bosses and other feats unlock Endless mode and cheats.
 - **Endless mode.** Pick any district you have reached and survive as many waves as you can; its boss returns every
   fifth wave. Your best wave per district is saved.
@@ -36,7 +42,8 @@ Runs in any modern browser, supports online co-op for up to four players, and sh
   dressed for whichever district you're in.
 - **Headshots and combos.** Headshots deal double damage and pop heads off; chained kills build a score multiplier with
   90s call-outs.
-- **Hero progression.** Each hero earns XP that persists between runs; every rank adds 4% damage.
+- **Hero progression.** Each hero earns XP that persists between runs; every rank adds 4% damage. A first run through
+  all 50 levels reaches about rank 40.
 - **Powerups.** Y2K Patch (invincibility), Multitasking (triple, piercing shots), Screensaver (slow motion) and
   Ctrl+Alt+Del (clears the screen).
 - **CPU teammates.** Play offline with up to three computer-controlled heroes. They stick with you, keep their distance
@@ -78,6 +85,17 @@ After each cleared level, pick one of three. Each can stack up to five times.
 | Call Waiting | Combos last 1 second longer |
 | Volt Cola Tap | Heal 2 health per kill |
 | Long Distance | Powerups last 40% longer |
+
+Rare and legendary upgrades turn up more often deeper into the night:
+
+| Upgrade | Rarity | Effect |
+|---|---|---|
+| Dial-Up Chain | Rare | Hits can arc to a nearby zombie |
+| Lucky Pager | Rare | 10% chance of a 3x crit |
+| Firewall | Rare | Zombies that bite you get fried and shoved back |
+| Millennium Bomb | Legendary | Kills can blow up the crowd |
+| ILOVEYOU.VBS | Legendary | Kills infect zombies nearby, who take damage over time |
+| Backup Disk | Legendary | Survive one killing blow per level |
 
 Retrying a level puts your upgrades back to how they were when it started. Quitting to the menu ends the run. In
 online co-op every player picks their own.
@@ -126,6 +144,18 @@ npm run build      # production build into dist/
 ```
 
 Add `?skip=title` to the URL to jump past the power-on, BIOS and dial-up intro.
+
+## Headless playtests
+
+`tools/playtest.mjs` runs the simulation in Node without drawing: a CPU hero plays the campaign from level 1 to 50,
+retrying up to three times, and logs time, idle time (no zombie within reach), damage taken, rank and score per level.
+
+```sh
+HEROES=tina,gus SKILL=0.4 node tools/playtest.mjs   # SKILL 1 is the CPU teammate; lower plays more like a person
+node tools/playtest.mjs > run.log && python3 tools/summ.py run.log             # one summary line per log
+```
+
+`tools/shot.mjs` takes screenshots of a `vite preview` build with Playwright.
 
 ## Put it online
 

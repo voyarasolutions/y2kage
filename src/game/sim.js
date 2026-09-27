@@ -16,6 +16,8 @@ import { HEROES } from '../data/heroes.js';
 export const EYE = 0.62;
 const GRAV = 16;
 export const ZRAD = { shambler: 0.3, runner: 0.26, brute: 0.45, glitch: 0.3, boss: 0.85, crawler: 0.28, bloater: 0.42 };
+// How wide a zombie is to shots and blasts: bosses are drawn bigger, so they are hit bigger too.
+export const hitR = (z) => ZRAD[z.kind] * (z.kind === 'boss' ? z.sc || 1 : 1);
 export const ZHEIGHT = { shambler: 1.0, runner: 1.0, brute: 1.45, glitch: 1.0, boss: 1.95, crawler: 0.45, bloater: 1.3 };
 const COMBO_WINDOW = 2.2;
 const GOO = '#9be04a';
@@ -945,7 +947,7 @@ export class Sim {
       const rx = z.x - x;
       const ry = z.y - y;
       const t = rx * dx + ry * dy;
-      if (t > 0 && t < wallD && Math.abs(rx * dy - ry * dx) < ZRAD[z.kind] * 1.15) {
+      if (t > 0 && t < wallD && Math.abs(rx * dy - ry * dx) < hitR(z) * 1.15) {
         const hz = pitch == null ? null : eyeZ + t * slope;
         if (hz != null && !this.inHeight(z, hz)) continue;
         inLine.push([z, hz]);
@@ -1143,7 +1145,7 @@ export class Sim {
         for (const z of this.zombies.slice()) {
           if ((z.orbT || 0) > this.t) continue;
           const d = Math.hypot(z.x - p.x, z.y - p.y);
-          if (d < ZRAD[z.kind] + p.r) {
+          if (d < hitR(z) + p.r) {
             z.orbT = this.t + 0.22;
             this.hurtZombie(z, p.dmg * ocMul, (z.x - P.x) / (d || 1), (z.y - P.y) / (d || 1), p.knock, P);
             this.puff(p.x, p.y, p.z, this.goo(), 5);
@@ -1184,7 +1186,7 @@ export class Sim {
         for (const z of this.zombies.slice()) {
           if (p.hits.has(z)) continue;
           const hz = this.hitZ(p);
-          if (Math.hypot(z.x - p.x, z.y - p.y) < ZRAD[z.kind] + p.r && this.inHeight(z, hz)) {
+          if (Math.hypot(z.x - p.x, z.y - p.y) < hitR(z) + p.r && this.inHeight(z, hz)) {
             p.hits.add(z);
             const d = Math.hypot(p.vx, p.vy) || 1;
             this.hurtZombie(z, p.dmg * ocMul, p.vx / d, p.vy / d, p.knock, P, this.zoneAt(z, hz));
@@ -1275,7 +1277,7 @@ export class Sim {
       if (!dead && !p.fx) {
         for (const z of this.zombies) {
           const hz = this.hitZ(p);
-          if (Math.hypot(z.x - p.x, z.y - p.y) < ZRAD[z.kind] + p.r && this.inHeight(z, hz)) {
+          if (Math.hypot(z.x - p.x, z.y - p.y) < hitR(z) + p.r && this.inHeight(z, hz)) {
             const d = Math.hypot(p.vx, p.vy) || 1;
             let dmg = p.dmg * ocMul;
             if (p.kind === 'water' && z.kind === 'glitch') dmg *= 2.5;
@@ -1305,8 +1307,8 @@ export class Sim {
     this.fx('explode', r2(x), r2(y), r2(z), pickOne(PARTY), pickOne(PARTY));
     for (const zb of this.zombies.slice()) {
       const d = Math.hypot(zb.x - x, zb.y - y);
-      if (d < R + ZRAD[zb.kind]) {
-        const f = 1 - Math.min(1, d / (R + ZRAD[zb.kind]));
+      if (d < R + hitR(zb)) {
+        const f = 1 - Math.min(1, d / (R + hitR(zb)));
         this.hurtZombie(zb, (G.dmg || 55) * big * (0.4 + 0.6 * f) * (P.overclock > 0 ? 1.3 : 1), (zb.x - x) / (d || 1), (zb.y - y) / (d || 1), G.knock || 2.5, P);
       }
     }
@@ -1317,7 +1319,7 @@ export class Sim {
     this.fx('explode', r2(x), r2(y), 0.5, '#f6c945', '#ff8a2a');
     for (const zb of this.zombies.slice()) {
       const d = Math.hypot(zb.x - x, zb.y - y);
-      if (d < R + ZRAD[zb.kind]) this.hurtZombie(zb, dmg / P.dmgMul * (1 + (P.dmgMul - 1) * 0.5), (zb.x - x) / (d || 1), (zb.y - y) / (d || 1), 1.6, P, 'chain');
+      if (d < R + hitR(zb)) this.hurtZombie(zb, dmg / P.dmgMul * (1 + (P.dmgMul - 1) * 0.5), (zb.x - x) / (d || 1), (zb.y - y) / (d || 1), 1.6, P, 'chain');
     }
   }
 
@@ -1344,7 +1346,7 @@ export class Sim {
     this.fx('pop', r2(z.x), r2(z.y));
     for (const o of this.zombies.slice()) {
       const d = Math.hypot(o.x - z.x, o.y - z.y);
-      if (d < R + ZRAD[o.kind]) this.hurtZombie(o, 45 / (P?.dmgMul || 1), (o.x - z.x) / (d || 1), (o.y - z.y) / (d || 1), 1.5, P);
+      if (d < R + hitR(o)) this.hurtZombie(o, 45 / (P?.dmgMul || 1), (o.x - z.x) / (d || 1), (o.y - z.y) / (d || 1), 1.5, P);
     }
     for (const Q of this.players) if (Math.hypot(Q.x - z.x, Q.y - z.y) < R - 0.2 && Q.z < 0.6) this.hurtPlayer(Q, 14 * this.cfg.damageMul);
     this.emit('pop');
@@ -2502,7 +2504,7 @@ export class Sim {
           const rx = z.x - P.x;
           const ry = z.y - P.y;
           const t = rx * dx + ry * dy;
-          if (t > 0 && t < d && Math.abs(rx * dy - ry * dx) < ZRAD[z.kind] * 1.15 && this.inHeight(z, EYE + P.z + t * slope)) d = t;
+          if (t > 0 && t < d && Math.abs(rx * dy - ry * dx) < hitR(z) * 1.15 && this.inHeight(z, EYE + P.z + t * slope)) d = t;
         }
       }
       this.lasers.push({ o: this.local, x: P.x, y: P.y, z: EYE + P.z, a: P.a, d, pt: P.pitch });

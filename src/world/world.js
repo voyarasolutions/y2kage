@@ -494,6 +494,12 @@ export class World {
         group.add(this.box(0.4, 0.03, 0.14, 'beige', fwd(0.2)[0], 0.73, fwd(0.2)[1], rot));
       } else if (d.kind === 'extinguisher') {
         group.add(this.cylinder(0.07, 0.07, 0.42, 'red', 'darkMetal', x, z));
+      } else if (d.kind === 'crates') {
+        // Stage road cases: two stacked flight cases, a little askew.
+        group.add(this.box(0.62, 0.46, 0.46, 'darkMetal', x, 0, z, rot));
+        group.add(this.box(0.64, 0.05, 0.48, 'steel', x, 0.2, z, rot));
+        group.add(this.box(0.46, 0.34, 0.38, 'darkMetal', x, 0.46, z, rot + 0.2 + r * 0.3));
+        group.add(this.box(0.48, 0.04, 0.4, 'gold', x, 0.62, z, rot + 0.2 + r * 0.3));
       } else if (d.kind === 'ac') {
         group.add(this.box(0.8, 0.62, 0.6, ['acSide', 'acSide', 'acTop', 'iron', 'acSide', 'acSide'], x, 0, z, rot));
       } else if (d.kind === 'speakers') {

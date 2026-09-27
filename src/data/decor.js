@@ -8,11 +8,11 @@ const KITS = {
   Broadway: { wall: ['hydrant', 'payphone', 'bags', 'endSign', 'mailbox', 'bags'], street: 'manhole', every: 3 },
   'Subway Platform': { wall: [], street: null, every: 99 },
   'Bank Server Room': { wall: ['crtPile', 'desk', 'extinguisher', 'crtPile', 'desk'], street: null, every: 3 },
-  'The Ball Drop': { wall: ['ac', 'bags', 'ac', 'speakers'], street: null, every: 3 },
+  'The Ball Drop': { wall: ['ac', 'crates', 'ac', 'speakers'], street: null, every: 3 },
 };
 
 // Radius for solid decor; anything missing is walk-through.
-export const DECOR_R = { hydrant: 0.16, payphone: 0.2, mailbox: 0.26, endSign: 0.2, crtPile: 0.3, desk: 0.35, ac: 0.4, speakers: 0.3, vending: 0.3 };
+export const DECOR_R = { hydrant: 0.16, payphone: 0.2, mailbox: 0.26, endSign: 0.2, crtPile: 0.3, desk: 0.35, ac: 0.4, speakers: 0.3, crates: 0.35, vending: 0.3 };
 
 export function decorFor(map) {
   const kit = KITS[map.name];

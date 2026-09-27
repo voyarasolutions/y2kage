@@ -12,7 +12,7 @@ import { offer, upgradeById } from '../data/upgrades.js';
 import { dailyFor, dailyStarted, dailyFinished, dailyRecord } from '../data/daily.js';
 import { grant, achById, cheats, addStat, stat, markHeroCleared, extraUnlocked, EXTRAS, toggleCheat } from '../data/achievements.js';
 import { World } from '../world/world.js';
-import { Sim, EYE, ZRAD, ZHEIGHT, MAX_PITCH } from './sim.js';
+import { Sim, EYE, ZRAD, ZHEIGHT, MAX_PITCH, hitR } from './sim.js';
 import { Input } from '../core/input.js';
 import { W, H, TAU, rand, clamp, store, pickOne } from '../core/util.js';
 import { PAL, PARTY } from '../core/palette.js';
@@ -1093,7 +1093,7 @@ export class Game {
       const h = ZHEIGHT[z.kind] * (Z.hmul || 1) * (z.sc || 1);
       const grow = z.spawnT > 0 ? 1 - z.spawnT / 0.6 : 1;
       W3.sprite(tex, z.x, 0, z.y, h * Z.aspect, h * grow);
-      W3.decal(S.shadow, z.x, z.y, ZRAD[z.kind] * 2.6, 0, 0.45);
+      W3.decal(S.shadow, z.x, z.y, hitR(z) * 2.6, 0, 0.45);
       // Big Heads cheat: a swollen copy of the head over the real one.
       if (bigHead && z.kind !== 'boss' && z.kind !== 'crawler' && grow >= 1) {
         const hd = this.headOf(Z.walk[0]);
@@ -1345,7 +1345,7 @@ export class Game {
       const rx = z.x - P.x;
       const ry = z.y - P.y;
       const t = rx * dx + ry * dy;
-      if (t > 0 && t < bestT && Math.abs(rx * dy - ry * dx) < ZRAD[z.kind] && sim.inHeight(z, eyeZ + t * slope)) {
+      if (t > 0 && t < bestT && Math.abs(rx * dy - ry * dx) < hitR(z) && sim.inHeight(z, eyeZ + t * slope)) {
         best = z;
         bestT = t;
       }

@@ -137,6 +137,8 @@ function sleeve(parent, f, dir) {
 }
 
 // ---------------------------------------------------------------- the Soaker 2500
+// Where the pump rests: just ahead of the pressure chamber, so her front hand sits mid-gun. It slides forward to pump.
+const PUMP_Z = -0.3;
 function soaker(heroIdx) {
   const lime = PAL.lime;
   const org = PAL.tangerine;
@@ -162,7 +164,7 @@ function soaker(heroIdx) {
   const muzzle = at(new THREE.Object3D(), 0, 0.028, -0.6);
   gun.add(muzzle);
   // Pump rod and the sliding pump with its ribs; her left hand rides on it.
-  gun.add(at(part(tubeZ(0.007, 0.007, 0.26), PAL.steel), 0, -0.018, -0.32));
+  gun.add(at(part(tubeZ(0.007, 0.007, 0.3), PAL.steel), 0, -0.018, -0.32));
   const pump = new THREE.Group();
   pump.add(part(tubeZ(0.036, 0.04, 0.13), org));
   for (let k = 0; k < 5; k++) pump.add(at(part(tubeZ(0.041, 0.041, 0.008), PAL.tangerineDark, { ink: false }), 0, 0, -0.05 + k * 0.025));
@@ -170,8 +172,8 @@ function soaker(heroIdx) {
   const lh = fist(heroIdx, 0.04, true);
   lh.rotation.set(0, Math.PI / 2, -2.3);
   pump.add(at(lh, 0, 0, 0.01));
-  sleeve(pump, lh, new THREE.Vector3(-0.35, -0.55, 1));
-  gun.add(at(pump, 0, -0.018, -0.36));
+  sleeve(pump, lh, new THREE.Vector3(-1, -0.5, 0.35));
+  gun.add(at(pump, 0, -0.018, PUMP_Z));
   // The reservoir on top: a clear tank with the water inside, straps and a screw cap.
   const tank = new THREE.Group();
   tank.add(part(tubeZ(0.034, 0.034, 0.2, 18), '#bfe8ff', { transparent: true, opacity: 0.45, ink: false }));
@@ -305,7 +307,7 @@ export class ViewModel {
     // side of the weapon while it still points at the crosshair.
     if (kind === 'soaker') {
       parts = soaker(heroIdx);
-      hold.position.set(0.18, -0.2, -0.7);
+      hold.position.set(0.17, -0.18, -0.64);
       hold.rotation.set(0.1, 0.3, 0);
     } else if (kind === 'laser') {
       parts = laser(heroIdx);
@@ -348,7 +350,7 @@ export class ViewModel {
       const half = Math.floor(this.pumpPh / Math.PI);
       if (pumping && half !== this.pumpHalf) sfx.pump(half % 2 === 0);
       this.pumpHalf = half;
-      S.pump.position.z = -0.36 + stroke * 0.08;
+      S.pump.position.z = PUMP_Z - stroke * 0.07;
       const f = Math.max(0.02, P.tank / G.tank);
       S.water.scale.set(1, f, 1);
       S.water.position.y = -0.03 * (1 - f);

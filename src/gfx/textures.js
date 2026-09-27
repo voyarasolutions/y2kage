@@ -130,8 +130,9 @@ function posters(rnd) {
 }
 
 function billboardTower(rnd) {
-  // Stacked billboards like the tower at the head of Times Square. 64 wide (2 units), 256 tall (8 units).
-  const p = new Pix(64, 256).fill('#1a1426');
+  // Stacked billboards like the tower at the head of Times Square: 2 units wide, 8 tall, painted at
+  // twice the usual texel density (128x512) because you fight right at its foot at the Ball Drop.
+  const p = new Pix(128, 512).fill('#1a1426');
   const ads = [
     { bg: PAL.strawberry, fg: PAL.cream, t: ['COLA'] },
     { bg: PAL.winNavy, fg: PAL.gold, t: ['Y2K', 'READY?'] },
@@ -143,14 +144,26 @@ function billboardTower(rnd) {
   ];
   let y = 0;
   let i = 0;
-  while (y < 256) {
+  while (y < 512) {
     const a = ads[i++ % ads.length];
-    const h = 26 + Math.floor(rnd() * 14);
-    p.rect(1, y + 1, 62, h - 2, a.bg);
-    p.rect(1, y + 1, 62, 1, '#ffffff55');
-    a.t.forEach((t, k) => micro(p, t, 32 - microWidth(t, 2) / 2, y + 5 + k * 12, a.fg, 2));
-    // Bulb border.
-    for (let k = 3; k < 62; k += 4) p.px(k, y + 1, PAL.gold).px(k, y + h - 2, PAL.gold);
+    const h = 56 + Math.floor(rnd() * 24);
+    // Steel frame, the panel, a soft top-down sheen and a darker foot.
+    p.rect(1, y + 1, 126, h - 2, '#3a3448');
+    p.rect(4, y + 4, 120, h - 8, a.bg);
+    p.rect(4, y + 4, 120, 2, '#ffffff66').rect(4, y + 6, 120, 2, '#ffffff22');
+    p.rect(4, y + h - 10, 120, 6, '#00000033');
+    const lines = a.t.length;
+    a.t.forEach((t, k) => {
+      const tx = 64 - microWidth(t, 3) / 2;
+      const ty = y + (h - lines * 20) / 2 + k * 20;
+      micro(p, t, tx + 1, ty + 1, '#00000055', 3);
+      micro(p, t, tx, ty, a.fg, 3);
+    });
+    // Marquee bulbs round the edge, every other one lit.
+    for (let k = 6; k < 124; k += 8) {
+      const on = (k / 8 + i) % 2 < 1;
+      p.rect(k, y + 1, 2, 2, on ? PAL.gold : '#8a6a2a').rect(k, y + h - 3, 2, 2, on ? '#8a6a2a' : PAL.gold);
+    }
     y += h;
   }
   return p;

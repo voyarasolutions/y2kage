@@ -10,6 +10,7 @@ import { clockFor, DISTRICTS, TOTAL_LEVELS, BOSSES } from '../data/levels.js';
 import { UPGRADES, upgradeById, stacks, rarityOf, RARITY } from '../data/upgrades.js';
 import { ACHIEVEMENTS, EXTRAS, unlocked, extraUnlocked, cheats } from '../data/achievements.js';
 import { store } from '../core/util.js';
+import { micro } from '../gfx/pix.js';
 import { dailyFor, dailyRecord } from '../data/daily.js';
 
 // ---------------------------------------------------------------- chrome logo
@@ -128,23 +129,64 @@ export function drawBios(g, t) {
 
 const DIAL_STEPS = [[0, 'Dialing...'], [1.8, 'Verifying password...'], [3.3, 'Logging on to network...'], [4.6, 'Connected at 56,000 bps']];
 
-function computerIcon(g, x, y) {
-  rect(g, x, y, 22, 16, PAL.winFace);
-  rect(g, x + 2, y + 2, 18, 11, PAL.winTeal);
-  rect(g, x + 2, y + 2, 18, 1, '#40a0a0');
-  rect(g, x + 6, y + 17, 10, 2, PAL.winShadow);
-  rect(g, x + 2, y + 19, 18, 2, PAL.winFace);
-}
+// Win98 desktop icons, 24x22 each, drawn at (x, y).
+const DESK_ICONS = {
+  computer(g, x, y) {
+    // Beige monitor on a desktop case.
+    rect(g, x + 3, y, 18, 14, PAL.ink);
+    rect(g, x + 4, y + 1, 16, 12, PAL.winFace);
+    rect(g, x + 6, y + 3, 12, 8, PAL.winTeal);
+    rect(g, x + 6, y + 3, 12, 1, '#40a0a0');
+    rect(g, x + 7, y + 5, 3, 1, PAL.white);
+    rect(g, x + 9, y + 14, 6, 2, PAL.winShadow);
+    rect(g, x + 1, y + 16, 22, 6, PAL.ink);
+    rect(g, x + 2, y + 17, 20, 4, PAL.winFace);
+    rect(g, x + 4, y + 18, 8, 1, PAL.winShadow);
+    rect(g, x + 18, y + 18, 2, 2, PAL.lime);
+  },
+  patch(g, x, y) {
+    // A floppy with a gold "FIX" label.
+    rect(g, x + 3, y, 18, 20, PAL.ink);
+    rect(g, x + 4, y + 1, 16, 18, '#2a3a6a');
+    rect(g, x + 8, y + 1, 8, 6, PAL.steel);
+    rect(g, x + 13, y + 2, 2, 4, '#2a3a6a');
+    rect(g, x + 6, y + 9, 12, 9, PAL.gold);
+    rect(g, x + 6, y + 9, 12, 2, PAL.strawberry);
+    micro({ rect: (a, b, w, h, c) => rect(g, a, b, w, h, c) }, 'FIX', x + 7, y + 12, PAL.ink);
+  },
+  bin(g, x, y) {
+    // Wire recycle bin, a crumpled page poking out.
+    rect(g, x + 5, y + 2, 14, 2, PAL.ink);
+    rect(g, x + 6, y + 4, 12, 16, PAL.ink);
+    rect(g, x + 7, y + 4, 10, 15, '#c8ccd4');
+    for (let k = 0; k < 4; k++) rect(g, x + 8 + k * 3, y + 5, 1, 13, PAL.winShadow);
+    rect(g, x + 7, y + 10, 10, 1, PAL.winShadow);
+    rect(g, x + 9, y, 6, 4, PAL.white);
+    rect(g, x + 10, y + 1, 3, 1, PAL.winShadow);
+  },
+  dialup(g, x, y) {
+    // A phone handset over a modem with blinking lights.
+    rect(g, x + 1, y + 12, 22, 9, PAL.ink);
+    rect(g, x + 2, y + 13, 20, 7, PAL.winFace);
+    for (let k = 0; k < 4; k++) rect(g, x + 4 + k * 4, y + 17, 2, 1, k % 2 ? PAL.lime : PAL.red);
+    rect(g, x + 3, y + 3, 18, 5, PAL.ink);
+    rect(g, x + 4, y + 4, 16, 3, PAL.bondi);
+    rect(g, x + 2, y + 5, 5, 7, PAL.ink);
+    rect(g, x + 17, y + 5, 5, 7, PAL.ink);
+    rect(g, x + 3, y + 6, 3, 5, PAL.bondi);
+    rect(g, x + 18, y + 6, 3, 5, PAL.bondi);
+    rect(g, x + 6, y + 4, 4, 1, '#8fe8ff');
+  },
+};
 
 export function drawDesktop(g) {
   rect(g, 0, 0, W, H, PAL.winTeal);
   // Desktop icons down the left, like everyone's did.
-  const icons = [['My Computer', PAL.winFace], ['Y2K Patch', PAL.gold], ['Recycle Bin', PAL.winShadow], ['Dial-Up', PAL.bondi]];
-  icons.forEach(([name, c], i) => {
-    const y = 8 + i * 34;
-    rect(g, 30, y, 16, 14, c);
-    rect(g, 32, y + 2, 12, 8, i === 1 ? PAL.strawberry : '#1a4a8a');
-    text(g, name, 38, y + 17, { font: 'small', color: PAL.white, align: 'center' });
+  const icons = [['My Computer', 'computer'], ['Y2K Patch', 'patch'], ['Recycle Bin', 'bin'], ['Dial-Up', 'dialup']];
+  icons.forEach(([name, kind], i) => {
+    const y = 6 + i * 34;
+    DESK_ICONS[kind](g, 26, y);
+    text(g, name, 38, y + 24, { font: 'small', color: PAL.white, outline: '#004040', align: 'center' });
   });
 }
 
@@ -155,8 +197,8 @@ export function drawDialup(g, t) {
   const x = W / 2 - w / 2;
   const y = 50;
   const inner = window98(g, x, y, w, h, 'Connecting to Y2KAGE.NET');
-  computerIcon(g, inner.x + 14, inner.y + 6);
-  computerIcon(g, inner.x + inner.w - 36, inner.y + 6);
+  DESK_ICONS.computer(g, inner.x + 14, inner.y + 4);
+  DESK_ICONS.computer(g, inner.x + inner.w - 38, inner.y + 4);
   // Data dots travelling between the two computers.
   const n = 7;
   const step = Math.floor(t * 8) % n;

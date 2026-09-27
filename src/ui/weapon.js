@@ -144,16 +144,21 @@ function yoyoArt(col, rim, f) {
   return p;
 }
 
+// A yo-yo hanging from a fist, the forearm angling in from the bottom corner of the screen.
+// flip is the left hand: its fist sits on the right of the sprite and the arm runs off to the left.
 function yoyoHand(L, hi, flip, col, rim) {
-  const p = new Pix(44, 80);
-  fist(p, 11, 40, L, hi, flip);
+  const p = new Pix(96, 110);
+  const fx = flip ? 63 : 11;
+  const w = { x: fx + 10, y: 54 };
+  arm(p, w, { x: flip ? -30 : 30, y: 64 }, L, hi);
+  fist(p, fx, 40, L, hi, flip, true);
   p.outline(PAL.ink);
   const frames = [0, 1, 2, 3].map((f) => {
-    const yo = new Pix(44, 70);
+    const yo = new Pix(96, 110);
     yo.draw(p, 0, 0);
-    yo.draw(yoyoArt(col, rim, f), 5, 2);
+    yo.draw(yoyoArt(col, rim, f), fx - 6, 2);
     // String looped over the middle finger, running up to the axle.
-    yo.rect(21, 22, 1, 19, PAL.cream).px(22, 40, PAL.cream).px(20, 41, PAL.cream);
+    yo.rect(fx + 10, 22, 1, 19, PAL.cream).px(fx + 11, 40, PAL.cream).px(fx + 9, 41, PAL.cream);
     return yo;
   });
   return { empty: p, frames };
@@ -327,8 +332,8 @@ export class WeaponView {
       const f = Math.floor(t * 10) & 3;
       const L = out.has(0) ? a.l.empty : a.l.frames[f];
       const R = out.has(1) ? a.r.empty : a.r.frames[(f + 2) & 3];
-      d(L, 52, base - 74 + (out.has(0) ? -6 : 0));
-      d(R, W - 96, base - 74 + (out.has(1) ? -6 : 0));
+      d(L, 0, base - 84 + (out.has(0) ? -6 : 0));
+      d(R, W - 96, base - 84 + (out.has(1) ? -6 : 0));
     } else if (G.kind === 'floppy') {
       const throwing = P.fireAnim > 0;
       const r = throwing ? a.r.empty : a.r.full;

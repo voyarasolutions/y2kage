@@ -29,8 +29,9 @@ Runs in any modern browser, supports online co-op for up to four players, and sh
   fifth wave. Your best wave per district is saved.
 - **Gamepad support.** Plug in any standard controller (Xbox, PlayStation, Switch Pro) and play without the keyboard.
 - **Five heroes, five rides, five weapons.** Every hero moves differently and shoots differently, and each has a
-  special move that charges over time and with kills (R or right-click). Weapons are held at a three-quarter angle:
-  Tina's Soaker 2500 has a see-through reservoir that drains as she sprays and a pump she works to build pressure back up.
+  special move that charges over time and with kills (R or right-click). Weapons point straight ahead and every shot leaves
+  from the muzzle you see. Tina's Soaker 2500 has a see-through reservoir that drains as she sprays and a pump she works
+  to build pressure back up.
 - **A 90s horde.** Party Shamblers, Ravers, Bouncers, Bloaters, Crawlers, CRT-headed Corrupted, and the Millennium Bug,
   dressed for whichever district you're in.
 - **Headshots and combos.** Headshots deal double damage and pop heads off; chained kills build a score multiplier with
@@ -163,8 +164,9 @@ The app is locked to landscape. Fonts are bundled so it works offline.
 - `src/gfx/pipeline.js` renders the scene into a 384x216 target with nearest filtering, then a post pass quantises
   each channel with a 4x4 Bayer dither, adds Y2K glitch tearing and damage flashes. The browser upscales with hard edges.
 - `src/gfx/textures.js` paints every wall, floor, sky and prop skin at 32 texels per map unit.
-- `src/gfx/model.js` is a tiny pixel modeller for the first-person weapons: tubes, boxes and discs laid along a slanted
-  axis and shaded per pixel, so each weapon reads as a solid object seen over the hero's shoulder.
+- `src/gfx/model.js` is a tiny pixel modeller for the first-person weapons: tubes, boxes and discs laid along an axis
+  that points into the screen, shaded per pixel, so each weapon reads as a solid object seen from just behind it.
+  `src/data/muzzles.js` holds each weapon's on-screen muzzle; the sim spawns shots at the same point in 3D.
 - `src/gfx/bosses.js` draws the four district bosses after the Millennium Bug, their data packets and burrow mound.
 - `src/gfx/sprites.js` draws the horde (party shamblers, ravers, bouncers, CRT-headed Corrupted, the Millennium Bug),
   projectiles, pickups, hero portraits and icons, all with 1px outlines.

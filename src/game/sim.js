@@ -6,6 +6,7 @@
 // player; everything else arrives in snapshots from the host (see applySnapshot).
 import { ENEMIES, BOSSES, scaleFor } from '../data/levels.js';
 import { upgradeMods } from '../data/upgrades.js';
+import { muzzleWorld } from '../data/muzzles.js';
 import { rankFor, dmgMulFor, xpForRank } from '../data/progress.js';
 import { PARTY } from '../core/palette.js';
 import { rand, clamp, TAU, pickOne } from '../core/util.js';
@@ -831,10 +832,11 @@ export class Sim {
         while (P.fireCd <= 0) {
           P.fireCd += G.every / P.mods.rate;
           P.tank -= G.drain * (P.overclock > 0 ? 0.5 : 1);
-          const a = P.a + rand(-G.spread, G.spread);
+          const m = this.muzzle(P, 'soaker');
+          const a = m.a + rand(-G.spread, G.spread);
           for (const off of this.spread()) {
             const b = a + off;
-            this.projs.push({ kind: 'water', o: P.idx, x: P.x + dx * 0.4 - dy * 0.12, y: P.y + dy * 0.4 + dx * 0.12, z: eyeZ - 0.22, vx: Math.cos(b) * G.speed + P.vx * 0.5, vy: Math.sin(b) * G.speed + P.vy * 0.5, vz: rand(0.3, 0.9) + this.aimVz(P, eyeZ - 0.22, G.speed), life: G.life, r: 0.12, dmg: G.dmg, knock: G.knock });
+            this.projs.push({ kind: 'water', o: P.idx, x: m.x, y: m.y, z: m.z, vx: Math.cos(b) * G.speed + P.vx * 0.5, vy: Math.sin(b) * G.speed + P.vy * 0.5, vz: rand(0.3, 0.9) + this.aimVz(P, m.z, G.speed), life: G.life, r: 0.12, dmg: G.dmg, knock: G.knock });
           }
           if (Math.random() < 0.35) this.snd('shoot', 'soaker');
         }
@@ -852,11 +854,10 @@ export class Sim {
         if (hand != null) {
           P.hand = 1 - hand;
           P.fireCd = G.every * oc;
-          const a = P.a + (hand ? 0.03 : -0.03);
-          const side = hand ? 1 : -1;
+          const m = this.muzzle(P, 'yoyo', hand);
           this.spread().forEach((off, k) => {
-            const b = a + off;
-            this.projs.push(this.aimRay({ kind: 'yoyo', o: P.idx, hand: k ? 2 : hand, x: P.x + dx * 0.3 - dy * 0.15 * side, y: P.y + dy * 0.3 + dx * 0.15 * side, z: eyeZ - 0.18, vx: Math.cos(b) * G.speed, vy: Math.sin(b) * G.speed, vz: this.aimVz(P, eyeZ - 0.18, G.speed), travel: 0, back: false, hits: new Set(), r: 0.22, dmg: G.dmg, knock: G.knock, spin: 0 }, P));
+            const b = m.a + off;
+            this.projs.push(this.aimRay({ kind: 'yoyo', o: P.idx, hand: k ? 2 : hand, x: m.x, y: m.y, z: m.z, vx: Math.cos(b) * G.speed, vy: Math.sin(b) * G.speed, vz: this.aimVz(P, m.z, G.speed), travel: 0, back: false, hits: new Set(), r: 0.22, dmg: G.dmg, knock: G.knock, spin: 0 }, P));
           });
           this.snd('shoot', 'yoyo');
         }
@@ -872,9 +873,10 @@ export class Sim {
       if (firing && P.fireCd <= 0) {
         P.fireCd = G.every * oc;
         P.fireAnim = 0.2;
+        const m = this.muzzle(P, 'rocket');
         for (const off of this.spread()) {
-          const b = P.a + off;
-          this.projs.push(this.aimRay({ kind: 'rocket', o: P.idx, x: P.x + dx * 0.3 - dy * 0.12, y: P.y + dy * 0.3 + dx * 0.12, z: eyeZ - 0.12, vx: Math.cos(b) * G.speed, vy: Math.sin(b) * G.speed, vz: this.aimVz(P, eyeZ - 0.12, G.speed), life: G.life, r: 0.2, dmg: G.direct, knock: 0 }, P));
+          const b = m.a + off;
+          this.projs.push(this.aimRay({ kind: 'rocket', o: P.idx, x: m.x, y: m.y, z: m.z, vx: Math.cos(b) * G.speed, vy: Math.sin(b) * G.speed, vz: this.aimVz(P, m.z, G.speed), life: G.life, r: 0.2, dmg: G.direct, knock: 0 }, P));
         }
         this.snd('shoot', 'rocket');
         if (this.isLocal(P)) this.shake = Math.min(1, this.shake + 0.15);
@@ -940,9 +942,20 @@ export class Sim {
     const dx = Math.cos(a);
     const dy = Math.sin(a);
     const S = P.hero.gun.speed;
-    const z0 = EYE + P.z - 0.14;
-    const p = { kind: 'floppy', o: P.idx, x: P.x + dx * 0.3, y: P.y + dy * 0.3, z: z0, vx: dx * S, vy: dy * S, vz: aimed ? this.aimVz(P, z0, S) : 0, life, bounces, r: 0.18, dmg, knock: P.hero.gun.knock, spin: rand(0, 4) };
+    // Aimed throws leave from the disk in her hand; special bursts fan out from her body.
+    const m = aimed ? this.muzzle(P, 'floppy') : null;
+    const z0 = m ? m.z : EYE + P.z - 0.14;
+    const b = m ? a + (m.a - P.a) : a;
+    const p = { kind: 'floppy', o: P.idx, x: m ? m.x : P.x + dx * 0.3, y: m ? m.y : P.y + dy * 0.3, z: z0, vx: Math.cos(b) * S, vy: Math.sin(b) * S, vz: aimed ? this.aimVz(P, z0, S) : 0, life, bounces, r: 0.18, dmg, knock: P.hero.gun.knock, spin: rand(0, 4) };
     this.projs.push(aimed ? this.aimRay(p, P) : p);
+  }
+
+  // Where a shot leaves the weapon on screen, in the world, and the heading that brings it across the
+  // crosshair CONVERGE units out (the muzzle sits off to one side of the eye).
+  muzzle(P, kind, hand = 0) {
+    const m = muzzleWorld(kind, hand, P.x, P.y, EYE + P.z, P.a, P.pitch || 0);
+    m.a = P.a - Math.atan2(m.r, CONVERGE);
+    return m;
   }
 
   // Angle offsets for each shot: one normally, a fan of three while Multitasking.

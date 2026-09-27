@@ -21,6 +21,7 @@ import { levelConfig, endlessConfig, clockFor, TOTAL_LEVELS, DISTRICTS } from '.
 import { sfx } from '../audio/sfx.js';
 import { music } from '../audio/music.js';
 import { WeaponView } from '../ui/weapon.js';
+import { muzzleWorld } from '../data/muzzles.js';
 import { hit } from '../ui/win98.js';
 import * as HUD from '../ui/hud.js';
 import * as SCR from '../ui/screens.js';
@@ -1117,14 +1118,10 @@ export class Game {
       else if (p.kind === 'yoyo') {
         const set = p.hand ? S.yoyo2 : S.yoyo;
         W3.sprite(set[Math.floor(p.spin) % 4], p.x, p.z - 0.1, p.y, 0.22, 0.22);
+        // The string runs back to the hand that threw it (on screen, the yo-yo hand).
         const O = sim.players[p.o] || P;
-        const side = p.hand ? 1 : -1;
-        const orx = -Math.sin(O.a);
-        const ory = Math.cos(O.a);
-        const hx = O.x + Math.cos(O.a) * 0.25 + orx * 0.2 * side;
-        const hy = O.y + Math.sin(O.a) * 0.25 + ory * 0.2 * side;
-        const oe = O === P ? eye : EYE + (O.z || 0);
-        W3.line([hx, oe - 0.28, hy], [p.x, p.z, p.y], PAL.cream);
+        const h = muzzleWorld('yoyo', p.hand ? 1 : 0, O.x, O.y, O === P ? eye : EYE + (O.z || 0), O.a, O.pitch || 0);
+        W3.line([h.x, h.z, h.y], [p.x, p.z, p.y], PAL.cream);
       } else if (p.kind === 'floppy') W3.sprite(S.floppy[Math.floor(p.spin) % 4], p.x, p.z - 0.12, p.y, 0.24, 0.24);
       else if (p.kind === 'rocket') W3.sprite(S.flare[Math.floor(this.t * 20) % 2], p.x, p.z - 0.14, p.y, 0.28, 0.28);
     }
@@ -1138,14 +1135,13 @@ export class Game {
       const oe = mine ? eye : l.z;
       const fx2 = Math.cos(l.a);
       const fy2 = Math.sin(l.a);
-      const rx = -fy2;
-      const ry = fx2;
-      const off = mine && !l.sp ? 0.12 : 0;
-      const mx = ox + fx2 * 0.3 + rx * off;
-      const my = oy + fy2 * 0.3 + ry * off;
+      // Our own pointer's beam starts at the pen tip on screen.
+      const tip = mine && !l.sp ? muzzleWorld('laser', 0, ox, oy, oe, l.a, l.pt || 0) : null;
+      const mx = tip ? tip.x : ox + fx2 * 0.3;
+      const my = tip ? tip.y : oy + fy2 * 0.3;
       const hx = ox + fx2 * l.d;
       const hy = oy + fy2 * l.d;
-      const top = l.sp ? oe - 0.3 : oe - 0.17;
+      const top = l.sp ? oe - 0.3 : tip ? tip.z : oe - 0.17;
       const end = l.sp ? oe - 0.3 : oe + l.d * Math.tan(l.pt || 0) - (mine ? 0.02 : 0.08);
       if (l.sp) {
         // Light Show beams cycle through the party colours and are drawn thick.

@@ -1,6 +1,6 @@
 // A tiny pixel modeller for the first-person weapons. Parts are tubes, boxes and discs laid along one
-// screen-space axis (the far end up toward the crosshair, the near end toward you) and shaded per pixel
-// with a five-tone ramp, so a weapon reads as a solid object seen from a three-quarter angle.
+// screen-space axis (the muzzle up toward the crosshair, the back end toward you) and shaded per pixel
+// with a five-tone ramp, so a weapon reads as a solid object seen from just above and behind.
 import { Pix } from './pix.js';
 import { ramp } from './heroart.js';
 
@@ -18,6 +18,8 @@ const hexRgb = (c) => {
 export const SHADE = {
   tube: [[-0.72, 'light'], [-0.46, 'hi'], [-0.12, 'light'], [0.42, 'base'], [0.8, 'dark'], [1, 'deep']],
   box: [[-0.86, 'hi'], [-0.2, 'light'], [0.68, 'base'], [0.9, 'dark'], [1, 'deep']],
+  // A slab seen from above and behind: a wide lit top face and a narrow right side.
+  top: [[-0.88, 'hi'], [0.5, 'light'], [0.62, 'hi'], [0.86, 'base'], [1, 'dark']],
   chrome: [[-0.74, 'light'], [-0.5, 'hi'], [-0.22, 'base'], [0.08, 'dark'], [0.36, 'light'], [0.78, 'base'], [1, 'deep']],
   glass: [[-0.8, 'light'], [-0.55, 'hi'], [-0.35, 'light'], [0.75, 'base'], [1, 'dark']],
 };
@@ -34,8 +36,9 @@ export function texture(p) {
 }
 
 export class Rig {
-  // a: the far end, b: the near end, in sprite pixels. kFar: how much smaller things draw at the far end.
-  constructor(w, h, a, b, kFar = 0.5) {
+  // a: the far end (the muzzle), b: the near end, in sprite pixels. kFar: how much smaller things draw
+  // at the far end. opt.up: the screen direction of the weapon's top (default straight up).
+  constructor(w, h, a, b, kFar = 0.5, opt = {}) {
     this.w = w;
     this.h = h;
     this.a = a;
@@ -44,8 +47,12 @@ export class Rig {
     const dy = b.y - a.y;
     this.len = Math.hypot(dx, dy);
     this.u = { x: dx / this.len, y: dy / this.len };
-    // Offsets point to the underside of the weapon (down and to the left on screen).
-    this.n = { x: -this.u.y, y: this.u.x };
+    // Across the weapon, left to right on screen; the light comes from the left.
+    this.n = { x: this.u.y, y: -this.u.x };
+    if (this.n.x < 0) this.n = { x: -this.n.x, y: -this.n.y };
+    this.up = opt.up || { x: 0, y: -1 };
+    // Sizes and offsets are given at near scale and multiplied by this.
+    this.z = opt.scale || 1;
     this.parts = [];
   }
 
@@ -53,10 +60,13 @@ export class Rig {
     return this.kFar + (1 - this.kFar) * s;
   }
 
-  // Screen point at axis position s, pushed o pixels (at near scale) toward the underside.
-  at(s, o = 0) {
-    const k = this.k(s);
-    return { x: this.a.x + this.u.x * this.len * s + this.n.x * o * k, y: this.a.y + this.u.y * this.len * s + this.n.y * o * k };
+  // Screen point at axis position s, raised o pixels toward the top and moved x pixels right (at near scale).
+  at(s, o = 0, x = 0) {
+    const k = this.k(s) * this.z;
+    return {
+      x: this.a.x + this.u.x * this.len * s + (this.up.x * o + this.n.x * x) * k,
+      y: this.a.y + this.u.y * this.len * s + (this.up.y * o + this.n.y * x) * k,
+    };
   }
 
   // Screen-space pixels for a slide of ds along the axis (the Soaker's pump).
@@ -68,7 +78,8 @@ export class Rig {
     const rp = typeof col === 'string' ? ramp(col) : col;
     const rgbRamp = {};
     for (const k of ['deep', 'dark', 'base', 'light', 'hi']) rgbRamp[k] = hexRgb(rp[k]);
-    this.parts.push({ ...opt, type, s0, s1, o, r0, r1: r1 ?? r0, ramp: rgbRamp, shade: SHADE[opt?.shade || (type === 'box' ? 'box' : 'tube')] });
+    const z = this.z;
+    this.parts.push({ ...opt, x: (opt?.x || 0) * z, type, s0, s1, o: o * z, r0: r0 * z, r1: (r1 ?? r0) * z, ramp: rgbRamp, shade: SHADE[opt?.shade || (type === 'box' ? 'box' : 'tube')] });
     return this;
   }
 
@@ -89,14 +100,16 @@ export class Rig {
 
   // Which part covers a pixel, and where on it: returns [part, v, t] or null.
   hit(x, y, from = this.parts.length - 1) {
-    const rx = x + 0.5 - this.a.x;
-    const ry = y + 0.5 - this.a.y;
-    const s = (rx * this.u.x + ry * this.u.y) / this.len;
-    const d = rx * this.n.x + ry * this.n.y;
     for (let i = from; i >= 0; i--) {
       const q = this.parts[i];
+      // Each part runs along its own copy of the axis, lifted and shifted by its offsets.
+      const km = this.k((q.s0 + q.s1) / 2);
+      const rx = x + 0.5 - this.a.x - (this.up.x * q.o + this.n.x * q.x) * km;
+      const ry = y + 0.5 - this.a.y - (this.up.y * q.o + this.n.y * q.x) * km;
+      const s = (rx * this.u.x + ry * this.u.y) / this.len;
+      const d = rx * this.n.x + ry * this.n.y;
       const k = this.k(s);
-      const c = q.o * k;
+      const c = 0;
       if (q.type === 'disc') {
         const r = q.r0 * k;
         const ds = ((s - q.s0) * this.len) / (r * q.flat);
@@ -140,7 +153,7 @@ export class Rig {
         if (capped) key = DARKER[key];
         let rgb = q.ramp[key];
         if (q.stripe) {
-          const alt = q.stripe(t, v, key);
+          const alt = q.stripe(t, v, key, x, y);
           // A stripe gives a flat colour or a whole ramp to shade with instead.
           if (alt) rgb = hexRgb(typeof alt === 'string' ? alt : alt[key]);
         }

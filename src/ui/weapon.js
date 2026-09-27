@@ -2,6 +2,7 @@
 // Each hero's hands wear their iMac colour.
 import { Pix, micro } from '../gfx/pix.js';
 import { Rig, texture, skew } from '../gfx/model.js';
+import { MUZZLE } from '../data/muzzles.js';
 import { sfx } from '../audio/sfx.js';
 import { LOOKS, ramp } from '../gfx/heroart.js';
 import { PAL, FLAVOURS } from '../core/palette.js';
@@ -131,17 +132,19 @@ function screw(p, x, y) {
 // Tina's Soaker 2500, seen from over her shoulder: a long lime barrel with an orange pump slung
 // underneath, a fat pressure chamber, and a see-through reservoir on top whose water drops as she sprays.
 // The body is baked once per water level; the pump and her left hand are a separate sprite that slides.
-const SOAK = { w: 196, h: 150, a: { x: 20, y: 28 }, b: { x: 158, y: 116 }, far: 0.6, levels: 8, at: { x: 10, y: 0 } };
-
-const SOAK_SLOPE = (SOAK.b.y - SOAK.a.y) / (SOAK.b.x - SOAK.a.x);
-
-function soakerRig() {
-  return new Rig(SOAK.w, SOAK.h, SOAK.a, SOAK.b, SOAK.far);
-}
-
 // Paste a flat sticker onto a slanted face by shearing its columns (keeps the pixel lettering crisp).
 function shearOn(p, src, x, y, slope) {
   for (let cx = 0; cx < src.w; cx++) p.g.drawImage(src.c, cx, 0, 1, src.h, x + cx, y + Math.round(cx * slope), 1, src.h);
+}
+
+// Tina's Soaker 2500, held at her right hip and pointing straight ahead, seen from just above and
+// behind: a long lime barrel, an orange pump she works with her left hand, a gold pressure chamber
+// bulging out underneath, and a see-through reservoir on top whose water drops as she sprays.
+// Three layers so the pump can slide between the gun and the tank: base, pump, tank.
+const SOAK = { w: 190, h: 130, a: { x: 44, y: 10 }, b: { x: 96, y: 98 }, far: 0.36, scale: 1.45, levels: 8 };
+
+function soakerRig() {
+  return new Rig(SOAK.w, SOAK.h, SOAK.a, SOAK.b, SOAK.far, { scale: SOAK.scale });
 }
 
 function soakerDecal() {
@@ -149,78 +152,77 @@ function soakerDecal() {
   d.rect(0, 0, 29, 14, PAL.purple).rect(1, 1, 27, 12, PAL.grape);
   micro(d, 'SOAKER', 3, 2, PAL.gold);
   micro(d, '2500', 7, 8, PAL.white);
-  d.px(0, 0, 'rgba(0,0,0,0)').px(28, 0, 'rgba(0,0,0,0)');
   return d;
 }
 
-function soakerBody(L, hi, f) {
+function soakerBase(L, hi) {
   const R = soakerRig();
   const lime = ramp(PAL.lime);
   const org = ramp(PAL.tangerine);
   const grape = ramp(PAL.grape);
-  const gold = ramp(PAL.gold);
-  const water = ramp('#3a8ae8');
-  const air = ramp('#a8dcf4');
-  // Back to front: chamber under everything, then the barrel, body, grip and the tank on top.
-  R.tube(0.36, 0.74, 26, 18, 19, gold, { round: true, stripe: (t) => (t < 0.06 || t > 0.94 || (t > 0.46 && t < 0.52) ? grape : null) });
-  R.disc(0.79, 26, 12, PAL.cream, { flat: 0.3, face: (t, v) => (t > 0.8 ? 'dark' : null) });
-  R.tube(0.06, 0.5, 12, 3, 3.5, ramp(PAL.steel), { shade: 'chrome' });
-  R.tube(0.02, 0.6, 0, 8.5, 10, lime, { round: true, stripe: (t) => ((t > 0.1 && t < 0.13) || (t > 0.86 && t < 0.9) ? grape : null) });
-  R.tube(0, 0.07, 0, 10, 10.5, org, { round: true, cap: 0.3 });
-  R.tube(0.07, 0.09, 0, 11.5, 11.5, grape);
-  R.box(0.48, 1.15, 5, 21, 23, lime, {
-    stripe: (t, v) => (v > 0.64 && v < 0.8 ? grape : v > -0.22 && v < -0.15 ? org : null),
-  });
-  R.box(0.8, 0.94, 42, 13, 14, ramp('#5aa032'));
-  R.box(0.6, 0.94, -17, 6, 7, grape);
-  // Reservoir: water fills from the underside; straps and a screw cap in grape.
-  const lvl = 1 - 2 * f;
-  R.tube(0.5, 0.98, -32, 16, 17, air, {
-    shade: 'glass', round: true, cap: 0.35,
-    stripe: (t, v) => ((t > 0.1 && t < 0.17) || (t > 0.8 && t < 0.87) ? grape : v > lvl ? (Math.abs(v - lvl) < 0.08 && f < 0.98 ? '#dff4ff' : water) : null),
-  });
-  R.disc(1.005, -32, 11, grape, { flat: 0.35, face: (t, v) => (t < 0.35 ? (v < 0 ? 'hi' : 'light') : null) });
+  // Lowest first: the pressure chamber peeks out on the left, then the pump rod, barrel and body.
+  R.tube(0.34, 0.86, -16, 19, 21, ramp(PAL.gold), { x: -14, round: true, stripe: (t) => (t < 0.05 || (t > 0.47 && t < 0.52) ? grape : null) });
+  R.tube(0.08, 0.5, -9, 3, 3.5, ramp(PAL.steel), { shade: 'chrome' });
+  R.tube(0.02, 0.62, 0, 10, 12, lime, { round: true, stripe: (t) => ((t > 0.1 && t < 0.14) || (t > 0.84 && t < 0.88) ? grape : null) });
+  R.tube(0, 0.06, 0, 11, 12, org, { round: true, cap: 0.3 });
+  R.tube(0.06, 0.085, 0, 13, 13, grape);
+  R.box(0.46, 1.25, -2, 25, 28, lime, { shade: 'top', stripe: (t, v) => (v > 0.62 && v < 0.8 ? grape : v > -0.84 && v < -0.76 ? org : null) });
   const p = R.render();
-  const dc = R.at(0.63, 8);
-  shearOn(p, soakerDecal(), Math.round(dc.x - 14), Math.round(dc.y - 16), SOAK_SLOPE);
-  // Pressure gauge on the chamber's end: the needle reads the tank.
-  const g = R.at(0.79, 26);
-  const na = Math.PI * (0.85 + 1.3 * f);
-  p.line(g.x, g.y, g.x + Math.cos(na) * 6, g.y + Math.sin(na) * 5, PAL.red);
-  p.px(Math.round(g.x), Math.round(g.y), PAL.ink);
-  // Trigger and her right hand on the grip.
-  const tg = R.at(0.8, 32);
-  p.rect(tg.x - 7, tg.y, 3, 6, PAL.ink).rect(tg.x - 6, tg.y + 1, 1, 4, org.base);
-  const hnd = R.at(0.86, 46);
-  arm(p, { x: hnd.x, y: hnd.y + 8 }, { x: 26, y: 70 }, L, hi);
-  fist(p, Math.round(hnd.x - 10), Math.round(hnd.y - 6), L, hi, false, true);
+  // Pressure gauge on the side of the chamber, trigger guard edge, and her right hand on the grip.
+  const g = R.at(0.62, -10, -34);
+  p.oval(Math.round(g.x), Math.round(g.y), 5, 4, PAL.steelDark).oval(Math.round(g.x), Math.round(g.y), 4, 3, PAL.cream);
+  p.line(g.x, g.y, g.x + 3, g.y - 2, PAL.red).px(Math.round(g.x), Math.round(g.y), PAL.ink);
+  const h = R.at(0.9, -6, 30);
+  arm(p, { x: h.x + 4, y: h.y + 10 }, { x: 34, y: 60 }, L, hi);
+  fist(p, Math.round(h.x - 10), Math.round(h.y - 6), L, hi, false, true);
   p.outline(PAL.ink);
   return p;
 }
 
-// The pump grip and her left hand, drawn in the same frame as the body so it can slide along the barrel.
+// The reservoir on top, baked once per water level. Water fills it from the bottom of the screen up.
+function soakerTank(f) {
+  const R = soakerRig();
+  const grape = ramp(PAL.grape);
+  const water = ramp('#3a8ae8');
+  const air = ramp('#a8dcf4');
+  const top = R.at(0.56, 32, 14).y - 12;
+  const bot = R.at(1, 8, 14).y;
+  const line = top + (1 - f) * (bot - top);
+  R.box(0.62, 0.95, 8, 6, 7, grape, { shade: 'top', x: 10 });
+  R.tube(0.56, 1.02, 20, 12, 13, air, {
+    shade: 'glass', round: true, cap: 0.5, x: 14,
+    stripe: (t, v, key, x, y) => ((t > 0.12 && t < 0.18) || (t > 0.78 && t < 0.84) ? grape : y > line ? (y < line + 1.5 && f < 0.98 ? '#dff4ff' : water) : null),
+  });
+  const p = R.render();
+  const dc = R.at(0.8, 20, 14);
+  p.draw(soakerDecal(), Math.round(dc.x - 14), Math.round(dc.y - 7));
+  p.outline(PAL.ink);
+  return p;
+}
+
+// The pump grip and her left hand. It is wider than the barrel, so it shows on both sides.
 function soakerPump(L, hi) {
   const R = soakerRig();
   const org = ramp(PAL.tangerine);
   const ribs = ramp(PAL.tangerineDark);
-  R.tube(0.17, 0.36, 12, 11, 12, org, { round: true, cap: 0.3, stripe: (t) => (t > 0.08 && t < 0.92 && Math.floor(t * 18) % 3 === 0 ? ribs : null) });
+  R.tube(0.2, 0.38, -5, 12.5, 14, org, { round: true, cap: 0.3, stripe: (t) => (t > 0.08 && t < 0.92 && Math.floor(t * 18) % 3 === 0 ? ribs : null) });
   const p = R.render();
-  // Her hand wraps the grip: fingers over the top, the arm dropping away to the bottom of the screen.
-  const h = R.at(0.27, 8);
-  arm(p, { x: h.x, y: h.y + 10 }, { x: -34, y: 80 }, L, hi);
-  fist(p, Math.round(h.x - 10), Math.round(h.y - 4), L, hi, true, true);
+  const h = R.at(0.33, -4, -16);
+  arm(p, { x: h.x - 2, y: h.y + 10 }, { x: -46, y: 80 }, L, hi);
+  fist(p, Math.round(h.x - 10), Math.round(h.y - 6), L, hi, true, true);
   p.outline(PAL.ink);
   return p;
 }
 
 function soaker(L, hi) {
-  const levels = [];
+  const tanks = [];
   return {
+    base: soakerBase(L, hi),
     pump: soakerPump(L, hi),
     rig: soakerRig(),
-    body: (f) => {
+    tank: (f) => {
       const i = Math.max(0, Math.min(SOAK.levels, Math.round(f * SOAK.levels)));
-      return (levels[i] ||= soakerBody(L, hi, i / SOAK.levels));
+      return (tanks[i] ||= soakerTank(i / SOAK.levels));
     },
   };
 }
@@ -344,39 +346,38 @@ function floppyStack(L, hi) {
 
 // Gus's firework mortar: a striped cardboard tube held at an angle on a black grip, a bottle rocket
 // poking out of the end when it is loaded.
-const TUBE = { w: 150, h: 150, a: { x: 22, y: 20 }, b: { x: 104, y: 94 }, far: 0.6 };
+// Gus's firework mortar, held out in front like a bazooka: a striped cardboard tube pointing straight
+// ahead, a bottle rocket's nose poking out when it is loaded, a fuse curling off the top.
+const TUBE = { w: 170, h: 130, a: { x: 40, y: 12 }, b: { x: 90, y: 100 }, far: 0.36, scale: 1.4 };
 
 function launcher(L, hi) {
   const make = (loaded) => {
-    const R = new Rig(TUBE.w, TUBE.h, TUBE.a, TUBE.b, TUBE.far);
+    const R = new Rig(TUBE.w, TUBE.h, TUBE.a, TUBE.b, TUBE.far, { scale: TUBE.scale });
     const red = ramp(PAL.strawberry);
     const crm = ramp('#f4ead0');
-    const card = ramp('#9a6a3a');
     const gold = ramp(PAL.gold);
-    if (loaded) {
-      R.tube(-0.2, -0.13, 0, 2, 6, gold, { round: true, cap: 0.6 });
-      R.tube(-0.14, 0.02, 0, 6, 6.5, red, { stripe: (t) => (t > 0.45 && t < 0.6 ? ramp(PAL.cream) : null) });
-    }
-    R.tube(0.6, 0.82, 26, 7, 8, ramp('#34343e'), { round: true, stripe: (t) => (Math.floor(t * 12) % 3 === 0 ? ramp('#20202a') : null) });
-    R.tube(0.54, 0.62, 13, 4, 4, ramp(PAL.steel), { shade: 'chrome' });
-    R.tube(0, 1.25, 0, 14, 17, crm, {
+    R.tube(0, 1.3, 0, 17, 21, crm, {
       stripe: (t, v) => {
-        if (t > 0.34 && t < 0.52) return v > -0.5 && v < 0.5 ? gold : ramp(PAL.purple);
-        if ((t > 0.62 && t < 0.64 && Math.abs(v + 0.2) < 0.1) || (t > 0.2 && t < 0.22 && Math.abs(v - 0.3) < 0.1)) return gold;
-        return Math.floor(t * 14) % 2 ? red : null;
+        if (t > 0.5 && t < 0.62) return v > -0.45 && v < 0.45 ? gold : ramp(PAL.purple);
+        if ((t > 0.3 && t < 0.33 && Math.abs(v + 0.3) < 0.12) || (t > 0.72 && t < 0.75 && Math.abs(v - 0.4) < 0.12)) return gold;
+        return Math.floor(t * 12) % 2 ? red : null;
       },
     });
-    R.tube(0, 0.035, 0, 15, 15, card);
-    // Fuse wick curling off the top.
-    R.tube(0.66, 0.72, -17, 1.4, 1.4, ramp('#3a2a1a'));
+    R.tube(0, 0.03, 0, 18, 18, ramp('#9a6a3a'));
+    R.tube(0.66, 0.74, 20, 1.6, 1.6, ramp('#3a2a1a'), { x: 4 });
+    if (loaded) {
+      // The rocket sits in the mouth of the tube, nose toward the crosshair.
+      R.tube(-0.1, 0.03, 0, 7, 8, red, { stripe: (t) => (t > 0.45 && t < 0.62 ? ramp(PAL.cream) : null) });
+      R.tube(-0.17, -0.09, 0, 1.5, 7, gold, { round: true, cap: 0.6 });
+    }
     const p = R.render();
-    const lb = R.at(0.44, -6);
+    const lb = R.at(0.56, 6);
     const boom = new Pix(21, 7);
     micro(boom, 'BOOM', 2, 1, PAL.strawberryDark);
-    shearOn(p, boom, Math.round(lb.x - 10), Math.round(lb.y - 8), (TUBE.b.y - TUBE.a.y) / (TUBE.b.x - TUBE.a.x));
-    const h = R.at(0.72, 30);
-    arm(p, { x: h.x + 2, y: h.y + 10 }, { x: 18, y: 70 }, L, hi);
-    fist(p, Math.round(h.x - 10), Math.round(h.y - 4), L, hi, false, true);
+    p.draw(boom, Math.round(lb.x - 10), Math.round(lb.y - 3));
+    const h = R.at(0.86, -4, 26);
+    arm(p, { x: h.x + 4, y: h.y + 10 }, { x: 30, y: 64 }, L, hi);
+    fist(p, Math.round(h.x - 10), Math.round(h.y - 6), L, hi, false, true);
     p.outline(PAL.ink);
     return p;
   };
@@ -403,24 +404,25 @@ function handlebar(L, hi, grip, ribbed) {
   return p;
 }
 
-// Kev's laser pointer: a chrome pen with a knurled grip, pocket clip and a red button under his thumb.
-const PEN = { w: 130, h: 130, a: { x: 18, y: 18 }, b: { x: 96, y: 80 }, far: 0.6 };
+// Kev's laser pointer, gripped in his fist and aimed straight ahead: a chrome pen with a knurled grip,
+// a pocket clip and the red button under his thumb.
+const PEN = { w: 140, h: 120, a: { x: 36, y: 10 }, b: { x: 80, y: 96 }, far: 0.36, scale: 1.4 };
 
 function laserPen(L, hi) {
-  const R = new Rig(PEN.w, PEN.h, PEN.a, PEN.b, PEN.far);
+  const R = new Rig(PEN.w, PEN.h, PEN.a, PEN.b, PEN.far, { scale: PEN.scale });
   const chrome = ramp(PAL.steel);
   const knurl = ramp(PAL.steelDark);
-  R.tube(-0.06, 0.08, 0, 7.5, 8, ramp('#2a2a34'), { round: true, cap: 0.3 });
-  R.tube(0.06, 1.1, 0, 8, 10, chrome, {
-    shade: 'chrome', round: true,
-    stripe: (t) => (t > 0.5 && t < 0.86 && Math.floor(t * 60) % 2 === 0 ? knurl : t > 0.08 && t < 0.11 ? ramp(PAL.lime) : null),
+  R.tube(-0.03, 0.06, 0, 8, 8.5, ramp('#2a2a34'), { round: true, cap: 0.3 });
+  R.tube(0.05, 1.2, 0, 8.5, 11, chrome, {
+    shade: 'chrome',
+    stripe: (t) => (t > 0.55 && t < 0.95 && Math.floor(t * 50) % 2 === 0 ? knurl : t > 0.08 && t < 0.11 ? ramp(PAL.lime) : null),
   });
-  R.box(0.16, 0.5, -11, 2.4, 2.8, chrome, { shade: 'chrome' });
-  R.tube(0.34, 0.41, -8, 3, 3, ramp(PAL.strawberry), { round: true });
+  R.box(0.18, 0.5, 9, 2.4, 2.8, chrome, { shade: 'chrome', x: -7 });
+  R.tube(0.36, 0.44, 10, 3.5, 3.5, ramp(PAL.strawberry), { round: true });
   const p = R.render();
-  const h = R.at(0.72, 8);
-  arm(p, { x: h.x + 2, y: h.y + 10 }, { x: 14, y: 70 }, L, hi);
-  fist(p, Math.round(h.x - 10), Math.round(h.y - 6), L, hi, false, true);
+  const h = R.at(0.74, 0, 2);
+  arm(p, { x: h.x + 2, y: h.y + 10 }, { x: 20, y: 70 }, L, hi);
+  fist(p, Math.round(h.x - 10), Math.round(h.y - 7), L, hi, false, true);
   p.outline(PAL.ink);
   return p;
 }
@@ -443,13 +445,6 @@ export class WeaponView {
     if (kind === 'laser') a = { pen: laserPen(L, fl), bar: handlebar(L, fl, PAL.lime, false) };
     this.cache[key] = a;
     return a;
-  }
-
-  // Screen-space points where yo-yo strings and the laser beam leave the hands (for the 3D lines).
-  static muzzle(kind, hand) {
-    if (kind === 'laser') return { x: 0.55, y: -0.62 };
-    if (kind === 'yoyo') return hand ? { x: 0.62, y: -0.72 } : { x: -0.62, y: -0.72 };
-    return { x: 0, y: 0 };
   }
 
   draw(g, sim, heroIdx, t) {
@@ -483,18 +478,17 @@ export class WeaponView {
       const half = Math.floor(this.pumpPh / Math.PI);
       if (pumping && half !== this.pumpHalf && sim.isLocal(P)) sfx.pump(half % 2 === 0);
       this.pumpHalf = half;
-      const body = a.body(P.tank / G.tank);
-      const rk = a.rig.slide(-kick * 0.012);
-      const x = W / 2 + 30 - SOAK.a.x + SOAK.at.x + rk.x;
-      const y = 100 - SOAK.a.y + SOAK.at.y + rk.y + (pumping ? stroke * 2 : 0);
-      d(body, x, y);
-      const ps = a.rig.slide(stroke * 0.11);
+      const rk = a.rig.slide(kick * 0.01);
+      const x = MUZZLE.soaker.x - SOAK.a.x + rk.x;
+      const y = MUZZLE.soaker.y - SOAK.a.y + rk.y + (pumping ? stroke : 0);
+      d(a.base, x, y);
+      const ps = a.rig.slide(stroke * 0.14);
       d(a.pump, x + ps.x, y + ps.y);
+      d(a.tank(P.tank / G.tank), x, y);
       if (P.fireAnim > 0) {
-        const m = a.rig.at(-0.02, 0);
-        for (let i = 0; i < 7; i++) {
+        for (let i = 0; i < 5; i++) {
           g.fillStyle = i % 2 ? '#8fd8ff' : '#ffffff';
-          g.fillRect(Math.round(x + m.x - 2 + (Math.random() - 0.7) * 10 + bx), Math.round(y + m.y - 2 - Math.random() * 7 + by), 2, 2);
+          g.fillRect(Math.round(x + SOAK.a.x - 1 + (Math.random() - 0.5) * 5 + bx), Math.round(y + SOAK.a.y - 2 - Math.random() * 5 + by), 2, 2);
         }
       }
     } else if (G.kind === 'yoyo') {
@@ -512,30 +506,28 @@ export class WeaponView {
     } else if (G.kind === 'rocket') {
       const loaded = P.fireCd <= 0.05;
       const tube = loaded ? a.tube.loaded : a.tube.empty;
-      const tx = W / 2 + 38 - TUBE.a.x;
-      const ty = 86 - TUBE.a.y + kick * 2;
-      d(tube, tx, ty);
+      const tx = MUZZLE.rocket.x - TUBE.a.x;
+      const ty = MUZZLE.rocket.y - TUBE.a.y + kick * 2;
       d(a.grip, 20, base - 62);
+      d(tube, tx, ty);
       if (P.fireAnim > 0.1) {
-        const fx = Math.round(tx + TUBE.a.x - 4 + bx);
-        const fy = Math.round(ty + TUBE.a.y - 6 + by);
+        const fx = Math.round(MUZZLE.rocket.x + bx);
+        const fy = Math.round(MUZZLE.rocket.y + kick * 2 + by);
         g.fillStyle = PAL.tangerine;
-        g.fillRect(fx - 16, fy - 6, 32, 12);
-        g.fillRect(fx - 10, fy - 12, 20, 24);
+        g.fillRect(fx - 12, fy - 5, 24, 10);
+        g.fillRect(fx - 7, fy - 10, 14, 20);
         g.fillStyle = PAL.gold;
-        g.fillRect(fx - 11, fy - 4, 22, 8);
-        g.fillRect(fx - 6, fy - 8, 12, 16);
+        g.fillRect(fx - 8, fy - 3, 16, 6);
+        g.fillRect(fx - 4, fy - 6, 8, 12);
         g.fillStyle = PAL.cream;
-        g.fillRect(fx - 5, fy - 3, 10, 6);
+        g.fillRect(fx - 3, fy - 2, 6, 4);
       }
     } else if (G.kind === 'laser') {
       d(a.bar, 20, base - 60);
-      const px = W / 2 + 44 - PEN.a.x;
-      const py = 98 - PEN.a.y + kick;
-      d(a.pen, px, py);
+      d(a.pen, MUZZLE.laser.x - PEN.a.x, MUZZLE.laser.y - PEN.a.y + kick);
       if (sim.laser) {
-        const lx = Math.round(px + PEN.a.x - 4 + bx);
-        const ly = Math.round(py + PEN.a.y - 4 + by);
+        const lx = Math.round(MUZZLE.laser.x - 2 + bx);
+        const ly = Math.round(MUZZLE.laser.y - 3 + kick + by);
         g.fillStyle = '#ff3b3b88';
         g.fillRect(lx - 2, ly - 2, 9, 9);
         g.fillStyle = PAL.red;

@@ -29,6 +29,8 @@ import * as HUD from '../ui/hud.js';
 import * as SCR from '../ui/screens.js';
 import { Net } from '../net/net.js';
 
+// The Jackpot zombie's gold plating (a multiply tint on its sprite).
+const GOLD_TINT = [1, 0.74, 0.08];
 const MENU_COUNT = { title: 6, paused: 4, clear: 2, dead: 2, mp: 3 };
 
 export class Game {
@@ -906,7 +908,9 @@ export class Game {
       LP.a += inp.look * 0.0026 * settings.sens;
       LP.pitch = clamp((LP.pitch || 0) - (inp.lookY || 0) * 0.0026 * settings.sens, -MAX_PITCH, MAX_PITCH);
       this.input.spReady = this.sim.player.sp >= 100 && !this.sim.player.spKind;
-      this.sim.update(this.sim.cheats.turbo ? dt * 1.25 : dt, inp);
+      // Hit-stop: the world holds still for a beat on a big kill (offline only; online keeps time).
+      if (this.sim.hitStop > 0 && !this.net.active) this.sim.hitStop -= dt;
+      else this.sim.update(this.sim.cheats.turbo ? dt * 1.25 : dt, inp);
       if (this.endless && this.sim.lv.wave + 1 >= 20) this.award('wave20');
       this.netTick(dt);
       this.handleEvents();
@@ -966,6 +970,8 @@ export class Game {
       }
       if (e.type === 'clear') this.levelClear();
       if (e.type === 'bossDown') for (let i = 0; i < 5; i++) this.launchBurst();
+      if (e.type === 'jackpot') this.award('jackpot');
+      if (e.type === 'overdrive') this.award('overdrive');
     }
   }
 
@@ -1092,7 +1098,7 @@ export class Game {
       else tex = Z.walk[Math.floor(z.anim) % 4];
       const h = ZHEIGHT[z.kind] * (Z.hmul || 1) * (z.sc || 1);
       const grow = z.spawnT > 0 ? 1 - z.spawnT / 0.6 : 1;
-      W3.sprite(tex, z.x, 0, z.y, h * Z.aspect, h * grow);
+      W3.sprite(tex, z.x, 0, z.y, h * Z.aspect, h * grow, z.gold ? GOLD_TINT : undefined);
       W3.decal(S.shadow, z.x, z.y, hitR(z) * 2.6, 0, 0.45);
       // Big Heads cheat: a swollen copy of the head over the real one.
       if (bigHead && z.kind !== 'boss' && z.kind !== 'crawler' && grow >= 1) {
@@ -1269,6 +1275,7 @@ export class Game {
     HUD.drawTopHud(g, sim, this.t);
     HUD.drawBossBar(g, sim, this.t);
     if (m === 'play') HUD.drawStragglers(g, this.projectStragglers(sim), this.t);
+    if (m === 'play') HUD.drawJackpot(g, this.projectJackpot(sim), sim, this.t);
     if (m === 'play' || m === 'paused') {
       HUD.drawBuffFx(g, sim, this.S, this.t);
       HUD.drawBuffs(g, sim, this.S, this.t);
@@ -1315,6 +1322,18 @@ export class Game {
       else out.push({ rel: Math.atan2(Math.sin(Math.atan2(z.y - P.y, z.x - P.x) - P.a), Math.cos(Math.atan2(z.y - P.y, z.x - P.x) - P.a)) });
     }
     return out;
+  }
+
+  // Where the Jackpot zombie is, on screen or which way to turn.
+  projectJackpot(sim) {
+    const z = sim.zombies.find((q) => q.gold);
+    if (!z) return null;
+    const v = this._pv || (this._pv = new THREE.Vector3());
+    const P = sim.player;
+    v.set(z.x, ZHEIGHT[z.kind] * (z.sc || 1) + 0.2, z.y).project(this.world.camera);
+    if (v.z < 1 && Math.abs(v.x) < 0.95 && Math.abs(v.y) < 0.9) return { z, sx: ((v.x + 1) / 2) * W, sy: ((1 - v.y) / 2) * H };
+    const a = Math.atan2(z.y - P.y, z.x - P.x) - P.a;
+    return { z, rel: Math.atan2(Math.sin(a), Math.cos(a)) };
   }
 
   // Teammates' names over their heads.

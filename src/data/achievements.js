@@ -20,6 +20,8 @@ export const ACHIEVEMENTS = [
   { id: 'loaded', name: 'Fully Loaded', desc: 'Hold 10 upgrades in one run' },
   { id: 'lan', name: 'LAN Party', desc: 'Clear a level in online co-op' },
   { id: 'wave20', name: 'Still Standing', desc: 'Reach wave 20 in Endless mode' },
+  { id: 'jackpot', name: 'Jackpot!', desc: 'Catch a golden Jackpot zombie' },
+  { id: 'overdrive', name: 'Overdrive', desc: 'Hit a 20 kill combo and go into Overdrive' },
 ];
 
 // Unlockable extras. Endless is a mode; the rest are cheats you toggle in the Trophy Case.

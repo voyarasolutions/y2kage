@@ -20,6 +20,9 @@ export const ZRAD = { shambler: 0.3, runner: 0.26, brute: 0.45, glitch: 0.3, bos
 export const hitR = (z) => ZRAD[z.kind] * (z.kind === 'boss' ? z.sc || 1 : 1);
 export const ZHEIGHT = { shambler: 1.0, runner: 1.0, brute: 1.45, glitch: 1.0, boss: 1.95, crawler: 0.45, bloater: 1.3 };
 const COMBO_WINDOW = 2.2;
+// Keep a combo going this long and the whole party goes into Overdrive: faster fire until it breaks.
+export const OVERDRIVE_AT = 20;
+const OVERDRIVE_RATE = 1.35;
 const GOO = '#9be04a';
 const COMBO_CALLS = [
   { n: 5, text: 'BOOYAH!' },
@@ -69,6 +72,8 @@ const CONVERGE = 5;
 export const MAX_PITCH = 0.55;
 // Seconds of countdown between waves (the level keeps running), and the victory lap after the last one.
 export const BREAK_T = 4;
+// How long the Jackpot zombie hangs around before it escapes.
+const JACKPOT_T = 13;
 // When the queue is empty and this few are left, they hurry to the party.
 const STRAGGLERS = 3;
 // Share of the horde that rises from the street around the party instead of a map spawn.
@@ -844,7 +849,7 @@ export class Sim {
   // ------------------------------------------------------------ weapons
   updateWeapon(P, dt) {
     const G = P.hero.gun;
-    const oc = (P.overclock > 0 ? 0.5 : 1) / P.mods.rate;
+    const oc = (P.overclock > 0 ? 0.5 : 1) / P.mods.rate / (this.overdrive() ? OVERDRIVE_RATE : 1);
     P.fireCd -= dt;
     const firing = P.input.fire;
     this.lasers = this.lasers.filter((l) => l.o !== P.idx || l.sp);
@@ -1323,6 +1328,27 @@ export class Sim {
     }
   }
 
+  fx_overdrive() {
+    sfx.overdrive();
+    this.flash = { color: '#ff2e88', t: 0.2, amt: 0.35 };
+    this.shake = Math.min(1, this.shake + 0.3);
+    this.comboCall = { text: 'OVERDRIVE!', mult: comboMult(this.combo.n), t: 1.8 };
+  }
+
+  fx_jackpot(x, y, got) {
+    if (got) {
+      sfx.jackpot();
+      this.flash = { color: '#f6c945', t: 0.3, amt: 0.5 };
+      this.hitStop = 0.18;
+      for (let i = 0; i < 70; i++) {
+        const a = rand(0, TAU);
+        const s = rand(1, 4);
+        this.particles.push({ x, y, z: 0.6, vx: Math.cos(a) * s, vy: Math.sin(a) * s, vz: rand(2, 5), life: rand(0.6, 1.3), color: i % 3 ? '#f6c945' : '#fff4d6' });
+      }
+    } else sfx.glitch();
+    for (let i = 0; i < 20; i++) this.particles.push({ x: x + rand(-0.3, 0.3), y: y + rand(-0.3, 0.3), z: rand(0, 1.2), vx: 0, vy: 0, vz: rand(0.5, 1.5), life: rand(0.3, 0.7), color: '#f6c945', float: true });
+  }
+
   fx_zap(x1, y1, z1, x2, y2, z2) {
     const n = 10;
     for (let i = 0; i <= n; i++) {
@@ -1412,12 +1438,15 @@ export class Sim {
     if (kind === 'boss') {
       this.shake = 1;
       this.flash = { color: '#ffffff', t: 0.25, amt: 0.6 };
-    }
+      this.hitStop = 0.3;
+    } else if (kind === 'brute') this.hitStop = Math.max(this.hitStop || 0, 0.05);
   }
 
   // Headshot: the head pops off spinning, a fountain of goo and confetti, the body stands a beat, then drops.
   fx_headshot(kind, x, y, look, sc, nx, ny) {
     sfx.headshot();
+    // A beat of hit-stop sells the pop (longer for the big ones).
+    this.hitStop = Math.max(this.hitStop || 0, kind === 'boss' ? 0.3 : kind === 'brute' || kind === 'bloater' ? 0.07 : 0.035);
     const H = ZHEIGHT[kind] * (sc || 1);
     this.corpses.push({ kind, x, y, t: 0, look, sc, headless: true });
     this.splats.push({ x, y, t: 14, big: kind === 'boss' || kind === 'brute', rot: rand(0, TAU) });
@@ -1497,6 +1526,21 @@ export class Sim {
       if (!this.boss || this.boss === z) this.banner = { kind: 'boss', t: 2.8, dur: 2.8 };
       this.snd('bossRoar');
     }
+  }
+
+  // The Jackpot zombie: a gold-plated Raver carrying the party's prize money. It flees, and it gets
+  // away if nobody drops it in time.
+  spawnJackpot() {
+    const s = this.spawnPoint('runner', true);
+    this.spawnZombie('runner', s);
+    const z = this.zombies[this.zombies.length - 1];
+    z.gold = true;
+    z.hp = z.max = z.max * 3;
+    z.escT = JACKPOT_T;
+    z.speed = Math.max(z.speed, 3.4);
+    this.lv.total++;
+    this.toast('JACKPOT ZOMBIE!', 'Gold one on the loose. Drop it before it gets away!');
+    this.snd('jackpotSpot');
   }
 
   // Where a new zombie comes in: usually a map spawn that is out of reach but not across the map,
@@ -1604,6 +1648,19 @@ export class Sim {
       const tx = P.x - z.x;
       const ty = P.y - z.y;
       const dist = Math.hypot(tx, ty);
+      if (z.gold) {
+        z.escT -= dt;
+        if (Math.random() < dt * 20) this.particles.push({ x: z.x + rand(-0.25, 0.25), y: z.y + rand(-0.25, 0.25), z: rand(0.2, 1.1), vx: 0, vy: 0, vz: rand(0.3, 1), life: 0.5, color: Math.random() < 0.5 ? '#f6c945' : '#fff4d6', float: true });
+        if (z.escT <= 0) {
+          // Got away: gone in a puff of static, prize and all.
+          this.fx('jackpot', r2(z.x), r2(z.y), 0);
+          this.toast('IT GOT AWAY', 'The Jackpot zombie escaped.');
+          z.dead = true;
+          this.zombies.splice(this.zombies.indexOf(z), 1);
+          this.lv.total--;
+          continue;
+        }
+      }
       const r = ZRAD[z.kind];
 
       // Steering: straight at the player when close, otherwise down the flow field.
@@ -1672,6 +1729,20 @@ export class Sim {
           this.fx('spawn', r2(z.x), r2(z.y));
         }
       } else z.farT = 0;
+      if (z.gold && dist < 9) {
+        // Run from whoever is closest, sliding along walls rather than into them.
+        let fx = -tx / (dist || 1);
+        let fy = -ty / (dist || 1);
+        if (this.wallAt(z.x + fx * 0.8, z.y + fy * 0.8)) {
+          const side = z.wob > Math.PI ? 1 : -1;
+          const nx = -fy * side;
+          const ny = fx * side;
+          fx = this.wallAt(z.x + nx * 0.8, z.y + ny * 0.8) ? -nx : nx;
+          fy = this.wallAt(z.x + nx * 0.8, z.y + ny * 0.8) ? -ny : ny;
+        }
+        gx = fx;
+        gy = fy;
+      }
       let speed = z.speed * frz;
       // The last few of a wave stop dawdling and come find you, so a wave never ends in a search.
       if (this.lv.phase === 'wave' && !this.lv.queue.length && this.zombies.length <= STRAGGLERS && z.kind !== 'boss') speed *= 1.7;
@@ -2065,6 +2136,10 @@ export class Sim {
     C.n = C.t > 0 ? C.n + 1 : 1;
     C.t = COMBO_WINDOW + P.mods.combo;
     this.lv.bestCombo = Math.max(this.lv.bestCombo, C.n);
+    if (C.n === OVERDRIVE_AT) {
+      this.fx('overdrive');
+      this.emit('overdrive');
+    }
     const mult = comboMult(C.n);
     // Headshot kills are worth half again, in score and XP.
     const hs = head ? 1.5 : 1;
@@ -2091,6 +2166,16 @@ export class Sim {
     if (head) this.fx('headshot', z.kind, r2(z.x), r2(z.y), z.look, z.sc, r2(nx), r2(ny));
     else this.fx('death', z.kind, r2(z.x), r2(z.y), z.look, z.sc);
     if (z.kind === 'bloater') this.pop(z, P);
+    if (z.gold) {
+      const prize = 250 * (1 + Math.floor(this.levelN / 5));
+      this.score += prize;
+      this.fx('jackpot', r2(z.x), r2(z.y), 1);
+      this.fx('popup', r2(z.x), r2(z.y), 1.4, `JACKPOT +${prize}`, true);
+      for (const k of ['health', 'armor', pickOne(['patch', 'multi', 'freeze', 'cad'])]) this.dropPickup(z.x + rand(-0.7, 0.7), z.y + rand(-0.7, 0.7), k);
+      for (const Q of this.alive()) this.chargeSpecial(Q, 35);
+      this.lv.jackpots = (this.lv.jackpots || 0) + 1;
+      this.emit('jackpot');
+    }
     // Millennium Bomb: the kill goes off like a firework and takes the crowd with it.
     if (P.mods.boom && Math.random() < P.mods.boom) this.blast(z.x, z.y, 1.9, 40 + this.levelN * 1.5, P);
     // ILOVEYOU.VBS: the kill infects zombies nearby; they sicken, glow and take damage over time.
@@ -2280,6 +2365,11 @@ export class Sim {
       return;
     }
     L.spawnT -= dt;
+    // Once a level, from the second wave on, a golden Jackpot zombie turns up and runs for it.
+    if (!this.jackpotDone && L.wave >= 1 && L.queue.length && this.t > (this.jackpotAt ??= this.t + rand(4, 14))) {
+      this.jackpotDone = true;
+      this.spawnJackpot();
+    }
     if (L.queue.length && L.spawnT <= 0 && this.zombies.length < this.maxAlive()) {
       this.spawnZombie(L.queue.shift());
       L.spawnT = ((cfg.spawnEvery / 1000) * rand(0.6, 1.3)) / (1 + 0.3 * (this.players.length - 1));
@@ -2304,6 +2394,10 @@ export class Sim {
         L.t = OUTRO_T;
       }
     }
+  }
+
+  overdrive() {
+    return this.combo.n >= OVERDRIVE_AT;
   }
 
   // The last few of a wave, once nothing else is coming: the HUD points at them.
@@ -2368,7 +2462,7 @@ export class Sim {
     const snap = {
       t: 'snap',
       p: this.players.map((P) => [r2(P.x), r2(P.y), r2(P.a), r2(P.z), Math.ceil(P.hp), Math.ceil(P.armor), P.down ? 1 : 0, Math.floor(P.sp), Math.floor(P.xp), r2(P.overclock), r2(P.tank), r2(P.heat), P.overheated ? 1 : 0, r2(P.fireCd), P.fireAnim > 0 ? 1 : 0, P.spKind ? 1 : 0, r2(P.iT), r2(P.pitch || 0)]),
-      z: this.zombies.map((z) => [z.id, ZKINDS.indexOf(z.kind), r2(z.x), r2(z.y), r2(z.hp / z.max), ZSTATES.indexOf(z.state), r2(z.atkT), r2(z.anim), z.hurtT > 0 ? 1 : 0, r2(z.spawnT), z.look, z.sc, z.warp ? 1 : 0, z.bs || 0]),
+      z: this.zombies.map((z) => [z.id, ZKINDS.indexOf(z.kind), r2(z.x), r2(z.y), r2(z.hp / z.max), ZSTATES.indexOf(z.state), r2(z.atkT), r2(z.anim), z.hurtT > 0 ? 1 : 0, r2(z.spawnT), z.look, z.sc, z.warp ? 1 : 0, z.bs || 0, z.gold ? 1 : 0]),
       rg: this.rings.map((g) => [g.x, g.y, r2(g.r), g.v]),
       bo: this.bolts.map((b) => [r2(b.x), r2(b.y), r2(b.z), r2(b.vx), r2(b.vy), b.c]),
       pr: this.projs.filter((p) => !p.fx || Math.random() < 0.5).map((p) => [PROJ_KINDS.indexOf(p.kind), r2(p.x), r2(p.y), r2(p.z), Math.floor(p.spin || 0), p.hand ?? 0, p.o, p.orbit ? 1 : 0]),
@@ -2453,6 +2547,7 @@ export class Sim {
       z.look = a[10];
       z.sc = a[11];
       z.bs = a[13] || 0;
+      z.gold = !!a[14];
       return z;
     });
     this.rings = (s.rg || []).map((a) => ({ x: a[0], y: a[1], r: a[2], v: a[3] }));

@@ -1,6 +1,6 @@
 // In-game HUD: a Windows 98 taskbar along the bottom (health, armor, ride and weapon meters, the
 // system-tray clock counting down to midnight), dialog-box banners and tray tooltips.
-import { comboMult as comboMultOf, BREAK_T } from '../game/sim.js';
+import { comboMult as comboMultOf, BREAK_T, OVERDRIVE_AT } from '../game/sim.js';
 import { PAL, PARTY } from '../core/palette.js';
 import { W, H } from '../core/util.js';
 import { text, textWidth, wrap } from '../core/pixelfont.js';
@@ -322,6 +322,19 @@ export function drawCombo(g, sim, t, window) {
     const bw = 44;
     rect(g, x - bw, mult > 1 ? 45 : 35, bw, 2, PAL.ink);
     rect(g, x - bw, mult > 1 ? 45 : 35, Math.round(bw * Math.max(0, C.t / window)), 2, PAL.gold);
+    if (sim.overdrive()) text(g, 'OVERDRIVE', x, 50, { font: 'small', color: Math.floor(t * 10) % 2 ? PAL.pink : PAL.white, outline: PAL.ink, align: 'right' });
+    else if (C.n >= OVERDRIVE_AT - 5) text(g, `${OVERDRIVE_AT - C.n} TO OVERDRIVE`, x, mult > 1 ? 49 : 39, { font: 'small', color: PAL.pinkLight, outline: PAL.ink, align: 'right' });
+  }
+  // Overdrive: the screen edges pulse hot pink while it lasts.
+  if (sim.overdrive()) {
+    const a = 0.25 + 0.2 * Math.sin(t * 14);
+    g.globalAlpha = a;
+    g.fillStyle = PAL.pink;
+    g.fillRect(0, 0, W, 2);
+    g.fillRect(0, H - TASKBAR_H - 2, W, 2);
+    g.fillRect(0, 0, 2, H - TASKBAR_H);
+    g.fillRect(W - 2, 0, 2, H - TASKBAR_H);
+    g.globalAlpha = 1;
   }
   const call = sim.comboCall;
   if (call) {
@@ -498,4 +511,28 @@ export function drawStragglers(g, marks, t) {
       g.restore();
     }
   }
+}
+
+// The Jackpot zombie: a spinning gold coin over it, or an arrow at the edge, plus its escape timer.
+export function drawJackpot(g, mark, sim, t) {
+  if (!mark) return;
+  const z = mark.z;
+  if (mark.sx != null) {
+    const x = Math.round(mark.sx);
+    const y = Math.round(mark.sy - 10 - Math.abs(Math.sin(t * 4)) * 3);
+    const w = Math.max(1, Math.round(Math.abs(Math.cos(t * 5)) * 5));
+    rect(g, x - w - 1, y - 6, w * 2 + 2, 12, PAL.ink);
+    rect(g, x - w, y - 5, w * 2, 10, PAL.gold);
+    if (w > 2) text(g, '$', x, y - 3, { font: 'small', color: PAL.goldDark, align: 'center' });
+  } else {
+    const cx = W / 2;
+    const cy = (H - TASKBAR_H) / 2;
+    const px = Math.round(cx + Math.sin(mark.rel) * (W / 2 - 16));
+    const py = Math.round(cy - Math.cos(mark.rel) * ((H - TASKBAR_H) / 2 - 16));
+    rect(g, px - 5, py - 5, 10, 10, PAL.ink);
+    rect(g, px - 4, py - 4, 8, 8, Math.floor(t * 6) % 2 ? PAL.gold : PAL.white);
+    text(g, '$', px, py - 2, { font: 'small', color: PAL.ink, align: 'center' });
+  }
+  const left = Math.max(0, Math.ceil(z.escT));
+  text(g, `JACKPOT ESCAPES IN ${left}`, W / 2, 40, { font: 'small', color: left <= 4 && Math.floor(t * 6) % 2 ? PAL.red : PAL.gold, outline: PAL.ink, align: 'center' });
 }

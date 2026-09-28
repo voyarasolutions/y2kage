@@ -261,6 +261,20 @@ export const sfx = {
   arc() {
     tone(2400, 0.06, 'square', 0.05, 900);
   },
+  // Combo hits Overdrive: a rising synth stab.
+  overdrive() {
+    tone(220, 0.35, 'sawtooth', 0.1, 880);
+    [660, 880, 1320].forEach((f, i) => tone(f, 0.12, 'square', 0.1, null, 0.1 + i * 0.06));
+  },
+  // The Jackpot zombie shows up: a slot-machine trill.
+  jackpotSpot() {
+    [1047, 1319, 1047, 1319, 1568].forEach((f, i) => tone(f, 0.06, 'square', 0.08, null, i * 0.06));
+  },
+  // ...and goes down: coins everywhere.
+  jackpot() {
+    for (let i = 0; i < 10; i++) tone(1568 + (i % 3) * 400, 0.07, 'square', 0.07, null, i * 0.05);
+    [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.25, 'triangle', 0.1, null, 0.5 + i * 0.08));
+  },
   // Shuffling the upgrade cards.
   reroll() {
     [440, 660, 550, 880].forEach((f, i) => tone(f, 0.05, 'square', 0.09, null, i * 0.04));

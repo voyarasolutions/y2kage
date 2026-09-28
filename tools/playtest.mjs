@@ -32,7 +32,7 @@ for (const hid of heroes) {
         for (const e of sim.events.splice(0)) { if (e.type === 'clear') { clear = true; stop = true; } if (e.type === 'dead') { dead = true; stop = true; } }
         if (stop) break;
       }
-      res = { n, a, clear, dead, t: Math.round(t), idle: Math.round(idle), brk: Math.round(breakT), kills: sim.lv.kills, hurt: Math.round(sim.hurtTaken), minHp: Math.round(minHp), maxHp: sim.player.maxHp, combo: sim.lv.bestCombo, hs: sim.lv.headshots || 0, sp: specials, score: sim.score, wave: sim.lv.wave + 1, rank: sim.player.rank, xp: Math.round(sim.player.xp) };
+      res = { n, a, clear, dead, t: Math.round(t), idle: Math.round(idle), brk: Math.round(breakT), kills: sim.lv.kills, hurt: Math.round(sim.hurtTaken), minHp: Math.round(minHp), maxHp: sim.player.maxHp, combo: sim.lv.bestCombo, hs: sim.lv.headshots || 0, sp: specials, score: sim.score, wave: sim.lv.wave + 1, rank: sim.player.rank, xp: Math.round(sim.player.xp), jp: sim.lv.jackpots || 0 };
       xp = sim.player.xp; sp = sim.player.spKind ? 0 : sim.player.sp;
       if (clear) break;
     }

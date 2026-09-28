@@ -1121,7 +1121,7 @@ export class Game {
     if (m === 'dead') fx.fade = 0;
     if (!settings.glitch) fx.glitch = 0;
     // 3D first-person weapons ride on top of the world in the same pixel pass.
-    const overlay = sim && (m === 'play' || m === 'paused' || m === 'pick') ? this.vm.frame(sim, this.t, dt, weaponBob(sim.player)) : null;
+    const overlay = sim && (m === 'play' || m === 'paused' || m === 'pick') ? this.vm.frame(sim, this.t, dt, weaponBob(sim.player), this.world) : null;
     this.pipe.render(W3.scene, W3.camera, fx, overlay);
     this.drawUI(g);
   }

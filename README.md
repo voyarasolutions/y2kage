@@ -220,12 +220,12 @@ The app is locked to landscape. Fonts are bundled so it works offline.
 - `src/gfx/pipeline.js` renders the scene into a 384x216 target with nearest filtering, then a post pass quantises
   each channel with a 4x4 Bayer dither, adds Y2K glitch tearing and damage flashes. The browser upscales with hard edges.
 - `src/gfx/textures.js` paints every wall, floor, sky and prop skin at 32 texels per map unit.
-- `src/gfx/viewmodel.js` models Tina's Soaker 2500, Kev's laser pointer and the pogo and scooter handlebars in 3D,
-  with gripping hands and each hero's sleeves. Toon shading and an ink outline are drawn into the same 384x216 target
-  and dither as the world, so they still read as 16-bit sprites.
-- `src/gfx/model.js` is a tiny pixel modeller for the other first-person weapons: tubes, boxes and discs laid along an
-  axis that points into the screen, shaded per pixel, so each weapon reads as a solid object seen from just behind it.
-  `src/data/muzzles.js` holds each weapon's on-screen muzzle; the sim spawns shots at the same point in 3D.
+- `src/gfx/viewmodel.js` models all five first-person weapons in 3D (the Soaker 2500, Marcus's yo-yos, Dot's floppies,
+  Gus's firework launcher and pogo bar, Kev's laser pointer and scooter bar) with gripping hands and each hero's
+  sleeves. Toon shading, pixel-art canvas decals, a rim light and an ink outline are drawn into the same 384x216
+  target and dither as the world, so they still read as 16-bit sprites. It also handles weapon sway when you turn,
+  breathing, per-weapon recoil and a muzzle light. The muzzles are projected to the screen at boot and stored in
+  `src/data/muzzles.js`; the sim spawns shots at the same point in 3D.
 - `src/gfx/bosses.js` draws the four district bosses after the Millennium Bug, their data packets and burrow mound.
 - `src/gfx/sprites.js` draws the horde (party shamblers, ravers, bouncers, CRT-headed Corrupted, the Millennium Bug),
   projectiles, pickups, hero portraits and icons, all with 1px outlines.

@@ -52,6 +52,7 @@ const ZSTATES = ['walk', 'attack', 'windup'];
 
 // The special meter fills slowly on its own and much faster with kills.
 export const SP_MAX = 100;
+export const DIFFS = { easy: { hurt: 0.6, count: 0.8, tokens: 0.75 }, normal: { hurt: 1, count: 1, tokens: 1 }, hard: { hurt: 1.4, count: 1.25, tokens: 1.5 } };
 const SP_PER_SEC = 1.4;
 const SP_PER_SCORE = 0.45;
 // Co-op: every extra player adds this share of a wave again, and more of the horde on screen.
@@ -101,6 +102,8 @@ export class Sim {
     this.hurtTaken = 0;
     // How carefully CPU teammates keep their distance and aim (headless playtests turn it down to act like a person).
     this.botSkill = opts.botSkill ?? 1;
+    // Difficulty (Control Panel): how hard zombies bite and how many come.
+    this.diff = DIFFS[opts.diff] || DIFFS.normal;
     // Timed powerups are shared by the whole party.
     this.buffs = { patch: 0, multi: 0, freeze: 0 };
     this.t = 0;
@@ -179,7 +182,7 @@ export class Sim {
     mods.maxHp += perk.hp || 0;
     return {
       idx: i, name: e.name || `P${i + 1}`, hero, heroIdx: Math.max(0, HEROES.findIndex((h) => h.id === hero.id)),
-      xp, rank, dmgMul: dmgMulFor(rank) * mods.dmg, lvlUp: null, ups, mods, maxHp: mods.maxHp,
+      xp, rank, dmgMul: dmgMulFor(rank) * mods.dmg, lvlUp: null, ups, mods, maxHp: mods.maxHp, bonusHp: perk.hp || 0,
       sp: Math.max(0, Math.min(SP_MAX, Math.max(e.sp || 0, perk.sp || 0))), spKind: null, pitch: 0, spT: 0, spStep: 0, spCall: null, iT: 0,
       down: false, remote: false, bot: !!e.bot, input: { move: { f: 0, s: 0 }, turn: 0, fire: false, look: 0 },
       x, y, a: face, z: 0, vz: 0, vx: 0, vy: 0,
@@ -187,6 +190,22 @@ export class Sim {
       charges: hero.move.charges || 0, rechargeT: 0, mega: false, bob: 0, onGround: true, dashT: 0,
       tank: hero.gun.tank || 0, heat: 0, overheated: false, fireCd: 0, hand: 0, fireAnim: 0, pumpT: 0, speed: 0, stride: 0,
     };
+  }
+
+  // Swap a player's upgrades mid-run (Endless picks), keeping their lost health lost.
+  setUps(i, ups) {
+    const P = this.players[i];
+    if (!P) return;
+    const mods = upgradeMods(ups);
+    if (this.cheats.glass) mods.dmg *= 2;
+    mods.maxHp += P.bonusHp;
+    const gain = mods.maxHp - P.maxHp;
+    P.ups = ups.slice();
+    P.mods = mods;
+    P.dmgMul = dmgMulFor(P.rank) * mods.dmg;
+    P.maxHp = mods.maxHp;
+    P.hp = Math.min(P.maxHp, P.hp + Math.max(0, gain));
+    P.armor = Math.max(P.armor, mods.armor);
   }
 
   // The local player's hero and progress, for the HUD.
@@ -646,6 +665,7 @@ export class Sim {
     }
     if (this.cheats.onehit) dmg = 9999;
     if (this.cheats.glass) dmg *= 2;
+    dmg *= this.diff.hurt;
     this.hurtTaken += dmg;
     if (P.armor > 0) {
       const soak = Math.min(P.armor, dmg * 0.5);
@@ -2327,7 +2347,7 @@ export class Sim {
     }
     const base = this.cfg.waves[i];
     const q = base.slice();
-    const extra = Math.round(base.length * (COOP_WAVE * (this.players.length - 1) + (this.cheats.swarm ? 0.5 : 0)));
+    const extra = Math.round(base.length * (COOP_WAVE * (this.players.length - 1) + (this.cheats.swarm ? 0.5 : 0) + this.diff.count - 1));
     for (let k = 0; k < extra; k++) {
       const pick = base[Math.floor(Math.random() * base.length)];
       q.splice(Math.floor(q.length * (0.3 + Math.random() * 0.7)), 0, pick === 'boss' ? 'brute' : pick);
@@ -2385,6 +2405,8 @@ export class Sim {
       this.score += bonus;
       this.fx('waveClear', L.wave + 1, last ? 1 : 0);
       this.banner = { kind: last ? 'final' : 'cleared', t: 2.6, dur: 2.6, wave: L.wave + 1, bonus };
+      // Endless: every fifth wave (the boss waves) earns an upgrade pick.
+      if (this.endless && (L.wave + 1) % 5 === 0) this.emit('endlessPick', { wave: L.wave + 1 });
       for (const P of this.alive()) this.chargeSpecial(P, 10);
       if (!last) {
         L.phase = 'break';

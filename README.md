@@ -30,9 +30,17 @@ Runs in any modern browser, supports online co-op for up to four players, and sh
   wave for the day and keep your streak of days played going.
 - **No dead air.** Zombies close in from the streets around you as well as the map edges, and the last three of a
   wave hurry toward you with arrows pointing the way. Levels run about two minutes.
-- **Trophies and unlockables.** 17 trophies. Beating bosses and other feats unlock Endless mode and cheats.
+- **Overdrive and the Jackpot.** Chain 20 kills to go into Overdrive (35% faster fire until the combo drops). Big
+  kills freeze the frame for a beat. Once a level a golden Jackpot zombie turns up and runs for it: catch it for a
+  big score prize, three pickups and a fistful of tokens.
+- **Tokens and the Upgrade Shop.** Every level, boss, Jackpot and Endless wave pays out tokens. Spend them in the
+  Shop on permanent perks: more health, extra rerolls, luckier cards, a head start on your special and free upgrades
+  at the start of a run.
+- **Difficulty.** Easy, Normal or Hard in Options. Hard bites harder and brings more zombies but pays 1.5x tokens.
+  The Daily Challenge is always Normal.
+- **Trophies and unlockables.** 19 trophies. Beating bosses and other feats unlock Endless mode and cheats.
 - **Endless mode.** Pick any district you have reached and survive as many waves as you can; its boss returns every
-  fifth wave. Your best wave per district is saved.
+  fifth wave, and beating it earns an upgrade pick. Your best wave per district is saved.
 - **Gamepad support.** Plug in any standard controller (Xbox, PlayStation, Switch Pro) and play without the keyboard.
 - **Five heroes, five rides, five weapons.** Every hero moves differently and shoots differently, and each has a
   special move that charges over time and with kills (R or right-click). Weapons point straight ahead and every shot leaves
@@ -100,6 +108,19 @@ Rare and legendary upgrades turn up more often deeper into the night:
 Retrying a level puts your upgrades back to how they were when it started. Quitting to the menu ends the run. In
 online co-op every player picks their own.
 
+## The Upgrade Shop
+
+Tokens come from clearing levels (5 plus one per five levels, +20 for a boss level), catching the Jackpot (+10) and
+Endless or Daily waves (2 each). Perks apply to your own hero only.
+
+| Perk | Tiers | Effect per tier |
+|---|---|---|
+| RAM Upgrade | 40 / 80 / 160 | +10 max health |
+| Better Modem | 60 / 150 | +1 reroll per level |
+| Lucky Charm | 50 / 100 / 200 | Rare cards +3% (legendary +1%) |
+| Power Surge | 50 / 120 | Special meter starts 25% full |
+| Head Start | 100 / 250 | A random upgrade at the start of each run |
+
 ## Trophies and extras
 
 Open **Trophies** on the title screen to see them all. The ones that unlock something:
@@ -152,6 +173,7 @@ retrying up to three times, and logs time, idle time (no zombie within reach), d
 
 ```sh
 HEROES=tina,gus SKILL=0.4 node tools/playtest.mjs   # SKILL 1 is the CPU teammate; lower plays more like a person
+DIFF=hard FROM=1 TO=12 node tools/playtest.mjs      # easy, normal or hard
 node tools/playtest.mjs > run.log && python3 tools/summ.py run.log             # one summary line per log
 ```
 

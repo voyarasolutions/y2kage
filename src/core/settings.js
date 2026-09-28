@@ -2,7 +2,7 @@
 // switch for the screen-glitch effects (for anyone sensitive to flashing and tearing).
 import { store } from './util.js';
 
-const DEFAULTS = { sens: 1, music: 8, sfx: 10, scanlines: true, glitch: true };
+const DEFAULTS = { sens: 1, music: 8, sfx: 10, scanlines: true, glitch: true, diff: 'normal' };
 
 export const settings = { ...DEFAULTS, ...(store.get('settings') || {}) };
 

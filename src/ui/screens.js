@@ -527,60 +527,7 @@ export function drawClear(g, ui, t, stats) {
   if (game.sim) drawRankBar(g, game.sim.player.xp, inner.x + inner.w - 84, y - 1, 80, PAL.ink);
   y += 11;
   if (offerIds.length) {
-    // Three upgrade cards: pick one before moving on.
-    const picked = game.upPicked;
-    rect(g, inner.x, y, inner.w, 1, PAL.winShadow);
-    rect(g, inner.x, y + 1, inner.w, 1, PAL.white);
-    text(g, picked ? 'Upgrade installed. It lasts the rest of the run.' : 'INSTALL AN UPGRADE (pick one)', inner.x + inner.w / 2, y + 5, { font: 'small', color: picked ? PAL.winNavy : PAL.strawberryDark, align: 'center' });
-    if (!picked && game.rerolls > 0) {
-      const rb = { x: inner.x + inner.w - 50, y: y + 3, w: 46, h: 11 };
-      button(g, rb.x, rb.y, rb.w, rb.h, 'Reroll R', {});
-      ui.addButton(rb, () => game.rerollUpgrades(), 45);
-    }
-    const st = stacks(game.runUps);
-    const cw = Math.floor((inner.w - 16) / 3);
-    offerIds.forEach((id, i) => {
-      const u = upgradeById(id);
-      const cx = inner.x + 4 + i * (cw + 4);
-      const cy = y + 15;
-      const ch = 68;
-      const mine = picked === id;
-      const dim = picked && !mine;
-      const focus = !picked && (game.upFocus || 0) === i;
-      const rar = rarityOf(u);
-      // Cards flip up one after another; rarer ones glint.
-      const age = ui.t - (game.upRevealT ?? -9) - i * 0.12;
-      if (age < 0) return;
-      bevel(g, cx, cy, cw, ch, mine, dim ? '#a8a8a8' : PAL.winFace);
-      if (rar !== 'common' && !dim) {
-        const rc = RARITY[rar].color;
-        const glow = rar === 'legendary' && Math.floor(ui.t * 6) % 2 ? PAL.white : rc;
-        rect(g, cx, cy, cw, 2, glow);
-        rect(g, cx, cy + ch - 2, cw, 2, glow);
-        rect(g, cx, cy, 2, ch, glow);
-        rect(g, cx + cw - 2, cy, 2, ch, glow);
-        if (rar === 'legendary') {
-          // A glint sweeping across the card.
-          const gx = Math.floor(((ui.t * 70) % (cw + 40)) - 20);
-          for (let k = 0; k < 6; k++) if (gx + k > 2 && gx + k < cw - 2) rect(g, cx + gx + k, cy + 18, 1, ch - 21, '#ffffff33');
-        }
-      }
-      if (focus) {
-        rect(g, cx - 1, cy - 1, cw + 2, 1, PAL.ink);
-        rect(g, cx - 1, cy + ch, cw + 2, 1, PAL.ink);
-        rect(g, cx - 1, cy - 1, 1, ch + 2, PAL.ink);
-        rect(g, cx + cw, cy - 1, 1, ch + 2, PAL.ink);
-      }
-      rect(g, cx + 3, cy + 3, cw - 6, 13, dim ? PAL.winShadow : u.color);
-      upgradeGlyph(g, u, cx + 5, cy + 5, dim);
-      text(g, String(i + 1), cx + cw - 7, cy + 6, { font: 'small', color: PAL.ink });
-      wrap(u.name.toUpperCase(), cw - 8).slice(0, 2).forEach((l, k) => text(g, l, cx + cw / 2, cy + 20 + k * 9, { font: 'small', color: dim ? PAL.winShadow : PAL.ink, align: 'center' }));
-      wrap(u.desc, cw - 8).slice(0, 2).forEach((l, k) => text(g, l, cx + cw / 2, cy + 40 + k * 8, { font: 'small', color: dim ? PAL.winShadow : PAL.winNavy, align: 'center' }));
-      const have = st[id] || 0;
-      if (have) text(g, mine ? `NOW x${have}` : `HAVE x${have}`, cx + cw / 2, cy + ch - 10, { font: 'small', color: PAL.goldDark, align: 'center' });
-      else if (rar !== 'common') text(g, RARITY[rar].label, cx + cw / 2, cy + ch - 10, { font: 'small', color: dim ? PAL.winShadow : rar === 'legendary' ? PAL.goldDark : PAL.winNavy, align: 'center' });
-      if (!picked) ui.addButton({ x: cx, y: cy, w: cw, h: ch }, () => game.pickUpgrade(id), 40 + i);
-    });
+    drawCards(g, ui, inner, y);
     y += 87;
   }
   if (game.isGuest()) {
@@ -666,6 +613,74 @@ function upgradeGlyph(g, u, x, y, dim) {
     rect(g, x, y, 9, 9, c);
     text(g, glyph, x + 2, y + 1, { font: 'small', color: l });
   }
+}
+
+// Three upgrade cards with the pick-one header and reroll button, under a divider at y.
+function drawCards(g, ui, inner, y) {
+  const game = ui.game;
+  const offerIds = game.upOffer || [];
+  const picked = game.upPicked;
+  rect(g, inner.x, y, inner.w, 1, PAL.winShadow);
+  rect(g, inner.x, y + 1, inner.w, 1, PAL.white);
+  text(g, picked ? 'Upgrade installed. It lasts the rest of the run.' : 'INSTALL AN UPGRADE (pick one)', inner.x + inner.w / 2, y + 5, { font: 'small', color: picked ? PAL.winNavy : PAL.strawberryDark, align: 'center' });
+  if (!picked && game.rerolls > 0) {
+    const rb = { x: inner.x + inner.w - 50, y: y + 3, w: 46, h: 11 };
+    button(g, rb.x, rb.y, rb.w, rb.h, 'Reroll R', {});
+    ui.addButton(rb, () => game.rerollUpgrades(), 45);
+  }
+  const st = stacks(game.runUps);
+  const cw = Math.floor((inner.w - 16) / 3);
+  offerIds.forEach((id, i) => {
+    const u = upgradeById(id);
+    const cx = inner.x + 4 + i * (cw + 4);
+    const cy = y + 15;
+    const ch = 68;
+    const mine = picked === id;
+    const dim = picked && !mine;
+    const focus = !picked && (game.upFocus || 0) === i;
+    const rar = rarityOf(u);
+    // Cards flip up one after another; rarer ones glint.
+    const age = ui.t - (game.upRevealT ?? -9) - i * 0.12;
+    if (age < 0) return;
+    bevel(g, cx, cy, cw, ch, mine, dim ? '#a8a8a8' : PAL.winFace);
+    if (rar !== 'common' && !dim) {
+      const rc = RARITY[rar].color;
+      const glow = rar === 'legendary' && Math.floor(ui.t * 6) % 2 ? PAL.white : rc;
+      rect(g, cx, cy, cw, 2, glow);
+      rect(g, cx, cy + ch - 2, cw, 2, glow);
+      rect(g, cx, cy, 2, ch, glow);
+      rect(g, cx + cw - 2, cy, 2, ch, glow);
+      if (rar === 'legendary') {
+        // A glint sweeping across the card.
+        const gx = Math.floor(((ui.t * 70) % (cw + 40)) - 20);
+        for (let k = 0; k < 6; k++) if (gx + k > 2 && gx + k < cw - 2) rect(g, cx + gx + k, cy + 18, 1, ch - 21, '#ffffff33');
+      }
+    }
+    if (focus) {
+      rect(g, cx - 1, cy - 1, cw + 2, 1, PAL.ink);
+      rect(g, cx - 1, cy + ch, cw + 2, 1, PAL.ink);
+      rect(g, cx - 1, cy - 1, 1, ch + 2, PAL.ink);
+      rect(g, cx + cw, cy - 1, 1, ch + 2, PAL.ink);
+    }
+    rect(g, cx + 3, cy + 3, cw - 6, 13, dim ? PAL.winShadow : u.color);
+    upgradeGlyph(g, u, cx + 5, cy + 5, dim);
+    text(g, String(i + 1), cx + cw - 7, cy + 6, { font: 'small', color: PAL.ink });
+    wrap(u.name.toUpperCase(), cw - 8).slice(0, 2).forEach((l, k) => text(g, l, cx + cw / 2, cy + 20 + k * 9, { font: 'small', color: dim ? PAL.winShadow : PAL.ink, align: 'center' }));
+    wrap(u.desc, cw - 8).slice(0, 2).forEach((l, k) => text(g, l, cx + cw / 2, cy + 40 + k * 8, { font: 'small', color: dim ? PAL.winShadow : PAL.winNavy, align: 'center' }));
+    const have = st[id] || 0;
+    if (have) text(g, mine ? `NOW x${have}` : `HAVE x${have}`, cx + cw / 2, cy + ch - 10, { font: 'small', color: PAL.goldDark, align: 'center' });
+    else if (rar !== 'common') text(g, RARITY[rar].label, cx + cw / 2, cy + ch - 10, { font: 'small', color: dim ? PAL.winShadow : rar === 'legendary' ? PAL.goldDark : PAL.winNavy, align: 'center' });
+    if (!picked) ui.addButton({ x: cx, y: cy, w: cw, h: ch }, () => game.pickUpgrade(id), 40 + i);
+  });
+}
+
+// Endless and the Daily: an upgrade pick after each boss wave, over the paused game.
+export function drawPick(g, ui, t, wave) {
+  rect(g, 0, 0, W, H, '#00000066');
+  const w = 312;
+  const x = Math.round(W / 2 - w / 2);
+  const inner = window98(g, x, 44, w, 112, `Wave ${wave} cleared - bonus upgrade`);
+  drawCards(g, ui, inner, inner.y);
 }
 
 // Hero rank and a bar filling toward the next one.
@@ -776,13 +791,14 @@ export function drawOptions(g, ui, t, S) {
   rect(g, 0, 0, W, H, '#00000088');
   const w = 220;
   const x = W / 2 - w / 2;
-  const inner = window98(g, x, 30, w, 150, 'Control Panel - Y2Kage');
+  const inner = window98(g, x, 22, w, 168, 'Control Panel - Y2Kage');
   const rows = [
     ['Mouse look', `${S.sens.toFixed(2)}x`, 'step'],
     ['Music', S.music, 'bar'],
     ['Sound FX', S.sfx, 'bar'],
     ['CRT scanlines', S.scanlines ? 'On' : 'Off', 'toggle'],
     ['Glitch effects', S.glitch ? 'On' : 'Off', 'toggle'],
+    ['Difficulty', { easy: 'Easy', normal: 'Normal', hard: 'Hard' }[S.diff] || 'Normal', 'step'],
   ];
   rows.forEach(([label, val, kind], i) => {
     const y = inner.y + 4 + i * 18;
@@ -807,6 +823,8 @@ export function drawOptions(g, ui, t, S) {
       for (let k = 0; k < 10; k++) rect(g, cx + 18 + k * 5.5, y + 2, 4, 7, k < val ? PAL.winNavy : '#d0d0d0');
     } else text(g, val, cx + 45, y + 2, { font: 'small', color: PAL.ink, align: 'center' });
   });
+  const dh = { easy: 'Softer bites, fewer zombies, 0.75x tokens.', hard: 'Harder bites, more zombies, 1.5x tokens.' }[S.diff] || 'The Daily Challenge is always Normal.';
+  text(g, dh, inner.x + inner.w / 2, inner.y + 4 + rows.length * 18, { font: 'small', color: PAL.winShadow, align: 'center' });
   const done = { x: inner.x + inner.w / 2 - 40, y: inner.y + inner.h - 20, w: 80, h: 16 };
   button(g, done.x, done.y, done.w, done.h, 'OK', { focus: ui.focus === rows.length });
   ui.addButton(done, () => game.closeOptions(), rows.length);

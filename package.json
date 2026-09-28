@@ -1,7 +1,7 @@
 {
   "name": "y2kage",
   "private": true,
-  "version": "0.7.1",
+  "version": "0.8.0",
   "type": "module",
   "description": "16-bit first-person zombie horde shooter set on New Year's Eve 1999. Three.js, runs in the browser and on iOS via Capacitor.",
   "scripts": {

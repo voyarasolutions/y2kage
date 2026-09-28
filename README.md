@@ -34,6 +34,14 @@ Runs in any modern browser, supports online co-op for up to four players, and sh
   levels roll an event (Rave in the Street, VIP Night, Blackout, Moon Party, Big Head Mode, Swarm, Gold Rush, Supply
   Drop, Glitch Storm or Stampede), never the same one twice in a district, and the 5th level of each district brings
   the Head Bouncer mini-boss. A new kind of zombie turns up on almost every one of the first eight levels.
+- **Grades.** Every clear is graded S, A, B or C on how little you got hurt, how fast you cleared and how long your
+  combos ran. Your best grade shows on the level picker, the first A on a level pays 15 tokens and the first S
+  30 more, and an S on every level of a district earns the Honor Roll trophy.
+- **Continue your run.** The campaign saves your upgrades and score at every level. Pick the same hero and level and
+  PLAY becomes CONTINUE.
+- **Hero cards.** Each hero has a rare upgrade card only they can draw: Slip 'n Slide (Tina's water slows zombies),
+  Walk the Dog (Marcus's yo-yos hover at full reach), Disk Split (Dot's disks split on their first bounce), Cluster
+  Bomb (Gus's blasts scatter bomblets) and Mirror Ball (Kev's beam bounces to another zombie).
 - **Special zombies.** From level 3 some of the horde are special: green Spitters hang back and lob glitch globs,
   yellow Sprinters run you down, purple Tanks soak up punishment. They're worth 1.5x score.
 - **Know where it hurts.** Red arrows around the crosshair point at whatever just hit you, and below 30% health the
@@ -50,9 +58,9 @@ Runs in any modern browser, supports online co-op for up to four players, and sh
   becomes dual Roman candles firing coloured fireballs, and Kev's laser pointer becomes a laser tag gun.
 - **Difficulty.** Easy, Normal or Hard in Options. Hard bites harder and brings more zombies but pays 1.5x tokens.
   The Daily Challenge is always Normal.
-- **Trophies and unlockables.** 19 trophies. Beating bosses and other feats unlock Endless mode and cheats.
+- **Trophies and unlockables.** 20 trophies. Beating bosses and other feats unlock Endless mode and cheats.
 - **Endless mode.** Pick any district you have reached and survive as many waves as you can; its boss returns every
-  fifth wave, and beating it earns an upgrade pick. Your best wave per district is saved.
+  fifth wave, and every third wave earns an upgrade pick (the Daily too). Your best wave per district is saved.
 - **Gamepad support.** Plug in any standard controller (Xbox, PlayStation, Switch Pro) and play without the keyboard.
 - **Five heroes, five rides, five weapons.** Every hero moves differently and shoots differently, and each has a
   special move that charges over time and with kills (R or right-click). Weapons point straight ahead and every shot leaves

@@ -5,6 +5,7 @@ import { W, H, TAU } from '../core/util.js';
 import { text, textCanvas, textWidth, wrap } from '../core/pixelfont.js';
 import { bevel, rect, button, progress, window98, iconInfo, iconError, startFlag, titleBar } from './win98.js';
 import { HEROES, heroById } from '../data/heroes.js';
+import { gradeOf, GRADE_COL } from '../data/grades.js';
 import { heroXp, rankFor, dmgMulFor, xpForRank, MAX_RANK } from '../data/progress.js';
 import { clockFor, DISTRICTS, TOTAL_LEVELS, BOSSES } from '../data/levels.js';
 import { UPGRADES, upgradeById, stacks, rarityOf, RARITY } from '../data/upgrades.js';
@@ -451,6 +452,8 @@ export function drawSelect(g, ui, t, S) {
     button(g, br.x, br.y, br.w, br.h, '>', { disabled: n >= game.best });
     bevel(g, pin.x + 18, pin.y + 2, pin.w - 36, 14, true, PAL.white);
     text(g, `LVL ${n}`, pin.x + pin.w / 2, pin.y + 6, { font: 'big', color: PAL.ink, align: 'center' });
+    const gl = gradeOf(n);
+    if (gl) text(g, gl, pin.x + pin.w - 30, pin.y + 5, { font: 'big', color: GRADE_COL[gl], outline: PAL.ink });
     text(g, c.label, pin.x + pin.w / 2, pin.y + 20, { font: 'small', color: PAL.winNavy, align: 'center' });
     text(g, n % 10 === 0 ? 'BOSS LEVEL' : d.name.toUpperCase(), pin.x + pin.w / 2, pin.y + 29, { font: 'small', color: n % 10 === 0 ? PAL.red : PAL.strawberryDark, align: 'center' });
   }
@@ -467,7 +470,8 @@ export function drawSelect(g, ui, t, S) {
     ui.addButton(eb, () => game.toggleEndless(), 31);
   }
   const go = { x: pin.x + 4, y: pin.y + pin.h - 17, w: pin.w - 8, h: 15 };
-  button(g, go.x, go.y, go.w, go.h, 'PLAY', { font: 'big', focus: true });
+  const run = !endless && game.savedRun();
+  button(g, go.x, go.y, go.w, go.h, run ? `CONTINUE +${run.ups.length}` : 'PLAY', { font: 'big', focus: true });
   ui.addButton(go, () => game.startRun(), 30);
   text(g, `ARROWS pick  C cpu${canEndless ? '  TAB endless' : ''}  ENTER play  ESC back`, W / 2, H - 11, { font: 'small', color: PAL.cream, outline: PAL.ink, align: 'center' });
 }
@@ -508,9 +512,15 @@ export function drawClear(g, ui, t, stats) {
   const h = offerIds.length ? 200 : 134;
   const x = Math.round(W / 2 - w / 2);
   const inner = window98(g, x, offerIds.length ? 2 : 30, w, h, `Level ${stats.level} complete`);
-  iconInfo(g, inner.x + 4, inner.y + 2);
+  // The grade stamp takes the info icon's place, popping in a beat after the window.
+  if (!stats.grade) iconInfo(g, inner.x + 4, inner.y + 2);
+  else if (t - (game.upRevealT || 0) > 0.35) {
+    rect(g, inner.x + 3, inner.y + 1, 15, 13, PAL.ink);
+    rect(g, inner.x + 4, inner.y + 2, 13, 11, PAL.white);
+    text(g, stats.grade, inner.x + 11, inner.y + 4, { font: 'big', color: GRADE_COL[stats.grade], outline: PAL.ink, align: 'center' });
+  }
   text(g, `${clockFor(stats.level).label} SURVIVED`, inner.x + 22, inner.y + 2, { font: 'big', color: PAL.winNavy });
-  if (stats.tokens) text(g, `+${stats.tokens} TOKENS`, inner.x + inner.w - 4, inner.y + 3, { font: 'small', color: PAL.goldDark, align: 'right' });
+  if (stats.tokens) text(g, `${stats.gradePay ? 'NEW BEST! ' : ''}+${stats.tokens} TOKENS`, inner.x + inner.w - 4, inner.y + 3, { font: 'small', color: PAL.goldDark, align: 'right' });
   const tm = `${Math.floor(stats.time / 60)}:${String(Math.floor(stats.time % 60)).padStart(2, '0')}`;
   const rows = [['Zombies deleted', stats.kills], ['Time', tm], ['Best combo', `${stats.combo || 0} hits`], ['Headshots', stats.headshots || 0], ['Level score', stats.levelScore], ['Total score', stats.score]];
   const colW = Math.floor((inner.w - 26) / 2);
@@ -610,7 +620,7 @@ function upgradeGlyph(g, u, x, y, dim) {
     rect(g, x + 2, y + 5, 1, 1, c);
     rect(g, x + 6, y + 5, 1, 1, c);
   } else {
-    const glyph = { regen: 'D', magnet: '~', luck: 'F', sp: '!', combo: 'C', buff: '+', crit: '*' }[id] || '?';
+    const glyph = { regen: 'D', magnet: '~', luck: 'F', sp: '!', combo: 'C', buff: '+', crit: '*', slick: 'W', sleeper: 'O', split: '/', cluster: '#', ricochet: 'Z' }[id] || '?';
     rect(g, x, y, 9, 9, c);
     text(g, glyph, x + 2, y + 1, { font: 'small', color: l });
   }
@@ -969,7 +979,7 @@ export function drawTrophies(g, ui, t) {
   const lw = 212;
   bevel(g, inner.x, inner.y, lw, inner.h, true, PAL.white);
   ACHIEVEMENTS.forEach((a, i) => {
-    const y = inner.y + 3 + i * 10;
+    const y = inner.y + 3 + i * Math.min(10, Math.floor((inner.h - 6) / ACHIEVEMENTS.length));
     const on = !!got[a.id];
     rect(g, inner.x + 3, y, 7, 7, on ? PAL.gold : '#d0d0d0');
     if (on) rect(g, inner.x + 5, y + 2, 3, 3, PAL.goldDark);

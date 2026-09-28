@@ -1013,6 +1013,26 @@ export class Sim {
     const reach = pierce ? wallD : bestT;
     if (Math.random() < 0.7) this.puff(x + dx * (reach - 0.1), y + dy * (reach - 0.1), Math.max(0.05, eyeZ + reach * slope - 0.1), Math.random() < 0.5 ? '#ff3b3b' : '#fff4d6', 2);
     for (const [z, hz] of pierce ? inLine : best ? [best] : []) this.hurtZombie(z, dmg, dx, dy, 0.3, P, this.zoneAt(z, hz));
+    // Mirror Ball: the beam glances off to the nearest other zombie.
+    if (P.mods.ricochet && best && !best[0].dead) {
+      const b = best[0];
+      let o = null;
+      let od = 3.5;
+      for (const z of this.zombies) {
+        const d = Math.hypot(z.x - b.x, z.y - b.y);
+        if (z !== b && d < od) {
+          o = z;
+          od = d;
+        }
+      }
+      if (o) {
+        this.hurtZombie(o, dmg * (0.4 + 0.2 * P.mods.ricochet), (o.x - b.x) / (od || 1), (o.y - b.y) / (od || 1), 0.2, P, 'chain');
+        if ((P.ricT = (P.ricT || 0) - 1) <= 0) {
+          P.ricT = 4;
+          this.fx('zap', r2(b.x), r2(b.y), 0.9, r2(o.x), r2(o.y), 0.9);
+        }
+      }
+    }
     return reach;
   }
 
@@ -1221,12 +1241,24 @@ export class Sim {
           p.z += (EYE + P.z - 0.18 - p.z) * Math.min(1, dt * 6);
           p.x += p.vx * dt;
           p.y += p.vy * dt;
+        } else if (p.sleepT > 0) {
+          // Walk the Dog: the yo-yo sleeps at full reach, hitting whatever it touches again.
+          p.sleepT -= dt;
+          if ((p.tick = (p.tick || 0) + dt) > 0.15) {
+            p.tick = 0;
+            p.hits.clear();
+          }
+          if (p.sleepT <= 0) p.back = true;
         } else {
           const nx = p.x + p.vx * dt;
           const ny = p.y + p.vy * dt;
           p.z = Math.max(0.08, p.z + (p.vz || 0) * dt);
           p.travel += G.speed * dt;
-          if (this.wallAt(nx, ny) || p.travel > G.range) {
+          if (!this.wallAt(nx, ny) && p.travel > G.range && P.mods.sleeper && !p.slept) {
+            p.slept = true;
+            p.sleepT = 0.25 + 0.25 * P.mods.sleeper;
+            p.hits.clear();
+          } else if (this.wallAt(nx, ny) || p.travel > G.range) {
             p.back = true;
             p.rs = null;
             p.hits.clear();
@@ -1311,6 +1343,16 @@ export class Sim {
         if (bounced) {
           p.bounces--;
           p.rs = null;
+          // Disk Split: the first bounce throws off copies at an angle.
+          if (P.mods.split && !p.split && !dead) {
+            p.split = true;
+            for (let k = 0; k < P.mods.split; k++) {
+              const a = (k % 2 ? -1 : 1) * (0.45 + 0.2 * Math.floor(k / 2));
+              const c = Math.cos(a);
+              const s = Math.sin(a);
+              this.projs.push({ ...p, vx: p.vx * c - p.vy * s, vy: p.vx * s + p.vy * c, dmg: p.dmg * 0.7, spin: rand(0, 4), rs: null });
+            }
+          }
           this.puff(p.x, p.y, p.z, '#3de0e0', 4);
           if (this.isLocal(P)) sfx.tick();
           if (p.bounces < 0) dead = true;
@@ -1336,6 +1378,7 @@ export class Sim {
             if (p.kind === 'water' && z.kind === 'glitch') dmg *= 2.5;
             this.hurtZombie(z, dmg, p.vx / d, p.vy / d, p.knock, P, this.zoneAt(z, hz));
             if (p.kind === 'water') {
+              if (P.mods.slick) z.slowT = 0.8 + 0.6 * P.mods.slick;
               this.puff(p.x, p.y, p.z, '#8fd8ff', 2);
               if (Math.random() < 0.15) this.snd('splash');
             }
@@ -1362,6 +1405,18 @@ export class Sim {
     const G = st || P.hero.gun;
     const R = (G.radius || 1.9) * big;
     this.fx('explode', r2(x), r2(y), r2(z), pickOne(PARTY), pickOne(PARTY));
+    // Cluster Bomb: each blast scatters smaller ones around it.
+    if (P.mods.cluster && !G.mini) {
+      const mini = { ...G, radius: R * 0.5, dmg: (G.dmg || 55) * 0.35, knock: 1, mini: true };
+      const n = 2 + P.mods.cluster;
+      const a0 = Math.random() * TAU;
+      for (let k = 0; k < n; k++) {
+        const a = a0 + (k / n) * TAU;
+        const bx = x + Math.cos(a) * R * 0.9;
+        const by = y + Math.sin(a) * R * 0.9;
+        if (!this.wallAt(bx, by)) this.explode(bx, by, Math.max(0.1, z), P, 1, mini);
+      }
+    }
     for (const zb of this.zombies.slice()) {
       const d = Math.hypot(zb.x - x, zb.y - y);
       if (d < R + hitR(zb)) {
@@ -1836,6 +1891,11 @@ export class Sim {
         gy = fy;
       }
       let speed = z.speed * frz;
+      // Slip 'n Slide: soaked zombies wade.
+      if (z.slowT > 0) {
+        z.slowT -= dt;
+        speed *= 0.6;
+      }
       // Spitters hang back at range once they can see you.
       if (z.spitT != null && dist < 6.5 && dist > 2) speed *= 0.15;
       // The last few of a wave stop dawdling and come find you, so a wave never ends in a search.
@@ -2495,7 +2555,8 @@ export class Sim {
       this.fx('waveClear', L.wave + 1, last ? 1 : 0);
       this.banner = { kind: last ? 'final' : 'cleared', t: 2.6, dur: 2.6, wave: L.wave + 1, bonus };
       // Endless: every fifth wave (the boss waves) earns an upgrade pick.
-      if (this.endless && (L.wave + 1) % 5 === 0) this.emit('endlessPick', { wave: L.wave + 1 });
+      // Endless and the Daily offer an upgrade pick every third wave.
+    if (this.endless && (L.wave + 1) % 3 === 0) this.emit('endlessPick', { wave: L.wave + 1 });
       for (const P of this.alive()) this.chargeSpecial(P, 10);
       if (!last) {
         L.phase = 'break';

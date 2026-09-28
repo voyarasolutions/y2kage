@@ -9,6 +9,7 @@ import { tex as pixTex } from '../gfx/sprites.js';
 import { settings, saveSettings, SENS_STEPS } from '../core/settings.js';
 import { heroXp, saveHeroXp, heroSp, saveHeroSp, rankFor } from '../data/progress.js';
 import { offer, upgradeById, UPGRADES, rarityOf } from '../data/upgrades.js';
+import { gradeFor, recordGrade, districtAllS } from '../data/grades.js';
 import { perkMods, addTokens, clearTokens, buyPerk, shopItems, weaponTier } from '../data/shop.js';
 import { dailyFor, dailyStarted, dailyFinished, dailyRecord } from '../data/daily.js';
 import { grant, achById, cheats, addStat, stat, markHeroCleared, extraUnlocked, EXTRAS, toggleCheat } from '../data/achievements.js';
@@ -223,6 +224,13 @@ export class Game {
     this.daily = null;
     sfx.select();
     if (this.endlessOn && extraUnlocked('endless')) return this.startEndless(this.pickDistrict);
+    // Pick up a saved run where it left off: same hero, same level, same upgrades and score.
+    const R = this.savedRun();
+    if (R) {
+      this.runUps = R.ups.slice();
+      this.runScore = R.score || 0;
+      this.botUps = [0, 1, 2].map((k) => (R.botUps?.[k] || []).slice());
+    }
     this.startLevel(this.pickLevel);
   }
 
@@ -329,6 +337,8 @@ export class Game {
     } else this.sim = new Sim(this.map, cfg, this.soloParty(this.runUps, this.sim?.players), n, { cheats: cheats(), diff: settings.diff, fromWave });
     if (fromWave) this.sim.fx_toast('CHECKPOINT', 'Straight back to the boss.');
     this.levelStartScore = this.runScore;
+    // Campaign runs are saved at the start of every level, so you can come back to them.
+    this.saveRun(n, this.levelStartUps, this.levelStartBotUps, this.levelStartScore);
     this.setMode('play');
     const d = Math.floor((n - 1) / 10);
     music.play('play', { transpose: [0, 2, -2, 3, 5][d], tempo: 1 + d * 0.04 });
@@ -340,6 +350,9 @@ export class Game {
     this.runScore += s.score;
     const n = this.levelN;
     this.clearStats = stats || { level: n, kills: s.lv.kills, time: s.lv.time, levelScore: s.score, score: this.runScore, combo: s.lv.bestCombo, headshots: s.lv.headshots || 0 };
+    // Grade the clear; the first A and S on each level pay a bonus.
+    const gr = this.clearStats.grade ? { letter: this.clearStats.grade } : gradeFor({ hurt: s.hurtTaken, maxHp: s.player.maxHp * s.players.length, kills: s.lv.kills, time: s.lv.time, combo: s.lv.bestCombo });
+    this.clearStats.grade = gr.letter;
     if (this.net.role === 'host') {
       this.net.send(s.snapshot());
       this.net.send({ t: 'end', kind: 'clear', stats: this.clearStats });
@@ -352,13 +365,17 @@ export class Game {
     store.set('bestScore', this.bestScore);
     this.pickLevel = Math.min(this.best, n + 1);
     this.offerLevel = n;
-    this.upOffer = n < TOTAL_LEVELS ? offer(this.runUps, 3, n, perkMods().luck) : [];
+    this.upOffer = n < TOTAL_LEVELS ? offer(this.runUps, 3, n, perkMods().luck, [], this.hero.id) : [];
     this.rerolls = 1 + perkMods().rerolls;
     // Tokens for the shop: a few per level, more for bosses and the Jackpot. Guests earn theirs too.
     const jack = s.lv.jackpots || 0;
-    this.clearStats.tokens = this.earnTokens(clearTokens(n) + 10 * jack);
+    const gradePay = this.daily || this.endless ? 0 : recordGrade(n, gr.letter);
+    this.clearStats.gradePay = gradePay;
+    this.clearStats.tokens = this.earnTokens(clearTokens(n) + 10 * jack + gradePay);
+    if (!this.daily && districtAllS(Math.floor((n - 1) / 10))) this.award('honor');
     // CPU teammates take one of their own three.
-    if (n < TOTAL_LEVELS) for (const l of this.botUps) l.push(...offer(l, 1, n));
+    if (n < TOTAL_LEVELS) this.botUps.forEach((l, k) => l.push(...offer(l, 1, n, 0, [], s.players[k + 1]?.hero.id)));
+    this.saveRun(n + 1, this.runUps, this.botUps, this.runScore);
     this.upPicked = null;
     this.checkClearAch(s, this.clearStats);
     this.input.unlock();
@@ -381,7 +398,7 @@ export class Game {
     const pm = perkMods();
     this.pickWave = wave;
     this.offerLevel = 10 + wave * 2;
-    this.upOffer = offer(this.runUps, 3, this.offerLevel, pm.luck);
+    this.upOffer = offer(this.runUps, 3, this.offerLevel, pm.luck, [], this.hero.id);
     this.rerolls = 1 + pm.rerolls;
     this.upPicked = null;
     this.upFocus = 0;
@@ -390,7 +407,7 @@ export class Game {
     this.sim.players.forEach((P, i) => {
       if (!P.bot) return;
       const l = this.botUps[i - 1];
-      l.push(...offer(l, 1, 10 + wave * 2));
+      l.push(...offer(l, 1, 10 + wave * 2, 0, [], P.hero.id));
       this.sim.setUps(i, l);
     });
     this.input.mouse.down = false;
@@ -409,6 +426,7 @@ export class Game {
     this.focus = 0;
     if (this.net.role === 'guest') this.net.send({ t: 'ups', ups: this.runUps });
     if (this.runUps.length >= 10) this.award('loaded');
+    if (this.mode === 'clear') this.saveRun(this.levelN + 1, this.runUps, this.botUps, this.runScore);
     if (this.mode === 'pick') {
       this.sim.setUps(this.sim.local, this.runUps);
       this.sim.fx_toast?.('UPGRADE INSTALLED', upgradeById(id).name.toUpperCase());
@@ -420,7 +438,7 @@ export class Game {
   rerollUpgrades() {
     if (this.upPicked || !(this.rerolls > 0) || !this.upOffer?.length) return;
     this.rerolls--;
-    this.upOffer = offer(this.runUps, 3, this.offerLevel || this.levelN, perkMods().luck, this.upOffer);
+    this.upOffer = offer(this.runUps, 3, this.offerLevel || this.levelN, perkMods().luck, this.upOffer, this.hero.id);
     this.upRevealT = this.t;
     sfx.reroll();
   }
@@ -438,6 +456,17 @@ export class Game {
     this.runUps = (this.levelStartUps || []).slice();
     if (this.levelStartBotUps) this.botUps = this.levelStartBotUps.map((l) => l.slice());
     this.startLevel(this.levelN, this.bossCheckpoint());
+  }
+
+  saveRun(level, ups, botUps, score) {
+    if (this.net.role === 'guest' || this.daily || this.endless || level > TOTAL_LEVELS) return;
+    store.set('run', { hero: this.heroId, level, ups: ups.slice(), botUps: botUps.map((l) => l.slice()), score });
+  }
+
+  // The saved campaign run for the hero and level picked, if there is one.
+  savedRun() {
+    const R = store.get('run', null);
+    return R && R.hero === this.heroId && R.level === this.pickLevel && Array.isArray(R.ups) ? R : null;
   }
 
   // The boss wave, if the run that just ended got as far as it; retries start there.

@@ -19,6 +19,12 @@ export const UPGRADES = [
   { id: 'chain', rarity: 'rare', max: 3, name: 'Dial-Up Chain', desc: 'Hits arc to a nearby zombie', color: '#4ab8ff', icon: 'zap' },
   { id: 'crit', rarity: 'rare', max: 3, name: 'Lucky Pager', desc: '10% chance of a 3x crit', color: '#ff5fa2', icon: 'pager' },
   { id: 'firewall', rarity: 'rare', max: 3, name: 'Firewall', desc: 'Zombies that bite you get fried', color: '#ff8a2a', icon: 'wall' },
+  // Hero cards: rare, and only offered to the hero whose weapon they change.
+  { id: 'slick', hero: 'tina', rarity: 'rare', max: 2, name: "Slip 'n Slide", desc: 'Soaked zombies slow down 40%', color: '#4ab8ff', icon: 'drop' },
+  { id: 'sleeper', hero: 'marcus', rarity: 'rare', max: 2, name: 'Walk the Dog', desc: 'Yo-yos hover at full reach', color: '#ff2e88', icon: 'yoyo' },
+  { id: 'split', hero: 'dot', rarity: 'rare', max: 2, name: 'Disk Split', desc: 'Disks split on their first bounce', color: '#3de0e0', icon: 'disk' },
+  { id: 'cluster', hero: 'gus', rarity: 'rare', max: 2, name: 'Cluster Bomb', desc: 'Blasts scatter bomblets', color: '#ff8a2a', icon: 'bomb' },
+  { id: 'ricochet', hero: 'kev', rarity: 'rare', max: 2, name: 'Mirror Ball', desc: 'Beam bounces to another zombie', color: '#7ac943', icon: 'zap' },
   // Legendary: one of these can carry a run.
   { id: 'boom', rarity: 'legendary', max: 2, name: 'Millennium Bomb', desc: 'Kills can blow up the crowd', color: '#f6c945', icon: 'bomb' },
   { id: 'backup', rarity: 'legendary', max: 1, name: 'Backup Disk', desc: 'Cheat death once per level', color: '#7ac943', icon: 'disk' },
@@ -45,9 +51,10 @@ export function stacks(list) {
 // Three different upgrades to offer. Each card rolls its rarity first (rarer ones get likelier
 // deeper into the night), then a random upgrade of that rarity. Maxed-out upgrades are left out.
 // not: cards to leave out if there are enough others (a reroll never deals the same hand back).
-export function offer(list, n = 3, level = 1, luck = 0, not = []) {
+// hero: whose hero cards may turn up.
+export function offer(list, n = 3, level = 1, luck = 0, not = [], hero = null) {
   const st = stacks(list);
-  let pool = UPGRADES.filter((u) => (st[u.id] || 0) < maxOf(u));
+  let pool = UPGRADES.filter((u) => (st[u.id] || 0) < maxOf(u) && (!u.hero || u.hero === hero));
   const fresh = pool.filter((u) => !not.includes(u.id));
   if (fresh.length >= n) pool = fresh;
   const out = [];
@@ -89,5 +96,10 @@ export function upgradeMods(list) {
     boom: 0.12 * k('boom'),
     backup: k('backup'),
     virus: k('virus'),
+    slick: k('slick'),
+    sleeper: k('sleeper'),
+    split: k('split'),
+    cluster: k('cluster'),
+    ricochet: k('ricochet'),
   };
 }

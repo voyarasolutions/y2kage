@@ -6,7 +6,7 @@ import { W, H } from '../core/util.js';
 import { text, textWidth, wrap } from '../core/pixelfont.js';
 import { bevel, rect, progress, meter, window98, tooltip, iconError, iconInfo, iconWarn, startFlag } from './win98.js';
 import { clockFor, levelConfig } from '../data/levels.js';
-import { ENEMIES } from '../data/levels.js';
+import { ENEMIES, MINIBOSS } from '../data/levels.js';
 
 export const TASKBAR_H = 16;
 
@@ -154,7 +154,7 @@ export function drawBossBar(g, sim, t) {
   rect(g, x - 1, y - 1, w + 2, 15, PAL.ink);
   rect(g, x, y, w, 13, PAL.winFace);
   rect(g, x, y, w, 1, PAL.white);
-  text(g, `DELETING ${B.file}`, x + 3, y + 2, { font: 'small', color: PAL.winNavy });
+  text(g, `DELETING ${z.elite ? MINIBOSS.file : B.file}`, x + 3, y + 2, { font: 'small', color: PAL.winNavy });
   if (enraged) text(g, 'ENRAGED', x + w - 3, y + 2, { font: 'small', color: Math.floor(t * 4) % 2 ? PAL.red : PAL.strawberryDark, align: 'right' });
   rect(g, x + 2, y + 9, w - 4, 3, PAL.winShadow);
   rect(g, x + 2, y + 9, Math.round((w - 4) * Math.max(0, z.hp / z.max)), 3, enraged ? PAL.red : PAL.winNavy);
@@ -171,6 +171,10 @@ export function drawBanner(g, sim, t) {
   if (b.kind === 'level') {
     const w = 236;
     const lines = wrap(cfg.radio, w - 34);
+    // A district's 4th and 7th levels open a new area of the map.
+    const k = (sim.levelN - 1) % 10;
+    const wing = !sim.endless && (k === 3 || k === 6) && sim.map.wings?.[k === 3 ? 2 : 3];
+    if (wing) lines.unshift(`NEW AREA OPEN: ${wing.toUpperCase()}!`);
     const h = 58 + lines.length * 9;
     const x = Math.round(W / 2 - w / 2);
     const y = 44;
@@ -180,7 +184,7 @@ export function drawBanner(g, sim, t) {
     text(g, sim.endless ? `Waves forever. ${sim.bossDef.name} every 5th.` : `${cfg.waves.length} waves. ${cfg.clock.minutesLeft} min to midnight.${cfg.isBoss ? ' BOSS LEVEL.' : ''}`, inner.x + 22, inner.y + 14, { font: 'small', color: cfg.isBoss ? PAL.strawberryDark : PAL.ink });
     rect(g, inner.x + 22, inner.y + 24, inner.w - 26, 1, PAL.winShadow);
     rect(g, inner.x + 22, inner.y + 25, inner.w - 26, 1, PAL.white);
-    lines.forEach((l, i) => text(g, l, inner.x + 22, inner.y + 29 + i * 9, { font: 'small', color: PAL.winDark }));
+    lines.forEach((l, i) => text(g, l, inner.x + 22, inner.y + 29 + i * 9, { font: 'small', color: (wing && i === 0) || (cfg.event && l.startsWith('TONIGHT')) ? PAL.strawberryDark : PAL.winDark }));
   } else if (b.kind === 'wave') {
     // Slams in, then fades, so it never feels like a pause.
     const L = sim.lv;
@@ -203,7 +207,7 @@ export function drawBanner(g, sim, t) {
     const w = 210;
     const x = Math.round(W / 2 - w / 2);
     const blink = Math.floor(t * 8) % 2;
-    const B = sim.bossDef;
+    const B = b.mini ? MINIBOSS : sim.bossDef;
     const inner = window98(g, x, 48, w, 46, `${B.file} - Fatal error`, { active: !!blink });
     iconError(g, inner.x + 4, inner.y + 3);
     text(g, B.short, inner.x + 22, inner.y + 3, { font: 'big', color: PAL.strawberryDark });

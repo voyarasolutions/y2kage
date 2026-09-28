@@ -4,7 +4,7 @@ const { Sim } = await import('../src/game/sim.js');
 const { MAPS, parseMap } = await import('../src/data/maps.js');
 const { levelConfig } = await import('../src/data/levels.js');
 const { HEROES } = await import('../src/data/heroes.js');
-const maps = MAPS.map(parseMap);
+const maps = MAPS.map((m) => parseMap(m, 3));
 const n = +(process.env.N || 10), hero = HEROES.find(h => h.id === (process.env.H || 'dot'));
 for (let trial = 0; trial < 14; trial++) {
   const sim = new Sim(maps[Math.floor((n-1)/10)], levelConfig(n), [{ hero, xp: +(process.env.XP||7000), ups: (await import('../src/data/upgrades.js')).offer([], 3, 5).concat(['hp','dmg','rate','hp','dmg','armor']), name: 'x', bot: true }], n, { botSkill: +(process.env.SKILL||1) });

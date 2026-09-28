@@ -4,7 +4,7 @@ const { Sim } = await import('../src/game/sim.js');
 const { MAPS, parseMap } = await import('../src/data/maps.js');
 const { levelConfig } = await import('../src/data/levels.js');
 const { HEROES } = await import('../src/data/heroes.js');
-const maps = MAPS.map(parseMap);
+const maps = MAPS.map((m) => parseMap(m, 3));
 const n = 39;
 for (let trial = 0; trial < 12; trial++) {
   const sim = new Sim(maps[3], levelConfig(n), [{ hero: HEROES[2], xp: 110000, ups: ['dmg','dmg','rate','hp'], name: 'dot', bot: true }], n, { botSkill: 0.4 });

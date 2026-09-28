@@ -17,7 +17,7 @@ export const EYE = 0.62;
 const GRAV = 16;
 export const ZRAD = { shambler: 0.3, runner: 0.26, brute: 0.45, glitch: 0.3, boss: 0.85, crawler: 0.28, bloater: 0.42 };
 // How wide a zombie is to shots and blasts: bosses are drawn bigger, so they are hit bigger too.
-export const hitR = (z) => ZRAD[z.kind] * (z.kind === 'boss' ? z.sc || 1 : 1);
+export const hitR = (z) => ZRAD[z.kind] * (z.kind === 'boss' || z.elite ? z.sc || 1 : 1);
 export const ZHEIGHT = { shambler: 1.0, runner: 1.0, brute: 1.45, glitch: 1.0, boss: 1.95, crawler: 0.45, bloater: 1.3 };
 const COMBO_WINDOW = 2.2;
 // Keep a combo going this long and the whole party goes into Overdrive: faster fire until it breaks.
@@ -93,6 +93,10 @@ export class Sim {
     this.out = null;
     // Cheats from the Trophy Case, and Endless mode (waves generated as they come).
     this.cheats = opts.cheats || {};
+    // Tonight's level event (see EVENTS in levels.js); some of them are just cheats.
+    this.event = cfg.event?.id || null;
+    if (cfg.event?.cheats) this.cheats = { ...this.cheats, ...cfg.event.cheats };
+    this.jackpotsLeft = this.event === 'gold' ? 3 : 1;
     this.endless = !!cfg.endless;
     this.grav = this.cheats.lowgrav ? 0.4 : 1;
     this.bossIdx = cfg.bossIdx ?? Math.min(BOSSES.length - 1, Math.floor((levelN - 1) / 10));
@@ -1518,6 +1522,7 @@ export class Sim {
   // `at` places the zombie somewhere specific (a boss calling in minions); otherwise it comes
   // out of a spawn point away from the party.
   spawnZombie(kind, at = null) {
+    if (kind === 'mini') return this.spawnMiniBoss(at);
     const base = ENEMIES[kind];
     const cfg = this.cfg;
     let s = at;
@@ -1549,6 +1554,20 @@ export class Sim {
       if (!this.boss || this.boss === z) this.banner = { kind: 'boss', t: 2.8, dur: 2.8 };
       this.snd('bossRoar');
     }
+  }
+
+  // The Head Bouncer: a giant elite Bouncer halfway through each district, with the boss bar.
+  spawnMiniBoss(at) {
+    this.spawnZombie('brute', at || this.spawnPoint('brute', true));
+    const z = this.zombies[this.zombies.length - 1];
+    z.elite = true;
+    z.sc = 1.55;
+    z.hp = z.max = z.max * 8 * (1 + COOP_BOSS_HP * (this.players.length - 1));
+    z.dmg *= 1.4;
+    z.speed *= 1.15;
+    this.boss = z;
+    this.banner = { kind: 'boss', t: 2.8, dur: 2.8, mini: true };
+    this.snd('bossRoar');
   }
 
   // The Jackpot zombie: a gold-plated Raver carrying the party's prize money. It flees, and it gets
@@ -2211,8 +2230,8 @@ export class Sim {
       }
       if (n) this.fx('infect', r2(z.x), r2(z.y));
     }
-    if (z.kind === 'boss') {
-      this.boss = this.zombies.find((o) => o.kind === 'boss') || null;
+    if (z.kind === 'boss' || z.elite) {
+      this.boss = this.zombies.find((o) => o !== z && (o.kind === 'boss' || o.elite)) || null;
       for (const k of ['health', 'armor', 'overclock']) this.dropPickup(z.x + rand(-0.8, 0.8), z.y + rand(-0.8, 0.8), k);
       this.emit('bossDown');
       return;
@@ -2222,7 +2241,7 @@ export class Sim {
     if (roll < (weak ? 0.09 : 0.04)) this.dropPickup(z.x, z.y, 'health');
     else if (roll < 0.115) this.dropPickup(z.x, z.y, 'armor');
     else if (roll < 0.14) this.dropPickup(z.x, z.y, 'overclock');
-    else if (roll < 0.14 + 0.025 * Math.max(...this.players.map((Q) => Q.mods.luck)) + (z.kind === 'brute' ? 0.25 : 0)) this.dropPickup(z.x, z.y, pickOne(['patch', 'multi', 'freeze', 'multi', 'patch', 'cad']));
+    else if (roll < 0.14 + 0.025 * Math.max(...this.players.map((Q) => Q.mods.luck)) + (z.kind === 'brute' ? 0.25 : 0) + (this.event === 'supply' ? 0.12 : 0)) this.dropPickup(z.x, z.y, pickOne(['patch', 'multi', 'freeze', 'multi', 'patch', 'cad']));
   }
 
   gainXp(P, n) {
@@ -2389,8 +2408,10 @@ export class Sim {
     }
     L.spawnT -= dt;
     // Once a level, from the second wave on, a golden Jackpot zombie turns up and runs for it.
-    if (!this.jackpotDone && L.wave >= 1 && L.queue.length && this.t > (this.jackpotAt ??= this.t + rand(4, 14))) {
-      this.jackpotDone = true;
+    // Gold Rush: three of them, one after another from the first wave.
+    if (this.jackpotsLeft > 0 && L.wave >= (this.event === 'gold' ? 0 : 1) && L.queue.length && this.t > (this.jackpotAt ??= this.t + rand(4, 14))) {
+      this.jackpotsLeft--;
+      this.jackpotAt = this.t + rand(12, 20);
       this.spawnJackpot();
     }
     if (L.queue.length && L.spawnT <= 0 && this.zombies.length < this.maxAlive()) {
@@ -2413,6 +2434,7 @@ export class Sim {
         L.t = BREAK_T;
         for (const P of this.alive()) {
           if (P.hp < P.maxHp * 0.7) this.dropPickup(P.x + rand(-1, 1), P.y + rand(-1, 1), 'health');
+          if (this.event === 'supply') this.dropPickup(P.x + rand(-1.5, 1.5), P.y + rand(-1.5, 1.5), pickOne(['patch', 'multi', 'freeze', 'cad']));
         }
       } else {
         L.phase = 'outro';
@@ -2487,7 +2509,7 @@ export class Sim {
     const snap = {
       t: 'snap',
       p: this.players.map((P) => [r2(P.x), r2(P.y), r2(P.a), r2(P.z), Math.ceil(P.hp), Math.ceil(P.armor), P.down ? 1 : 0, Math.floor(P.sp), Math.floor(P.xp), r2(P.overclock), r2(P.tank), r2(P.heat), P.overheated ? 1 : 0, r2(P.fireCd), P.fireAnim > 0 ? 1 : 0, P.spKind ? 1 : 0, r2(P.iT), r2(P.pitch || 0)]),
-      z: this.zombies.map((z) => [z.id, ZKINDS.indexOf(z.kind), r2(z.x), r2(z.y), r2(z.hp / z.max), ZSTATES.indexOf(z.state), r2(z.atkT), r2(z.anim), z.hurtT > 0 ? 1 : 0, r2(z.spawnT), z.look, z.sc, z.warp ? 1 : 0, z.bs || 0, z.gold ? 1 : 0]),
+      z: this.zombies.map((z) => [z.id, ZKINDS.indexOf(z.kind), r2(z.x), r2(z.y), r2(z.hp / z.max), ZSTATES.indexOf(z.state), r2(z.atkT), r2(z.anim), z.hurtT > 0 ? 1 : 0, r2(z.spawnT), z.look, z.sc, z.warp ? 1 : 0, z.bs || 0, z.gold ? 1 : 0, z.elite ? 1 : 0]),
       rg: this.rings.map((g) => [g.x, g.y, r2(g.r), g.v]),
       bo: this.bolts.map((b) => [r2(b.x), r2(b.y), r2(b.z), r2(b.vx), r2(b.vy), b.c]),
       pr: this.projs.filter((p) => !p.fx || Math.random() < 0.5).map((p) => [PROJ_KINDS.indexOf(p.kind), r2(p.x), r2(p.y), r2(p.z), Math.floor(p.spin || 0), p.hand ?? 0, p.o, p.orbit ? 1 : 0]),
@@ -2573,6 +2595,7 @@ export class Sim {
       z.sc = a[11];
       z.bs = a[13] || 0;
       z.gold = !!a[14];
+      z.elite = !!a[15];
       return z;
     });
     this.rings = (s.rg || []).map((a) => ({ x: a[0], y: a[1], r: a[2], v: a[3] }));

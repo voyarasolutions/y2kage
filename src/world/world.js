@@ -87,7 +87,7 @@ export class World {
   }
 
   // ------------------------------------------------------------ static level
-  load(map, levelN) {
+  load(map, levelN, opts = {}) {
     if (this.level) {
       this.scene.remove(this.level);
       this.level.traverse((o) => {
@@ -103,11 +103,17 @@ export class World {
     this.indoor = indoor;
     const fog = map.fog.map((v) => v / 255);
     const fogCol = new THREE.Color(fog[0], fog[1], fog[2]);
-    this.scene.fog = indoor ? new THREE.Fog(fogCol, 2.5, 17) : new THREE.Fog(fogCol, 7, 42);
+    // Blackout (a level event): the grid is down, so it is dark, the fog closes in and only a few
+    // emergency lights still burn.
+    const dark = !!opts.dark;
+    if (dark) fogCol.multiplyScalar(0.5);
+    this.scene.fog = dark ? new THREE.Fog(fogCol, 2.5, 17) : indoor ? new THREE.Fog(fogCol, 2.5, 17) : new THREE.Fog(fogCol, 7, 42);
     this.scene.background = fogCol;
     this.amb = indoor ? indoor.amb : OUT_AMB[map.name] || [0.3, 0.25, 0.4];
+    if (dark) this.amb = this.amb.map((v) => v * 0.5);
     this.heights = this.computeHeights(map);
     this.lights = this.placeLights(map);
+    if (dark) this.lights = this.lights.filter((L, i) => i % 3 === 0).map((L) => ({ ...L, k: L.k * 0.8 }));
     const B = new GeoBuilder();
     this.buildWalls(B, map);
     this.buildFloor(B, map);

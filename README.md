@@ -30,6 +30,10 @@ Runs in any modern browser, supports online co-op for up to four players, and sh
   wave for the day and keep your streak of days played going.
 - **No dead air.** Zombies close in from the streets around you as well as the map edges, and the last three of a
   wave hurry toward you with arrows pointing the way. Levels run about two minutes.
+- **Every level is different.** Each district opens up as you go: new areas unlock on its 4th and 7th levels. Most
+  levels roll an event (Rave in the Street, VIP Night, Blackout, Moon Party, Big Head Mode, Swarm, Gold Rush, Supply
+  Drop, Glitch Storm or Stampede), never the same one twice in a district, and the 5th level of each district brings
+  the Head Bouncer mini-boss. A new kind of zombie turns up on almost every one of the first eight levels.
 - **Overdrive and the Jackpot.** Chain 20 kills to go into Overdrive (35% faster fire until the combo drops). Big
   kills freeze the frame for a beat. Once a level a golden Jackpot zombie turns up and runs for it: catch it for a
   big score prize, three pickups and a fistful of tokens.

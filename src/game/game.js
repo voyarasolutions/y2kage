@@ -17,9 +17,9 @@ import { Sim, EYE, ZRAD, ZHEIGHT, MAX_PITCH, hitR, DIFFS } from './sim.js';
 import { Input } from '../core/input.js';
 import { W, H, TAU, rand, clamp, store, pickOne } from '../core/util.js';
 import { PAL, PARTY } from '../core/palette.js';
-import { MAPS, parseMap } from '../data/maps.js';
+import { MAPS, parseMap, stageFor } from '../data/maps.js';
 import { HEROES, heroById } from '../data/heroes.js';
-import { levelConfig, endlessConfig, clockFor, TOTAL_LEVELS, DISTRICTS } from '../data/levels.js';
+import { levelConfig, endlessConfig, clockFor, TOTAL_LEVELS, DISTRICTS, eventFor } from '../data/levels.js';
 import { sfx } from '../audio/sfx.js';
 import { music } from '../audio/music.js';
 import { WeaponView, weaponBob } from '../ui/weapon.js';
@@ -32,6 +32,7 @@ import { Net } from '../net/net.js';
 
 // The Jackpot zombie's gold plating (a multiply tint on its sprite).
 const GOLD_TINT = [1, 0.74, 0.08];
+const ELITE_TINT = [1, 0.55, 0.5];
 const DIFF_IDS = ['easy', 'normal', 'hard'];
 const MENU_COUNT = { title: 7, paused: 4, clear: 2, dead: 2, mp: 3 };
 
@@ -45,7 +46,8 @@ export class Game {
     this.S.packet = [pixTex(packetPix(0)), pixTex(packetPix(1))];
     this.S.mound = [0, 1, 2].map((f) => pixTex(moundPix(f)));
     this.world = new World(this.T, this.S);
-    this.maps = MAPS.map(parseMap);
+    // Each district's map at each of its three stages (it opens up as the night goes on).
+    this.maps = MAPS.map((m) => [1, 2, 3].map((st) => parseMap(m, st)));
     this.cv = uiCanvas;
     this.g = uiCanvas.getContext('2d');
     this.g.imageSmoothingEnabled = false;
@@ -179,8 +181,8 @@ export class Game {
 
   loadWorld(mapIdx, levelN) {
     this.mapIdx = mapIdx;
-    this.map = this.maps[mapIdx];
-    this.world.load(this.map, levelN);
+    this.map = this.maps[mapIdx][(this.endless ? 3 : stageFor(levelN)) - 1];
+    this.world.load(this.map, levelN, { dark: !this.endless && eventFor(levelN)?.id === 'blackout' });
   }
 
   addButton(b, on, idx) {
@@ -1169,7 +1171,7 @@ export class Game {
       else tex = Z.walk[Math.floor(z.anim) % 4];
       const h = ZHEIGHT[z.kind] * (Z.hmul || 1) * (z.sc || 1);
       const grow = z.spawnT > 0 ? 1 - z.spawnT / 0.6 : 1;
-      W3.sprite(tex, z.x, 0, z.y, h * Z.aspect, h * grow, z.gold ? GOLD_TINT : undefined);
+      W3.sprite(tex, z.x, 0, z.y, h * Z.aspect, h * grow, z.gold ? GOLD_TINT : z.elite ? ELITE_TINT : undefined);
       W3.decal(S.shadow, z.x, z.y, hitR(z) * 2.6, 0, 0.45);
       // Big Heads cheat: a swollen copy of the head over the real one.
       if (bigHead && z.kind !== 'boss' && z.kind !== 'crawler' && grow >= 1) {

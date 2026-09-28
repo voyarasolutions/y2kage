@@ -7,11 +7,11 @@ export const TOTAL_LEVELS = 50;
 // Base stats before per-level scaling. `unlock` is the first level a type can appear.
 export const ENEMIES = {
   shambler: { name: 'Party Shambler', hp: 30, speed: 52, damage: 10, score: 10, radius: 14, unlock: 1 },
-  runner: { name: 'Raver', hp: 18, speed: 118, damage: 8, score: 15, radius: 12, unlock: 3 },
-  brute: { name: 'Bouncer', hp: 150, speed: 36, damage: 24, score: 40, radius: 21, unlock: 6 },
-  bloater: { name: 'Bloater', hp: 55, speed: 34, damage: 14, score: 25, radius: 18, unlock: 7 },
-  crawler: { name: 'Crawler', hp: 22, speed: 70, damage: 9, score: 15, radius: 12, unlock: 14 },
-  glitch: { name: 'Corrupted', hp: 42, speed: 66, damage: 12, score: 30, radius: 14, unlock: 10 },
+  runner: { name: 'Raver', hp: 18, speed: 118, damage: 8, score: 15, radius: 12, unlock: 2 },
+  brute: { name: 'Bouncer', hp: 150, speed: 36, damage: 24, score: 40, radius: 21, unlock: 5 },
+  bloater: { name: 'Bloater', hp: 55, speed: 34, damage: 14, score: 25, radius: 18, unlock: 4 },
+  crawler: { name: 'Crawler', hp: 22, speed: 70, damage: 9, score: 15, radius: 12, unlock: 3 },
+  glitch: { name: 'Corrupted', hp: 42, speed: 66, damage: 12, score: 30, radius: 14, unlock: 8 },
   boss: { name: 'The Millennium Bug', hp: 1400, speed: 42, damage: 34, score: 500, radius: 38, unlock: 10 },
 };
 
@@ -71,11 +71,12 @@ function mulberry32(seed) {
 
 function weightsFor(n) {
   const w = { shambler: 10 };
-  if (n >= ENEMIES.runner.unlock) w.runner = Math.min(9, 2 + (n - 3) * 0.6);
-  if (n >= ENEMIES.brute.unlock) w.brute = Math.min(4.5, 1 + (n - 6) * 0.12);
-  if (n >= ENEMIES.glitch.unlock) w.glitch = Math.min(6, 1 + (n - 10) * 0.18);
-  if (n >= ENEMIES.bloater.unlock) w.bloater = Math.min(4, 0.6 + (n - 7) * 0.1);
-  if (n >= ENEMIES.crawler.unlock) w.crawler = Math.min(5, 1 + (n - 14) * 0.2);
+  // A new kind of zombie nearly every level early on, so the first district never sits still.
+  if (n >= ENEMIES.runner.unlock) w.runner = Math.min(9, 2.5 + (n - 2) * 0.6);
+  if (n >= ENEMIES.crawler.unlock) w.crawler = Math.min(5, 2 + (n - 3) * 0.15);
+  if (n >= ENEMIES.bloater.unlock) w.bloater = Math.min(4, 1.2 + (n - 4) * 0.1);
+  if (n >= ENEMIES.brute.unlock) w.brute = Math.min(4.5, 1 + (n - 5) * 0.12);
+  if (n >= ENEMIES.glitch.unlock) w.glitch = Math.min(6, 1.2 + (n - 8) * 0.18);
   return w;
 }
 
@@ -96,13 +97,18 @@ export function clockFor(n) {
 }
 
 // How tough the horde is at difficulty n (the level number, or a running figure in Endless).
+// The first district gets a head start on pressure (faster, busier, harder hitting) that fades
+// out by level 21, so the opening levels are not a stroll and the late game is unchanged.
+const early = (n) => Math.max(0, 1 - (n - 1) / 20);
+
 export function scaleFor(n) {
+  const e = early(n);
   return {
     hpMul: 1 + (n - 1) * 0.055,
-    speedMul: Math.min(1.6, 1 + (n - 1) * 0.012),
-    damageMul: 1 + (n - 1) * 0.025,
-    spawnEvery: Math.max(160, 800 - n * 13),
-    maxAlive: Math.round(Math.min(70, 16 + n * 0.8)),
+    speedMul: Math.min(1.6, 1 + (n - 1) * 0.012 + 0.1 * e),
+    damageMul: 1 + (n - 1) * 0.025 + 0.15 * e,
+    spawnEvery: Math.max(160, 800 - n * 13 - 180 * e),
+    maxAlive: Math.round(Math.min(70, 16 + n * 0.8 + 6 * e)),
     // Chance per second of a Y2K screen glitch; rises toward midnight.
     glitchRate: Math.min(0.5, 0.02 + n * 0.009),
   };
@@ -111,13 +117,49 @@ export function scaleFor(n) {
 function makeWave(n, w, rnd, bosses) {
   const weights = weightsFor(n);
   // Hordes: half again as many as the first release, and they arrive faster.
-  const count = Math.round((5 + n * 0.75 + w * 3) * 1.5);
+  const count = Math.round((5 + n * 0.75 + w * 3 + (3.5 + w * 0.5) * early(n)) * 1.5);
   const spawns = [];
   for (let i = 0; i < count; i++) spawns.push(pick(weights, rnd));
   // Brutes arrive late in a wave, not in the opening second.
   spawns.sort((a, b) => (a === 'brute') - (b === 'brute'));
   for (let b = 0; b < bosses; b++) spawns.splice(Math.floor(count / 3) + b, 0, 'boss');
   return spawns;
+}
+
+// Level events: most levels get one, so no two nights in a row feel the same. `cheats` are sim
+// cheats switched on for the level; the rest the sim and world read from cfg.event.
+export const EVENTS = [
+  { id: 'rave', name: 'Rave in the Street', desc: 'Ravers everywhere. Keep moving.', minN: 2 },
+  { id: 'vip', name: 'VIP Night', desc: 'Bouncers on every door. They drop the good stuff.', minN: 5 },
+  { id: 'blackout', name: 'Blackout', desc: 'The grid just went down. Watch the dark.', minN: 2 },
+  { id: 'moon', name: 'Moon Party', desc: 'Gravity is Y2K non-compliant. Jump!', cheats: { lowgrav: true }, minN: 2 },
+  { id: 'heads', name: 'Big Head Mode', desc: 'Huge heads. Aim high.', cheats: { bighead: true }, minN: 2 },
+  { id: 'swarm', name: 'Swarm', desc: 'Half again as many zombies, but flimsier.', cheats: { swarm: true, confetti: true }, minN: 3 },
+  { id: 'gold', name: 'Gold Rush', desc: 'Three Jackpot zombies are loose tonight.', minN: 2 },
+  { id: 'supply', name: 'Supply Drop', desc: 'Powerups are raining down. Grab them.', minN: 2 },
+  { id: 'glitch', name: 'Glitch Storm', desc: 'The clocks are rolling over early. Corrupted inbound.', minN: 6 },
+  { id: 'stampede', name: 'Stampede', desc: 'Two waves. Both of them huge.', minN: 3 },
+];
+// The mini-boss halfway through each district.
+export const MINIBOSS = { file: 'HEADBOUNCER.EXE', short: 'THE HEAD BOUNCER', tag: 'Not on the list. Will not go quietly.' };
+
+// Which event a level gets: none on a district's first level or on boss levels, the Head
+// Bouncer on its fifth, and a seeded pick (never the same twice running) on the rest.
+export function eventFor(n) {
+  const k = (n - 1) % 10;
+  if (k === 0 || k === 9) return null;
+  if (k === 4) return { id: 'mini', name: 'Head Bouncer', desc: 'Something big is working the door tonight.' };
+  // Each district deals its events from its own shuffled deck, so none repeats within ten levels.
+  const d = Math.floor((n - 1) / 10);
+  const rnd = mulberry32(d * 811 + 1999);
+  const deck = EVENTS.slice().sort(() => rnd() - 0.5);
+  let e = null;
+  for (let j = d * 10 + 2; j <= n; j++) {
+    if ((j - 1) % 10 === 4) continue;
+    const i = deck.findIndex((x) => j >= x.minN);
+    e = deck.splice(i, 1)[0];
+  }
+  return e;
 }
 
 export function levelConfig(n) {
@@ -128,6 +170,21 @@ export function levelConfig(n) {
   const waveCount = 3 + Math.floor((n - 1) / 20);
   const waves = [];
   for (let w = 0; w < waveCount; w++) waves.push(makeWave(n, w, rnd, isBoss && w === waveCount - 1 ? 1 + Math.floor(n / 30) : 0));
+  const event = eventFor(n);
+  const ev = event?.id;
+  if (ev === 'rave') for (const q of waves) q.forEach((k, i) => k === 'shambler' && rnd() < 0.6 && (q[i] = 'runner'));
+  if (ev === 'vip') for (const q of waves) for (let i = 0; i < 2; i++) q.splice(Math.floor(q.length * (0.4 + rnd() * 0.6)), 0, 'brute');
+  if (ev === 'glitch') for (const q of waves) q.forEach((k, i) => k === 'shambler' && rnd() < 0.35 && (q[i] = 'glitch'));
+  if (ev === 'stampede') {
+    // Every wave's zombies folded into two big ones.
+    const all = waves.flat();
+    waves.length = 0;
+    const cut = Math.floor(all.length * 0.45);
+    waves.push(all.slice(0, cut), all.slice(cut));
+  }
+  if (ev === 'mini') waves[waves.length - 1].splice(Math.floor(waves[waves.length - 1].length / 3), 0, 'mini');
+  const sc = scaleFor(n);
+  if (ev === 'glitch') sc.glitchRate = Math.min(0.6, sc.glitchRate * 4);
   return {
     level: n,
     district: DISTRICTS[dIdx],
@@ -136,8 +193,9 @@ export function levelConfig(n) {
     clock: clockFor(n),
     isBoss,
     waves,
-    ...scaleFor(n),
-    radio: RADIO[(n - 1) % RADIO.length],
+    ...sc,
+    event,
+    radio: event ? `TONIGHT: ${event.name.toUpperCase()}. ${event.desc}` : RADIO[(n - 1) % RADIO.length],
   };
 }
 

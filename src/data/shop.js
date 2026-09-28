@@ -1,5 +1,6 @@
 // Tokens and the Upgrade Shop: a currency earned every run (levels, bosses, the Jackpot,
-// Endless waves) that buys permanent perks. Perks only apply to your own hero.
+// Endless waves) that buys permanent perks. Perks only apply to your own hero; weapon upgrades also
+// arm your CPU teammates who use that hero.
 import { store } from '../core/util.js';
 import { heroById } from './heroes.js';
 

@@ -44,9 +44,12 @@ export function stacks(list) {
 
 // Three different upgrades to offer. Each card rolls its rarity first (rarer ones get likelier
 // deeper into the night), then a random upgrade of that rarity. Maxed-out upgrades are left out.
-export function offer(list, n = 3, level = 1, luck = 0) {
+// not: cards to leave out if there are enough others (a reroll never deals the same hand back).
+export function offer(list, n = 3, level = 1, luck = 0, not = []) {
   const st = stacks(list);
-  const pool = UPGRADES.filter((u) => (st[u.id] || 0) < maxOf(u));
+  let pool = UPGRADES.filter((u) => (st[u.id] || 0) < maxOf(u));
+  const fresh = pool.filter((u) => !not.includes(u.id));
+  if (fresh.length >= n) pool = fresh;
   const out = [];
   const pLeg = Math.min(0.16, 0.05 + level * 0.0025) + luck / 3;
   const pRare = Math.min(0.35, 0.18 + level * 0.004) + luck;

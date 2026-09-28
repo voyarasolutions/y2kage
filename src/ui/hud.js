@@ -2,6 +2,7 @@
 // system-tray clock counting down to midnight), dialog-box banners and tray tooltips.
 import { comboMult as comboMultOf, BREAK_T, OVERDRIVE_AT } from '../game/sim.js';
 import { PAL, PARTY } from '../core/palette.js';
+import { sfx } from '../audio/sfx.js';
 import { W, H } from '../core/util.js';
 import { text, textWidth, wrap } from '../core/pixelfont.js';
 import { bevel, rect, progress, meter, window98, tooltip, iconError, iconInfo, iconWarn, startFlag } from './win98.js';
@@ -238,9 +239,44 @@ export function drawToast(g, sim, touch) {
 
 export function drawHurt(g, sim, t) {
   const P = sim.player;
-  const low = P.hp < 30 && Math.floor(t * 3) % 2 === 0;
-  if (P.hurtT <= 0 && !low) return;
-  const a = Math.max(P.hurtT / 0.4, low ? 0.5 : 0);
+  // Low health: the edges pulse red in time with a heartbeat.
+  const lowF = P.down ? 0 : 1 - P.hp / (P.maxHp * 0.3);
+  if (lowF > 0) {
+    const beat = Math.max(0, Math.sin(t * 7)) ** 3;
+    const edge = Math.round(3 + lowF * 6 + beat * 4);
+    g.fillStyle = `rgba(255,32,32,${(0.18 + beat * 0.3).toFixed(2)})`;
+    g.fillRect(0, 0, W, edge);
+    g.fillRect(0, H - TASKBAR_H - edge, W, edge);
+    g.fillRect(0, edge, edge, H - TASKBAR_H - edge * 2);
+    g.fillRect(W - edge, edge, edge, H - TASKBAR_H - edge * 2);
+    const n = Math.floor(t * 7 / Math.PI);
+    if (n !== sim.beatN && Math.sin(t * 7) > 0) {
+      sim.beatN = n;
+      if (n % 2 === 0) sfx.heartbeat();
+    }
+  }
+  // Where the last hits came from: red chevrons around the crosshair, pointing at the attacker.
+  for (const h of sim.hurtDirs || []) {
+    const rel = Math.atan2(h.y - P.y, h.x - P.x) - P.a;
+    const sx = Math.sin(rel);
+    const sy = -Math.cos(rel);
+    const cx = W / 2 + Math.sin(rel) * 64;
+    const cy = (H - TASKBAR_H) / 2 - Math.cos(rel) * 54;
+    const a = Math.min(1, h.t / 0.5);
+    g.fillStyle = `rgba(255,40,40,${(a * 0.9).toFixed(2)})`;
+    // A wedge pointing out from the centre toward the hit.
+    const nx = -sy;
+    const ny = sx;
+    g.beginPath();
+    g.moveTo(cx + sx * 7, cy + sy * 7);
+    g.lineTo(cx + nx * 9, cy + ny * 9);
+    g.lineTo(cx + sx * 2, cy + sy * 2);
+    g.lineTo(cx - nx * 9, cy - ny * 9);
+    g.closePath();
+    g.fill();
+  }
+  if (P.hurtT <= 0) return;
+  const a = P.hurtT / 0.4;
   g.fillStyle = PAL.red;
   for (let k = 0; k < 10; k++) {
     for (let i = 0; i < 10 - k; i++) {

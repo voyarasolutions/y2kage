@@ -32,6 +32,8 @@ import { Net } from '../net/net.js';
 // The Jackpot zombie's gold plating (a multiply tint on its sprite).
 const GOLD_TINT = [1, 0.74, 0.08];
 const ELITE_TINT = [1, 0.55, 0.5];
+// Special zombies (sim AFFIXES): Spitter green, Sprinter yellow, Tank purple.
+const AFFIX_TINT = [null, [0.6, 1.15, 0.5], [1.5, 1.3, 0.25], [0.8, 0.45, 1.6]];
 const DIFF_IDS = ['easy', 'normal', 'hard'];
 const MENU_COUNT = { title: 7, paused: 4, clear: 2, dead: 2, mp: 3 };
 
@@ -42,7 +44,7 @@ export class Game {
     this.S = buildSprites();
     this.S.horde = buildHorde();
     this.S.bosses = buildBosses(this.S.zombies.boss);
-    this.S.packet = [pixTex(packetPix(0)), pixTex(packetPix(1))];
+    this.S.packet = [pixTex(packetPix(0)), pixTex(packetPix(1)), pixTex(packetPix(2))];
     this.S.mound = [0, 1, 2].map((f) => pixTex(moundPix(f)));
     this.world = new World(this.T, this.S);
     // Each district's map at each of its three stages (it opens up as the night goes on).
@@ -303,7 +305,7 @@ export class Game {
     return party;
   }
 
-  startLevel(n) {
+  startLevel(n, fromWave = 0) {
     this.saveXp();
     this.endless = false;
     this.levelN = n;
@@ -320,11 +322,12 @@ export class Game {
       if (prev && prev.length === party.length) party.forEach((p, i) => (p.sp = prev[i].spKind ? 0 : prev[i].sp));
       this.net.guests.forEach((g, i) => (g.slot = i + 1));
       const ch = cheats();
-      this.sim = new Sim(this.map, cfg, party.map((p, i) => ({ hero: heroById(p.heroId), xp: p.xp, sp: p.sp, name: p.name, ups: p.ups, perk: i === 0 ? perkMods() : null, tier: p.tier ? 1 : 0 })), n, { mode: 'host', local: 0, cheats: ch, diff: settings.diff });
+      this.sim = new Sim(this.map, cfg, party.map((p, i) => ({ hero: heroById(p.heroId), xp: p.xp, sp: p.sp, name: p.name, ups: p.ups, perk: i === 0 ? perkMods() : null, tier: p.tier ? 1 : 0 })), n, { mode: 'host', local: 0, cheats: ch, diff: settings.diff, fromWave });
       this.sim.out = [];
-      this.net.guests.forEach((g) => this.net.send({ t: 'start', level: n, party, you: g.slot, cheats: ch }, g));
+      this.net.guests.forEach((g) => this.net.send({ t: 'start', level: n, party, you: g.slot, cheats: ch, fromWave }, g));
       this.snapT = 0;
-    } else this.sim = new Sim(this.map, cfg, this.soloParty(this.runUps, this.sim?.players), n, { cheats: cheats(), diff: settings.diff });
+    } else this.sim = new Sim(this.map, cfg, this.soloParty(this.runUps, this.sim?.players), n, { cheats: cheats(), diff: settings.diff, fromWave });
+    if (fromWave) this.sim.fx_toast('CHECKPOINT', 'Straight back to the boss.');
     this.levelStartScore = this.runScore;
     this.setMode('play');
     const d = Math.floor((n - 1) / 10);
@@ -348,6 +351,7 @@ export class Game {
     this.bestScore = Math.max(this.bestScore, this.runScore);
     store.set('bestScore', this.bestScore);
     this.pickLevel = Math.min(this.best, n + 1);
+    this.offerLevel = n;
     this.upOffer = n < TOTAL_LEVELS ? offer(this.runUps, 3, n, perkMods().luck) : [];
     this.rerolls = 1 + perkMods().rerolls;
     // Tokens for the shop: a few per level, more for bosses and the Jackpot. Guests earn theirs too.
@@ -376,7 +380,8 @@ export class Game {
   openEndlessPick(wave) {
     const pm = perkMods();
     this.pickWave = wave;
-    this.upOffer = offer(this.runUps, 3, 10 + wave * 2, pm.luck);
+    this.offerLevel = 10 + wave * 2;
+    this.upOffer = offer(this.runUps, 3, this.offerLevel, pm.luck);
     this.rerolls = 1 + pm.rerolls;
     this.upPicked = null;
     this.upFocus = 0;
@@ -415,7 +420,7 @@ export class Game {
   rerollUpgrades() {
     if (this.upPicked || !(this.rerolls > 0) || !this.upOffer?.length) return;
     this.rerolls--;
-    this.upOffer = offer(this.runUps, 3, this.levelN, perkMods().luck);
+    this.upOffer = offer(this.runUps, 3, this.offerLevel || this.levelN, perkMods().luck, this.upOffer);
     this.upRevealT = this.t;
     sfx.reroll();
   }
@@ -432,7 +437,15 @@ export class Game {
     this.runScore = this.levelStartScore;
     this.runUps = (this.levelStartUps || []).slice();
     if (this.levelStartBotUps) this.botUps = this.levelStartBotUps.map((l) => l.slice());
-    this.startLevel(this.levelN);
+    this.startLevel(this.levelN, this.bossCheckpoint());
+  }
+
+  // The boss wave, if the run that just ended got as far as it; retries start there.
+  bossCheckpoint() {
+    const S = this.sim;
+    if (!S || S.endless) return 0;
+    const bw = S.cfg.waves.findIndex((w) => w.includes('boss'));
+    return bw > 0 && S.lv.wave >= bw ? bw : 0;
   }
 
   buyPerk(id) {
@@ -869,7 +882,7 @@ export class Game {
       this.runUps = (me.ups || []).filter((id) => upgradeById(id));
       this.levelStartUps = this.runUps.slice();
       this.endless = false;
-      this.sim = new Sim(this.map, cfg, m.party.map((p) => ({ hero: heroById(p.heroId), xp: p.xp, sp: p.sp, name: p.name, ups: (p.ups || []).filter((id) => upgradeById(id)), tier: p.tier ? 1 : 0 })), m.level, { mode: 'client', local: m.you, cheats: m.cheats || {} });
+      this.sim = new Sim(this.map, cfg, m.party.map((p) => ({ hero: heroById(p.heroId), xp: p.xp, sp: p.sp, name: p.name, ups: (p.ups || []).filter((id) => upgradeById(id)), tier: p.tier ? 1 : 0 })), m.level, { mode: 'client', local: m.you, cheats: m.cheats || {}, fromWave: m.fromWave || 0 });
       this.sim.act = (a, ...args) => this.net.send({ t: 'act', a, args });
       this.runScore = this.runScore || 0;
       this.levelStartScore = this.runScore;
@@ -1011,7 +1024,7 @@ export class Game {
     for (const e of this.sim.events.splice(0)) {
       if (e.type === 'levelup' || e.type === 'dead' || e.type === 'clear') this.saveXp();
       if (e.type === 'dead') {
-        this.deadStats = { level: this.levelN, kills: this.sim.lv.kills, score: this.runScore + this.sim.score, hero: this.sim.players.length > 1 ? 'The crew' : this.hero.name, wave: this.sim.lv.wave + 1, waves: this.sim.cfg.waves.length, left: this.sim.remaining(), xp: this.sim.player.xp, me: this.hero.name, best: this.best };
+        this.deadStats = { level: this.levelN, kills: this.sim.lv.kills, score: this.runScore + this.sim.score, hero: this.sim.players.length > 1 ? 'The crew' : this.hero.name, wave: this.sim.lv.wave + 1, waves: this.sim.cfg.waves.length, checkpoint: this.bossCheckpoint() > 0, left: this.sim.remaining(), xp: this.sim.player.xp, me: this.hero.name, best: this.best };
         if (this.daily) {
           const wave = this.sim.lv.wave + 1;
           const score = this.runScore + this.sim.score;
@@ -1168,7 +1181,7 @@ export class Game {
       else tex = Z.walk[Math.floor(z.anim) % 4];
       const h = ZHEIGHT[z.kind] * (Z.hmul || 1) * (z.sc || 1);
       const grow = z.spawnT > 0 ? 1 - z.spawnT / 0.6 : 1;
-      W3.sprite(tex, z.x, 0, z.y, h * Z.aspect, h * grow, z.gold ? GOLD_TINT : z.elite ? ELITE_TINT : undefined);
+      W3.sprite(tex, z.x, 0, z.y, h * Z.aspect, h * grow, z.gold ? GOLD_TINT : z.elite ? ELITE_TINT : AFFIX_TINT[z.affix || 0] || undefined);
       W3.decal(S.shadow, z.x, z.y, hitR(z) * 2.6, 0, 0.45);
       // Big Heads cheat: a swollen copy of the head over the real one.
       if (bigHead && z.kind !== 'boss' && z.kind !== 'crawler' && grow >= 1) {
@@ -1188,7 +1201,7 @@ export class Game {
         W3.particle(g.x + Math.cos(a) * g.r, 0.05 + Math.random() * 0.17, g.y + Math.sin(a) * g.r, PARTY[i % PARTY.length]);
       }
     }
-    for (const b of sim.bolts) W3.sprite(S.packet[b.c ? 1 : 0], b.x, b.z - 0.12, b.y, 0.26, 0.26);
+    for (const b of sim.bolts) W3.sprite(S.packet[b.c || 0], b.x, b.z - 0.12, b.y, 0.26, 0.26);
     for (const c of sim.corpses) {
       const Z = look(c);
       const h = ZHEIGHT[c.kind] * (Z.hmul || 1) * (c.sc || 1);

@@ -687,7 +687,8 @@ export class WeaponView {
       const [ml, mr] = MUZZLE.candle;
       d(a.l, ml.x - (CANDLE.w - CANDLE.a.x), ml.y - CANDLE.a.y + kk(0));
       d(a.r, mr.x - CANDLE.a.x, mr.y - CANDLE.a.y + kk(1));
-      if (P.fireAnim > 0.08) {
+      // Guests only hear that a shot went off, so they show the flash for as long as it lasts.
+      if (P.fireAnim > (sim.mode === 'client' ? 0 : 0.08)) {
         const m = MUZZLE.candle[fired];
         const c = CANDLE_COLS[(P.candleN || 0) % CANDLE_COLS.length];
         flame(g, Math.round(m.x + bx), Math.round(m.y + kk(fired) + by), 0.6, [c, PAL.gold, PAL.white]);
@@ -697,7 +698,7 @@ export class WeaponView {
       const tube = loaded ? a.tube.loaded : a.tube.empty;
       d(a.grip, 20, base - 62);
       d(tube, MUZZLE.rocket.x - TUBE.a.x, MUZZLE.rocket.y - TUBE.a.y + kick * 2);
-      if (P.fireAnim > 0.1) flame(g, Math.round(MUZZLE.rocket.x + bx), Math.round(MUZZLE.rocket.y + kick * 2 + by), 1, [PAL.tangerine, PAL.gold, PAL.cream]);
+      if (P.fireAnim > (sim.mode === 'client' ? 0 : 0.1)) flame(g, Math.round(MUZZLE.rocket.x + bx), Math.round(MUZZLE.rocket.y + kick * 2 + by), 1, [PAL.tangerine, PAL.gold, PAL.cream]);
     } else if (G.kind === 'laser') {
       const A = tier ? TAG.a : PEN.a;
       d(a.bar, 20, base - 60);

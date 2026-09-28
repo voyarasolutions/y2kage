@@ -736,6 +736,7 @@ export function drawBsod(g, ui, t, stats) {
     text(g, `${stats.me || stats.hero} is rank ${r}. ${need} XP to rank ${r + 1}.`, 26, 46 + lines.length * 11 + 4, { font: 'small', color: PAL.gold });
   }
   if (stats.tokens) text(g, `+${stats.tokens} tokens banked (${tokens()} total). Spend them in the Shop.`, 26, 148, { font: 'small', color: PAL.cyan });
+  if (stats.checkpoint) text(g, 'CHECKPOINT: Try again starts at the boss wave.', 26, 138, { font: 'small', color: PAL.gold });
   const msg = 'Press any key to continue ';
   text(g, msg, W / 2, 158, { font: 'small', color: PAL.white, align: 'center' });
   if (Math.floor(t * 2) % 2) rect(g, W / 2 + textWidth(msg, 'small') / 2, 158, 5, 7, PAL.white);
@@ -1053,9 +1054,10 @@ export function drawShop(g, ui, t) {
     ui.addButton(b, () => game.buyPerk(p.id), i);
   });
   const by = inner.y + inner.h - 16;
-  text(g, 'Earn tokens: levels, bosses, Jackpots, Endless.', inner.x + 4, by + 4, { font: 'small', color: PAL.winShadow });
+  const flashing = game.shopFlash && t - game.shopFlash.t < 1;
+  if (!flashing) text(g, 'Earn tokens: levels, bosses, Jackpots, Endless.', inner.x + 4, by + 4, { font: 'small', color: PAL.winShadow });
   const back = { x: inner.x + inner.w - 60, y: by, w: 58, h: 14 };
   button(g, back.x, back.y, back.w, back.h, 'Back', { focus: game.focus === items.length });
   ui.addButton(back, () => game.setMode('title'), items.length);
-  if (game.shopFlash && t - game.shopFlash.t < 1) text(g, game.shopFlash.text, W / 2, inner.y + inner.h - 30, { font: 'big', color: game.shopFlash.ok ? PAL.strawberryDark : PAL.red, outline: PAL.white, align: 'center' });
+  if (flashing) text(g, game.shopFlash.text, inner.x + 4, by + 3, { font: 'big', color: game.shopFlash.ok ? PAL.strawberryDark : PAL.red, outline: PAL.white });
 }

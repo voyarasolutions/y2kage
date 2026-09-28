@@ -84,5 +84,5 @@ export const CANDLE_COLS = ['#ff3b3b', '#3de0e0', '#9ef07a', '#ff2e88', '#f6c945
 const TIERED = {};
 export function heroAtTier(hero, tier) {
   if (!tier || !hero.gun2) return hero;
-  return (TIERED[hero.id] ||= { ...hero, weapon: hero.gun2.name, gun: { ...hero.gun, ...hero.gun2, tier: 1 } });
+  return (TIERED[hero.id] ||= { ...hero, weapon: hero.gun2.name, baseGun: hero.gun, gun: { ...hero.gun, ...hero.gun2, tier: 1 } });
 }

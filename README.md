@@ -34,6 +34,11 @@ Runs in any modern browser, supports online co-op for up to four players, and sh
   levels roll an event (Rave in the Street, VIP Night, Blackout, Moon Party, Big Head Mode, Swarm, Gold Rush, Supply
   Drop, Glitch Storm or Stampede), never the same one twice in a district, and the 5th level of each district brings
   the Head Bouncer mini-boss. A new kind of zombie turns up on almost every one of the first eight levels.
+- **Special zombies.** From level 3 some of the horde are special: green Spitters hang back and lob glitch globs,
+  yellow Sprinters run you down, purple Tanks soak up punishment. They're worth 1.5x score.
+- **Know where it hurts.** Red arrows around the crosshair point at whatever just hit you, and below 30% health the
+  screen edges pulse with a heartbeat.
+- **Boss checkpoints.** Die on a boss after reaching it and Try again starts straight at the boss wave.
 - **Overdrive and the Jackpot.** Chain 20 kills to go into Overdrive (35% faster fire until the combo drops). Big
   kills freeze the frame for a beat. Once a level a golden Jackpot zombie turns up and runs for it: catch it for a
   big score prize, three pickups and a fistful of tokens.

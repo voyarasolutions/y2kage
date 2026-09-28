@@ -44,6 +44,13 @@ const NEW_TIPS = {
 };
 const ZMASS = { shambler: 1, runner: 0.8, brute: 2.5, glitch: 1, boss: 8, crawler: 0.7, bloater: 1.6 };
 export const ZKINDS = ['shambler', 'runner', 'brute', 'glitch', 'boss', 'crawler', 'bloater'];
+// Special zombies (index 0 is none).
+export const AFFIXES = [null, 'spit', 'fast', 'tough'];
+const AFFIX_TIPS = {
+  spit: ['NEW: SPITTER', 'Green ones lob glitch packets. Close the gap or dodge.'],
+  fast: ['NEW: SPRINTER', 'Yellow ones run twice as fast. Take them first.'],
+  tough: ['NEW: TANK', 'Purple ones are big and take a beating. Worth extra.'],
+};
 export const PROJ_KINDS = ['water', 'yoyo', 'floppy', 'rocket'];
 // Boss moves and how long until each one comes round again (seconds).
 const BOSS_CD = { charge: [4, 6], ring: [3.2, 4.4], burrow: [5, 7], bolts: [2.6, 3.6], summon: [9, 12], blink: [5, 7] };
@@ -66,7 +73,7 @@ const REVIVE_HP = 60;
 // Hit zones: the top of a zombie takes double, the legs a bit over half.
 export const HEAD_MUL = 2;
 export const LEG_MUL = 0.6;
-const HEAD_FRAC = 0.76;
+const HEAD_FRAC = 0.72;
 const LEG_FRAC = 0.36;
 // Shots converge on the crosshair this far out, so what you aim at is what you hit.
 const CONVERGE = 5;
@@ -159,6 +166,11 @@ export class Sim {
     this.popups = [];
     this.hitT = 0;
     this.banner = { kind: 'level', t: 3.4, dur: 3.4 };
+    // Retrying a boss level you already reached the boss on starts at the boss wave.
+    if (opts.fromWave > 0 && cfg.waves[opts.fromWave]) {
+      this.lv.wave = opts.fromWave - 1;
+      this.checkpoint = true;
+    }
   }
 
   makePlayer(e, i, n, s, face) {
@@ -268,6 +280,7 @@ export class Sim {
   feel(kind, ...a) {
     if (kind === 'hurt') {
       this.localHurt = (this.localHurt || 0) + 1;
+      if (a[0] != null) (this.hurtDirs ||= []).push({ x: a[0], y: a[1], t: 1.1 });
       this.shake = Math.min(1, this.shake + 0.4);
       this.flash = { color: '#ff2020', t: 0.18, amt: 0.35 };
       sfx.hurt();
@@ -409,6 +422,7 @@ export class Sim {
     if (L.spCall && (L.spCall.t -= dt) <= 0) L.spCall = null;
     if (this.comboCall && (this.comboCall.t -= dt) <= 0) this.comboCall = null;
     this.hitT = Math.max(0, this.hitT - dt);
+    if (this.hurtDirs) this.hurtDirs = this.hurtDirs.filter((h) => (h.t -= dt) > 0);
     for (const p of this.popups) {
       p.t -= dt;
       p.z += dt * 0.6;
@@ -661,7 +675,8 @@ export class Sim {
     }
   }
 
-  hurtPlayer(P, dmg) {
+  // sx, sy: where the hit came from, for the direction arrow on the hurt player's screen.
+  hurtPlayer(P, dmg, sx = null, sy = null) {
     if (P.down || P.dashT > 0 || P.iT > 0 || this.lv.phase === 'done') return;
     if (this.buffs.patch > 0) {
       this.personal(P, 'shield');
@@ -678,7 +693,7 @@ export class Sim {
     }
     P.hp -= dmg;
     P.hurtT = 0.4;
-    this.personal(P, 'hurt');
+    this.personal(P, 'hurt', sx == null ? null : r2(sx), sy == null ? null : r2(sy));
     if (P.hp <= 0 && P.mods.backup && !P.backupUsed) {
       // Backup Disk: restored from floppy, once per level.
       P.backupUsed = true;
@@ -1123,8 +1138,8 @@ export class Sim {
       }
       if (P.spT > 0.5) P.spKind = null;
     } else if (k === 'rocket') {
-      // Grand Finale: fireworks rain down on the horde.
-      const G = P.hero.gun;
+      // Grand Finale: fireworks rain down on the horde, always with the base rocket's punch.
+      const B = P.hero.baseGun || P.hero.gun;
       while (P.spStep < 16 && P.spT > P.spStep * 0.13) {
         P.spStep++;
         const near = this.zombies.filter((z) => Math.hypot(z.x - P.x, z.y - P.y) < 14);
@@ -1141,7 +1156,7 @@ export class Sim {
           ty = P.y + Math.sin(a) * r;
         }
         if (this.wallAt(tx, ty)) continue;
-        this.projs.push({ kind: 'rocket', o: P.idx, fall: true, x: tx, y: ty, z: 7, vx: 0, vy: 0, vz: -10, life: 3, r: 0.2, dmg: G.direct, knock: 0, big: 1.3 });
+        this.projs.push({ kind: 'rocket', o: P.idx, fall: true, x: tx, y: ty, z: 7, vx: 0, vy: 0, vz: -10, life: 3, r: 0.2, dmg: B.direct, knock: 0, big: 1.3, st: B });
         if (P.spStep % 3 === 1) this.snd('shoot', 'rocket');
       }
       if (P.spStep >= 16) P.spKind = null;
@@ -1237,7 +1252,7 @@ export class Sim {
       p.life -= dt;
       if (p.life <= 0) {
         dead = true;
-        if (p.kind === 'rocket') this.explode(p.x, p.y, p.z, P, p.big);
+        if (p.kind === 'rocket') this.explode(p.x, p.y, p.z, P, p.big, p.st);
       }
       if (p.kind === 'water') {
         p.vz -= 2.2 * dt;
@@ -1266,14 +1281,14 @@ export class Sim {
         if (!p.fall) {
           p.z += p.vz * dt;
           if (p.z <= 0.06 && !dead) {
-            this.explode(p.x, p.y, 0.1, P, p.big);
+            this.explode(p.x, p.y, 0.1, P, p.big, p.st);
             dead = true;
           }
         }
         if (p.fall) {
           p.z += p.vz * dt;
           if (p.z <= 0.15 && !dead) {
-            this.explode(p.x, p.y, 0.15, P, p.big);
+            this.explode(p.x, p.y, 0.15, P, p.big, p.st);
             dead = true;
           }
           if (dead) this.projs.splice(i, 1);
@@ -1305,7 +1320,7 @@ export class Sim {
         }
       } else if (!dead && this.wallAt(nx, ny)) {
         dead = true;
-        if (p.kind === 'rocket') this.explode(p.x, p.y, p.z, P, p.big);
+        if (p.kind === 'rocket') this.explode(p.x, p.y, p.z, P, p.big, p.st);
         if (p.kind === 'water' && !p.fx) this.puff(p.x, p.y, p.z, '#8fd8ff', 3);
       } else {
         p.x = nx;
@@ -1325,7 +1340,7 @@ export class Sim {
               if (Math.random() < 0.15) this.snd('splash');
             }
             if (p.kind === 'floppy') this.puff(p.x, p.y, p.z, this.goo(), 6);
-            if (p.kind === 'rocket') this.explode(p.x, p.y, p.z, P, p.big);
+            if (p.kind === 'rocket') this.explode(p.x, p.y, p.z, P, p.big, p.st);
             dead = true;
             break;
           }
@@ -1337,13 +1352,14 @@ export class Sim {
 
   rocketTrail(p) {
     // Roman candle balls (the spin carries the colour) leave sparks in their own colour.
-    const candle = this.players[p.o]?.hero.gun.dual;
+    const candle = p.candle;
     const col = candle ? (Math.random() < 0.6 ? CANDLE_COLS[Math.floor(p.spin || 0) % CANDLE_COLS.length] : '#fff4d6') : Math.random() < 0.5 ? '#f6c945' : '#ff8a2a';
     if (Math.random() < 0.9) this.particles.push({ x: p.x, y: p.y, z: p.z, vx: rand(-0.3, 0.3), vy: rand(-0.3, 0.3), vz: rand(-0.2, 0.3), life: 0.35, color: col });
   }
 
-  explode(x, y, z, P, big = 1) {
-    const G = P.hero.gun;
+  // st: the stats the shot was fired with (Grand Finale fireworks keep the base rocket's).
+  explode(x, y, z, P, big = 1, st = null) {
+    const G = st || P.hero.gun;
     const R = (G.radius || 1.9) * big;
     this.fx('explode', r2(x), r2(y), r2(z), pickOne(PARTY), pickOne(PARTY));
     for (const zb of this.zombies.slice()) {
@@ -1550,6 +1566,7 @@ export class Sim {
       z.ab = {};
       B.moves.forEach((m, i) => (z.ab[m] = rand(...BOSS_CD[m]) * 0.6 + i * 0.8));
     }
+    this.rollAffix(z);
     this.zombies.push(z);
     // First sighting of a new type gets a heads-up.
     const tip = NEW_TIPS[kind];
@@ -1562,6 +1579,30 @@ export class Sim {
       this.boss = z;
       if (!this.boss || this.boss === z) this.banner = { kind: 'boss', t: 2.8, dur: 2.8 };
       this.snd('bossRoar');
+    }
+  }
+
+  // From level 3 a few of the horde are special: Spitters lob glitch packets from range, Sprinters
+  // run you down, Tanks soak up punishment. Each has its own tint and pays extra score.
+  rollAffix(z) {
+    const n = this.levelN;
+    if (z.kind === 'boss' || n < 3 || this.lv.phase === 'intro') return;
+    const p = Math.min(0.22, 0.09 + n * 0.003) * (this.endless ? 1.3 : 1);
+    if (Math.random() > p) return;
+    const opts = ['fast', 'tough'];
+    if (z.kind === 'shambler' || z.kind === 'runner' || z.kind === 'glitch' || z.kind === 'bloater') opts.push('spit', 'spit');
+    const a = opts[Math.floor(Math.random() * opts.length)];
+    z.affix = AFFIXES.indexOf(a);
+    if (a === 'fast') z.speed = Math.min(4.6, z.speed * 1.5);
+    if (a === 'tough') {
+      z.hp *= 2.6;
+      z.max = z.hp;
+      z.sc = r2(z.sc * 1.18);
+    }
+    if (a === 'spit') z.spitT = rand(0.6, 1.4);
+    if (!(this.announced ||= new Set()).has(a)) {
+      this.announced.add(a);
+      this.toast(AFFIX_TIPS[a][0], AFFIX_TIPS[a][1]);
     }
   }
 
@@ -1795,6 +1836,8 @@ export class Sim {
         gy = fy;
       }
       let speed = z.speed * frz;
+      // Spitters hang back at range once they can see you.
+      if (z.spitT != null && dist < 6.5 && dist > 2) speed *= 0.15;
       // The last few of a wave stop dawdling and come find you, so a wave never ends in a search.
       if (this.lv.phase === 'wave' && !this.lv.queue.length && this.zombies.length <= STRAGGLERS && z.kind !== 'boss') speed *= 1.7;
       if (z.spawnT > 0) speed = 0;
@@ -1841,6 +1884,20 @@ export class Sim {
       z.ky *= Math.max(0, 1 - 7 * dt);
       this.moveCircle(z, (gx * speed + z.kx) * dt, (gy * speed + z.ky) * dt, (z.bs ? 0.3 : r) * 0.9, !z.bs);
 
+      // Spitters stop at range and lob a glitch packet at you.
+      if (z.spitT != null && z.state === 'walk' && z.spawnT <= 0) {
+        z.spitT -= dt * frz;
+        if (z.spitT <= 0 && dist > 2.5 && dist < 10 && P.z < 1 && this.wallDistance(z.x, z.y, Math.atan2(ty, tx), dist) >= dist - 0.3) {
+          const a = Math.atan2(ty, tx);
+          this.bolts.push({ x: z.x + Math.cos(a) * 0.5, y: z.y + Math.sin(a) * 0.5, z: 0.9, vx: Math.cos(a) * 6.5, vy: Math.sin(a) * 6.5, life: 2.2, dmg: z.dmg * 0.55, c: 2, ox: z.x, oy: z.y });
+          z.spitT = rand(2.6, 4.2);
+          z.state = 'attack';
+          z.atkT = 0.3;
+          z.spat = true;
+          this.snd('shoot', 'glitch');
+        } else if (z.spitT <= 0) z.spitT = 0.4;
+      }
+
       // Attacks.
       const reach = r + 0.45;
       if (z.state === 'walk' && z.kind !== 'boss' && dist < reach && z.cd <= 0 && z.spawnT <= 0) {
@@ -1849,15 +1906,17 @@ export class Sim {
       }
       if (z.kind === 'boss' && !z.bs && dist < reach + 0.2 && z.cd <= 0) {
         z.cd = 1;
-        if (P.z < 0.35) this.hurtPlayer(P, z.dmg);
+        if (P.z < 0.35) this.hurtPlayer(P, z.dmg, z.x, z.y);
       }
       if (z.state === 'attack') {
         z.atkT -= dt;
         if (z.atkT <= 0) {
           z.state = 'walk';
           z.cd = 0.9;
-          if (dist < r + 0.75 && P.z < 0.3) {
-            this.hurtPlayer(P, z.dmg);
+          const spat = z.spat;
+          z.spat = false;
+          if (!spat && dist < r + 0.75 && P.z < 0.3) {
+            this.hurtPlayer(P, z.dmg, z.x, z.y);
             // Firewall: whatever bit you gets a jolt and a shove.
             if (P.mods.firewall && !P.down) {
               this.fx('zap', r2(P.x), r2(P.y), 0.5, r2(z.x), r2(z.y), r2(ZHEIGHT[z.kind] * 0.6));
@@ -2092,7 +2151,7 @@ export class Sim {
       for (const Q of this.players) {
         if (Q.down || Q.z > 1.1) continue;
         if (Math.hypot(Q.x - b.x, Q.y - b.y) < 0.38) {
-          this.hurtPlayer(Q, b.dmg);
+          this.hurtPlayer(Q, b.dmg, b.ox ?? b.x - b.vx, b.oy ?? b.y - b.vy);
           b.life = 0;
           this.puff(b.x, b.y, b.z, '#ff3b3b', 5);
           break;
@@ -2193,7 +2252,7 @@ export class Sim {
     }
     const mult = comboMult(C.n);
     // Headshot kills are worth half again, in score and XP.
-    const hs = head ? 1.5 : 1;
+    const hs = (head ? 1.5 : 1) * (z.affix ? 1.5 : 1);
     const gain = Math.round(base.score * (1 + Math.floor(this.levelN / 10)) * mult * hs);
     this.score += gain;
     this.fx('popup', r2(z.x), r2(z.y), r2(ZHEIGHT[z.kind] * 0.8), `+${gain}`, mult > 1);
@@ -2517,11 +2576,11 @@ export class Sim {
     const L = this.lv;
     const snap = {
       t: 'snap',
-      p: this.players.map((P) => [r2(P.x), r2(P.y), r2(P.a), r2(P.z), Math.ceil(P.hp), Math.ceil(P.armor), P.down ? 1 : 0, Math.floor(P.sp), Math.floor(P.xp), r2(P.overclock), r2(P.tank), r2(P.heat), P.overheated ? 1 : 0, r2(P.fireCd), P.fireAnim > 0 ? 1 : 0, P.spKind ? 1 : 0, r2(P.iT), r2(P.pitch || 0)]),
-      z: this.zombies.map((z) => [z.id, ZKINDS.indexOf(z.kind), r2(z.x), r2(z.y), r2(z.hp / z.max), ZSTATES.indexOf(z.state), r2(z.atkT), r2(z.anim), z.hurtT > 0 ? 1 : 0, r2(z.spawnT), z.look, z.sc, z.warp ? 1 : 0, z.bs || 0, z.gold ? 1 : 0, z.elite ? 1 : 0]),
+      p: this.players.map((P) => [r2(P.x), r2(P.y), r2(P.a), r2(P.z), Math.ceil(P.hp), Math.ceil(P.armor), P.down ? 1 : 0, Math.floor(P.sp), Math.floor(P.xp), r2(P.overclock), r2(P.tank), r2(P.heat), P.overheated ? 1 : 0, r2(P.fireCd), P.fireAnim > 0 ? 1 : 0, P.spKind ? 1 : 0, r2(P.iT), r2(P.pitch || 0), P.hand || 0, (P.candleN || 0) % 5]),
+      z: this.zombies.map((z) => [z.id, ZKINDS.indexOf(z.kind), r2(z.x), r2(z.y), r2(z.hp / z.max), ZSTATES.indexOf(z.state), r2(z.atkT), r2(z.anim), z.hurtT > 0 ? 1 : 0, r2(z.spawnT), z.look, z.sc, z.warp ? 1 : 0, z.bs || 0, z.gold ? 1 : 0, z.elite ? 1 : 0, z.affix || 0]),
       rg: this.rings.map((g) => [g.x, g.y, r2(g.r), g.v]),
       bo: this.bolts.map((b) => [r2(b.x), r2(b.y), r2(b.z), r2(b.vx), r2(b.vy), b.c]),
-      pr: this.projs.filter((p) => !p.fx || Math.random() < 0.5).map((p) => [PROJ_KINDS.indexOf(p.kind), r2(p.x), r2(p.y), r2(p.z), Math.floor(p.spin || 0), p.hand ?? 0, p.o, p.orbit ? 1 : 0]),
+      pr: this.projs.filter((p) => !p.fx || Math.random() < 0.5).map((p) => [PROJ_KINDS.indexOf(p.kind), r2(p.x), r2(p.y), r2(p.z), r2(p.spin || 0), p.hand ?? 0, p.o, p.orbit ? 1 : 0, p.candle ? 1 : 0]),
       pk: this.pickups.map((p) => [PICK_KINDS.indexOf(p.kind), r2(p.x), r2(p.y), r2(p.t), p.ph]),
       lz: this.lasers.map((l) => [l.o, l.sp ? 1 : 0, r2(l.x), r2(l.y), r2(l.z), r2(l.a), r2(l.d), r2(l.pt || 0)]),
       b: [r2(this.buffs.patch), r2(this.buffs.multi), r2(this.buffs.freeze)],
@@ -2583,6 +2642,8 @@ export class Sim {
       P.spKind = a[15] ? P.hero.gun.kind : null;
       P.iT = a[16];
       if (!me) P.pitch = a[17] || 0;
+      P.hand = a[18] || 0;
+      P.candleN = a[19] || 0;
     });
     const old = new Map(this.zombies.map((z) => [z.id, z]));
     this.zombies = s.z.map((a) => {
@@ -2605,12 +2666,13 @@ export class Sim {
       z.bs = a[13] || 0;
       z.gold = !!a[14];
       z.elite = !!a[15];
+      z.affix = a[16] || 0;
       return z;
     });
     this.rings = (s.rg || []).map((a) => ({ x: a[0], y: a[1], r: a[2], v: a[3] }));
     this.bolts = (s.bo || []).map((a) => ({ x: a[0], y: a[1], z: a[2], vx: a[3], vy: a[4], c: a[5] }));
     this.boss = s.boss ? this.zombies.find((z) => z.id === s.boss) || null : null;
-    this.projs = s.pr.map((a) => ({ kind: PROJ_KINDS[a[0]], x: a[1], y: a[2], z: a[3], spin: a[4], hand: a[5], o: a[6], orbit: !!a[7] }));
+    this.projs = s.pr.map((a) => ({ kind: PROJ_KINDS[a[0]], x: a[1], y: a[2], z: a[3], spin: a[4], hand: a[5], o: a[6], orbit: !!a[7], candle: !!a[8] }));
     this.pickups = s.pk.map((a) => ({ kind: PICK_KINDS[a[0]], x: a[1], y: a[2], t: a[3], ph: a[4] }));
     const mine = this.lasers.filter((l) => l.o === this.local && !l.sp);
     this.lasers = s.lz.filter((a) => a[0] !== this.local || a[1]).map((a) => ({ o: a[0], sp: !!a[1], x: a[2], y: a[3], z: a[4], a: a[5], d: a[6], pt: a[7] })).concat(mine);

@@ -187,6 +187,11 @@ export const sfx = {
   hurt() {
     tone(220, 0.2, 'square', 0.2, 110);
   },
+  // Low health: a lub-dub.
+  heartbeat() {
+    tone(70, 0.12, 'sine', 0.35, 50);
+    tone(62, 0.14, 'sine', 0.28, 44, 0.16);
+  },
   // Wave cleared: a rising fanfare; the last wave of a level gets a longer one with a cymbal.
   waveClear(last) {
     const notes = last ? [523, 659, 784, 1046, 1318, 1568] : [659, 784, 1046, 1318];

@@ -273,9 +273,14 @@ export function buildBosses(bugSet) {
   return [bugSet, set(human(FRONTMAN)), set(human(CONDUCTOR)), set(mainframe), set(countdown)];
 }
 
-// A data packet fired by the Mainframe and the Countdown.
+// A data packet fired by the Mainframe and the Countdown (c 0 or 1), or a Spitter's green glob (c 2).
 export function packetPix(c) {
   const p = new Pix(10, 10);
+  if (c === 2) {
+    p.oval(5, 5, 4, 4, '#4aa82a').oval(4, 4, 3, 3, PAL.lime).px(3, 3, '#e8ffd0').px(7, 7, '#2a6a1a');
+    p.outline(PAL.ink);
+    return p;
+  }
   p.rect(1, 1, 8, 8, c ? PAL.red : PAL.cyan).rect(2, 2, 6, 6, c ? '#ff9090' : '#bff8f8');
   micro(p, c ? '1' : '0', 4, 3, PAL.ink);
   p.outline(PAL.ink);

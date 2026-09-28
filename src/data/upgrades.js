@@ -21,7 +21,7 @@ export const UPGRADES = [
   { id: 'firewall', rarity: 'rare', max: 3, name: 'Firewall', desc: 'Zombies that bite you get fried', color: '#ff8a2a', icon: 'wall' },
   // Legendary: one of these can carry a run.
   { id: 'boom', rarity: 'legendary', max: 2, name: 'Millennium Bomb', desc: 'Kills can blow up the crowd', color: '#f6c945', icon: 'bomb' },
-  { id: 'backup', rarity: 'legendary', max: 1, name: 'Backup Disk', desc: 'Survive one killing blow a level', color: '#7ac943', icon: 'disk' },
+  { id: 'backup', rarity: 'legendary', max: 1, name: 'Backup Disk', desc: 'Cheat death once per level', color: '#7ac943', icon: 'disk' },
   { id: 'virus', rarity: 'legendary', max: 2, name: 'ILOVEYOU.VBS', desc: 'Kills infect zombies nearby', color: '#e8344e', icon: 'heart' },
 ];
 
@@ -44,12 +44,12 @@ export function stacks(list) {
 
 // Three different upgrades to offer. Each card rolls its rarity first (rarer ones get likelier
 // deeper into the night), then a random upgrade of that rarity. Maxed-out upgrades are left out.
-export function offer(list, n = 3, level = 1) {
+export function offer(list, n = 3, level = 1, luck = 0) {
   const st = stacks(list);
   const pool = UPGRADES.filter((u) => (st[u.id] || 0) < maxOf(u));
   const out = [];
-  const pLeg = Math.min(0.16, 0.05 + level * 0.0025);
-  const pRare = Math.min(0.35, 0.18 + level * 0.004);
+  const pLeg = Math.min(0.16, 0.05 + level * 0.0025) + luck / 3;
+  const pRare = Math.min(0.35, 0.18 + level * 0.004) + luck;
   while (out.length < n && pool.length) {
     const r = Math.random();
     const want = r < pLeg ? 'legendary' : r < pLeg + pRare ? 'rare' : 'common';

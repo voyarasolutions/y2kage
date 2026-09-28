@@ -174,10 +174,13 @@ export class Sim {
     const mods = upgradeMods(ups);
     // Daily twist: Glass Cannon doubles everyone's damage, both ways.
     if (this.cheats.glass) mods.dmg *= 2;
+    // Shop perks (your own hero only): extra health and a head start on the special meter.
+    const perk = e.perk || {};
+    mods.maxHp += perk.hp || 0;
     return {
       idx: i, name: e.name || `P${i + 1}`, hero, heroIdx: Math.max(0, HEROES.findIndex((h) => h.id === hero.id)),
       xp, rank, dmgMul: dmgMulFor(rank) * mods.dmg, lvlUp: null, ups, mods, maxHp: mods.maxHp,
-      sp: Math.max(0, Math.min(SP_MAX, e.sp || 0)), spKind: null, pitch: 0, spT: 0, spStep: 0, spCall: null, iT: 0,
+      sp: Math.max(0, Math.min(SP_MAX, Math.max(e.sp || 0, perk.sp || 0))), spKind: null, pitch: 0, spT: 0, spStep: 0, spCall: null, iT: 0,
       down: false, remote: false, bot: !!e.bot, input: { move: { f: 0, s: 0 }, turn: 0, fire: false, look: 0 },
       x, y, a: face, z: 0, vz: 0, vx: 0, vy: 0,
       hp: mods.maxHp, armor: mods.armor, hurtT: 0, overclock: 0, charge: 0, charging: false, boostCd: 0,

@@ -8,7 +8,8 @@ import { buildBosses, packetPix, moundPix } from '../gfx/bosses.js';
 import { tex as pixTex } from '../gfx/sprites.js';
 import { settings, saveSettings, SENS_STEPS } from '../core/settings.js';
 import { heroXp, saveHeroXp, heroSp, saveHeroSp, rankFor } from '../data/progress.js';
-import { offer, upgradeById } from '../data/upgrades.js';
+import { offer, upgradeById, UPGRADES, rarityOf } from '../data/upgrades.js';
+import { perkMods, addTokens, clearTokens, buyPerk, PERKS } from '../data/shop.js';
 import { dailyFor, dailyStarted, dailyFinished, dailyRecord } from '../data/daily.js';
 import { grant, achById, cheats, addStat, stat, markHeroCleared, extraUnlocked, EXTRAS, toggleCheat } from '../data/achievements.js';
 import { World } from '../world/world.js';
@@ -31,7 +32,7 @@ import { Net } from '../net/net.js';
 
 // The Jackpot zombie's gold plating (a multiply tint on its sprite).
 const GOLD_TINT = [1, 0.74, 0.08];
-const MENU_COUNT = { title: 6, paused: 4, clear: 2, dead: 2, mp: 3 };
+const MENU_COUNT = { title: 7, paused: 4, clear: 2, dead: 2, mp: 3 };
 
 export class Game {
   constructor(glCanvas, uiCanvas) {
@@ -160,7 +161,7 @@ export class Game {
     this.focus = 0;
     this.input.playing = m === 'play';
     this.cv.classList.toggle('play', m === 'play');
-    if (m === 'title' || m === 'select' || m === 'howto' || m === 'mp' || m === 'lobby' || m === 'trophies') music.play('title');
+    if (m === 'title' || m === 'select' || m === 'howto' || m === 'mp' || m === 'lobby' || m === 'trophies' || m === 'shop') music.play('title');
     if (m === 'title' && this.pendingJoin) {
       this.joinCode = this.pendingJoin;
       this.pendingJoin = null;
@@ -212,13 +213,26 @@ export class Game {
     store.set('hero', this.heroId);
     this.hero = heroById(this.heroId);
     this.runScore = 0;
-    this.runUps = [];
+    this.runUps = this.headStart();
     this.botUps = [[], [], []];
     this.sim = null;
     this.daily = null;
     sfx.select();
     if (this.endlessOn && extraUnlocked('endless')) return this.startEndless(this.pickDistrict);
     this.startLevel(this.pickLevel);
+  }
+
+  // Head Start perk: a random common upgrade per tier at the start of a run.
+  headStart() {
+    const commons = UPGRADES.filter((u) => rarityOf(u) === 'common');
+    const out = [];
+    for (let i = 0; i < perkMods().head; i++) out.push(pickOne(commons).id);
+    return out;
+  }
+
+  earnTokens(n) {
+    this.tokensEarned = (this.tokensEarned || 0) + n;
+    return addTokens(n);
   }
 
   // Endless mode (solo): one district, waves until you drop.
@@ -229,7 +243,7 @@ export class Game {
     this.levelN = d * 10 + 1;
     this.runScore = 0;
     const D = this.daily;
-    this.runUps = D ? D.ups.slice() : [];
+    this.runUps = D ? D.ups.slice() : this.headStart();
     this.levelStartUps = [];
     // The daily starts gentle in any district, so it is fair on day one.
     const cfg = endlessConfig(d, D ? 4 + d * 2 : null);
@@ -276,7 +290,7 @@ export class Game {
 
   // Offline party: you, then a CPU teammate on each of the next heroes in the roster.
   soloParty(ups, prev) {
-    const party = [{ hero: this.hero, xp: heroXp(this.hero.id), sp: heroSp(this.hero.id), name: 'YOU', ups }];
+    const party = [{ hero: this.hero, xp: heroXp(this.hero.id), sp: heroSp(this.hero.id), name: 'YOU', ups, perk: perkMods() }];
     const i = HEROES.findIndex((h) => h.id === this.hero.id);
     for (let k = 1; k <= this.cpu; k++) {
       const hero = HEROES[(i + k) % HEROES.length];
@@ -303,7 +317,7 @@ export class Game {
       if (prev && prev.length === party.length) party.forEach((p, i) => (p.sp = prev[i].spKind ? 0 : prev[i].sp));
       this.net.guests.forEach((g, i) => (g.slot = i + 1));
       const ch = cheats();
-      this.sim = new Sim(this.map, cfg, party.map((p) => ({ hero: heroById(p.heroId), xp: p.xp, sp: p.sp, name: p.name, ups: p.ups })), n, { mode: 'host', local: 0, cheats: ch });
+      this.sim = new Sim(this.map, cfg, party.map((p, i) => ({ hero: heroById(p.heroId), xp: p.xp, sp: p.sp, name: p.name, ups: p.ups, perk: i === 0 ? perkMods() : null })), n, { mode: 'host', local: 0, cheats: ch });
       this.sim.out = [];
       this.net.guests.forEach((g) => this.net.send({ t: 'start', level: n, party, you: g.slot, cheats: ch }, g));
       this.snapT = 0;
@@ -331,8 +345,11 @@ export class Game {
     this.bestScore = Math.max(this.bestScore, this.runScore);
     store.set('bestScore', this.bestScore);
     this.pickLevel = Math.min(this.best, n + 1);
-    this.upOffer = n < TOTAL_LEVELS ? offer(this.runUps, 3, n) : [];
-    this.rerolls = 1;
+    this.upOffer = n < TOTAL_LEVELS ? offer(this.runUps, 3, n, perkMods().luck) : [];
+    this.rerolls = 1 + perkMods().rerolls;
+    // Tokens for the shop: a few per level, more for bosses and the Jackpot. Guests earn theirs too.
+    const jack = s.lv.jackpots || 0;
+    this.clearStats.tokens = this.earnTokens(clearTokens(n) + 10 * jack);
     // CPU teammates take one of their own three.
     if (n < TOTAL_LEVELS) for (const l of this.botUps) l.push(...offer(l, 1, n));
     this.upPicked = null;
@@ -367,7 +384,7 @@ export class Game {
   rerollUpgrades() {
     if (this.upPicked || !(this.rerolls > 0) || !this.upOffer?.length) return;
     this.rerolls--;
-    this.upOffer = offer(this.runUps, 3, this.levelN);
+    this.upOffer = offer(this.runUps, 3, this.levelN, perkMods().luck);
     this.upRevealT = this.t;
     sfx.reroll();
   }
@@ -385,6 +402,14 @@ export class Game {
     this.runUps = (this.levelStartUps || []).slice();
     if (this.levelStartBotUps) this.botUps = this.levelStartBotUps.map((l) => l.slice());
     this.startLevel(this.levelN);
+  }
+
+  buyPerk(id) {
+    const p = PERKS.find((q) => q.id === id);
+    const ok = buyPerk(id);
+    this.shopFlash = { t: this.t, ok, text: ok ? `${p.name} installed!` : 'Not enough tokens' };
+    if (ok) sfx.upgrade();
+    else sfx.click();
   }
 
   // ------------------------------------------------------------ trophies
@@ -469,6 +494,17 @@ export class Game {
     }
     if (m === 'howto') {
       if (code === 'Enter' || code === 'Escape' || code === 'Space') this.setMode('title');
+      return;
+    }
+    if (m === 'shop') {
+      const n = PERKS.length;
+      if (code === 'Escape' || code === 'Backspace') return this.setMode('title');
+      if (code === 'ArrowDown' || code === 'KeyS' || code === 'Tab') this.focus = (this.focus + 1) % (n + 1);
+      if (code === 'ArrowUp' || code === 'KeyW') this.focus = (this.focus + n) % (n + 1);
+      if (code === 'Enter' || code === 'Space') {
+        if (this.focus === n) return this.setMode('title');
+        this.buyPerk(PERKS[this.focus].id);
+      }
       return;
     }
     if (m === 'trophies') {
@@ -819,7 +855,7 @@ export class Game {
         this.runScore = m.stats.score - this.sim.score;
         this.levelClear(m.stats);
       } else {
-        this.deadStats = m.stats;
+        this.deadStats = { ...m.stats, tokens: this.earnTokens(m.stats.tokens || 0) };
         this.input.unlock();
         this.setMode('dead');
       }
@@ -957,6 +993,9 @@ export class Game {
           best[this.endlessD] = this.deadStats.endless.best;
           store.set('endless', best);
         }
+        // Tokens even when you fall: two per Endless wave, or one per 25 kills in the campaign.
+        const ds = this.deadStats;
+        ds.tokens = this.earnTokens(ds.daily || ds.endless ? (ds.wave - 1) * 2 + Math.floor(ds.kills / 25) : Math.floor(ds.kills / 25) + 10 * (this.sim.lv.jackpots || 0));
         this.countKills(this.sim.lv.kills);
         this.checkRank();
         if (this.net.role === 'host') {
@@ -1256,6 +1295,7 @@ export class Game {
     if (m === 'title') return SCR.drawTitle(g, ui, this.t);
     if (m === 'howto') return SCR.drawHowto(g, ui, this.t);
     if (m === 'trophies') return SCR.drawTrophies(g, ui, this.t);
+    if (m === 'shop') return SCR.drawShop(g, ui, this.t);
     if (m === 'select') return SCR.drawSelect(g, ui, this.t, this.S);
     if (m === 'ending') return SCR.drawEnding(g, ui, t, this.endStats);
     if (m === 'mp') return SCR.drawMp(g, ui, this.t);

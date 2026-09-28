@@ -12,6 +12,7 @@ import { ACHIEVEMENTS, EXTRAS, unlocked, extraUnlocked, cheats } from '../data/a
 import { store } from '../core/util.js';
 import { micro } from '../gfx/pix.js';
 import { dailyFor, dailyRecord } from '../data/daily.js';
+import { PERKS, perkTier, nextCost, tokens } from '../data/shop.js';
 
 // ---------------------------------------------------------------- chrome logo
 let chromeCache = null;
@@ -247,18 +248,19 @@ export function drawTitle(g, ui, t) {
   const w = 128;
   const x = W / 2 - w / 2;
   const y = 100;
-  const inner = window98(g, x, y - 6, w, 104, 'Y2KAGE.EXE');
+  const inner = window98(g, x, y - 8, w, 106, 'Y2KAGE.EXE');
   const got = Object.keys(unlocked()).length;
   const items = [
     ['Start Game', () => ui.game.toSelect()],
     ['Daily Challenge', () => ui.game.startDaily()],
     ['Online Co-op', () => ui.game.setMode('mp')],
+    [`Shop: ${tokens()} tokens`, () => ui.game.setMode('shop')],
     [`Trophies ${got}/${ACHIEVEMENTS.length}`, () => ui.game.setMode('trophies')],
     ['How to Play', () => ui.game.setMode('howto')],
     ['Options', () => ui.game.openOptions()],
   ];
   items.forEach(([label, on], i) => {
-    const b = { x: inner.x + 6, y: inner.y + 1 + i * 14, w: inner.w - 12, h: 13 };
+    const b = { x: inner.x + 6, y: inner.y + 1 + i * 12, w: inner.w - 12, h: 11 };
     button(g, b.x, b.y, b.w, b.h, label, { focus: ui.focus === i });
     ui.addButton(b, on, i);
   });
@@ -507,6 +509,7 @@ export function drawClear(g, ui, t, stats) {
   const inner = window98(g, x, offerIds.length ? 2 : 30, w, h, `Level ${stats.level} complete`);
   iconInfo(g, inner.x + 4, inner.y + 2);
   text(g, `${clockFor(stats.level).label} SURVIVED`, inner.x + 22, inner.y + 2, { font: 'big', color: PAL.winNavy });
+  if (stats.tokens) text(g, `+${stats.tokens} TOKENS`, inner.x + inner.w - 4, inner.y + 3, { font: 'small', color: PAL.goldDark, align: 'right' });
   const tm = `${Math.floor(stats.time / 60)}:${String(Math.floor(stats.time % 60)).padStart(2, '0')}`;
   const rows = [['Zombies deleted', stats.kills], ['Time', tm], ['Best combo', `${stats.combo || 0} hits`], ['Headshots', stats.headshots || 0], ['Level score', stats.levelScore], ['Total score', stats.score]];
   const colW = Math.floor((inner.w - 26) / 2);
@@ -716,6 +719,7 @@ export function drawBsod(g, ui, t, stats) {
     const need = Math.max(0, Math.round(xpForRank(r + 1) - stats.xp));
     text(g, `${stats.me || stats.hero} is rank ${r}. ${need} XP to rank ${r + 1}.`, 26, 46 + lines.length * 11 + 4, { font: 'small', color: PAL.gold });
   }
+  if (stats.tokens) text(g, `+${stats.tokens} tokens banked (${tokens()} total). Spend them in the Shop.`, 26, 148, { font: 'small', color: PAL.cyan });
   const msg = 'Press any key to continue ';
   text(g, msg, W / 2, 158, { font: 'small', color: PAL.white, align: 'center' });
   if (Math.floor(t * 2) % 2) rect(g, W / 2 + textWidth(msg, 'small') / 2, 158, 5, 7, PAL.white);
@@ -994,4 +998,43 @@ export function drawAchPop(g, a) {
   text(g, 'TROPHY UNLOCKED', x + 25, y + 4, { font: 'small', color: PAL.strawberryDark });
   text(g, a.name, x + 25, y + 13, { font: 'big', color: PAL.ink });
   if (a.reward) text(g, `New extra: ${a.reward}`, x + 25, y + 24, { font: 'small', color: PAL.winNavy });
+}
+
+// ---------------------------------------------------------------- upgrade shop
+// Permanent perks bought with tokens. Each row: what it does, its tiers, and a Buy button.
+export function drawShop(g, ui, t) {
+  const game = ui.game;
+  rect(g, 0, 0, W, H, '#00000077');
+  const inner = window98(g, 24, 8, W - 48, H - 16, 'Upgrade Shop - SHOP.EXE');
+  text(g, 'PERMANENT PERKS FOR YOUR HERO', inner.x + 4, inner.y + 2, { font: 'small', color: PAL.winNavy });
+  const tk = `${tokens()} TOKENS`;
+  const coinX = inner.x + inner.w - 6 - textWidth(tk, 'big');
+  rect(g, coinX - 11, inner.y + 1, 8, 8, PAL.gold);
+  rect(g, coinX - 9, inner.y + 3, 4, 4, PAL.goldDark);
+  text(g, tk, inner.x + inner.w - 4, inner.y + 1, { font: 'big', color: PAL.goldDark, align: 'right' });
+  const rowH = 27;
+  PERKS.forEach((p, i) => {
+    const y = inner.y + 13 + i * rowH;
+    const tier = perkTier(p.id);
+    const cost = nextCost(p);
+    bevel(g, inner.x, y, inner.w, rowH - 2, true, game.focus === i ? '#fff8d8' : PAL.white);
+    rect(g, inner.x + 4, y + 4, 16, 16, p.color);
+    rect(g, inner.x + 6, y + 6, 12, 12, PAL.ink);
+    text(g, String(tier), inner.x + 12, y + 8, { font: 'small', color: p.color, align: 'center' });
+    text(g, p.name, inner.x + 25, y + 3, { font: 'big', color: PAL.ink });
+    text(g, p.desc, inner.x + 25, y + 14, { font: 'small', color: PAL.winShadow });
+    // Tier pips.
+    const px = inner.x + inner.w - 124;
+    p.costs.forEach((c, k) => rect(g, px + k * 9, y + 9, 7, 7, k < tier ? p.color : '#d0d0d0'));
+    const b = { x: inner.x + inner.w - 72, y: y + 5, w: 66, h: 14 };
+    const can = cost && tokens() >= cost;
+    button(g, b.x, b.y, b.w, b.h, cost ? `Buy ${cost}` : 'MAXED', { focus: game.focus === i, disabled: !can });
+    ui.addButton(b, () => game.buyPerk(p.id), i);
+  });
+  const by = inner.y + inner.h - 16;
+  text(g, 'Earn tokens: levels, bosses, Jackpots, Endless.', inner.x + 4, by + 4, { font: 'small', color: PAL.winShadow });
+  const back = { x: inner.x + inner.w - 60, y: by, w: 58, h: 14 };
+  button(g, back.x, back.y, back.w, back.h, 'Back', { focus: game.focus === PERKS.length });
+  ui.addButton(back, () => game.setMode('title'), PERKS.length);
+  if (game.shopFlash && t - game.shopFlash.t < 1) text(g, game.shopFlash.text, W / 2, inner.y + inner.h - 30, { font: 'big', color: game.shopFlash.ok ? PAL.strawberryDark : PAL.red, outline: PAL.white, align: 'center' });
 }

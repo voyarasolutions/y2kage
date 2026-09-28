@@ -4,7 +4,7 @@ import { PAL, FLAVOURS, PARTY } from '../core/palette.js';
 import { W, H, TAU } from '../core/util.js';
 import { text, textCanvas, textWidth, wrap } from '../core/pixelfont.js';
 import { bevel, rect, button, progress, window98, iconInfo, iconError, startFlag, titleBar } from './win98.js';
-import { HEROES } from '../data/heroes.js';
+import { HEROES, heroById } from '../data/heroes.js';
 import { heroXp, rankFor, dmgMulFor, xpForRank, MAX_RANK } from '../data/progress.js';
 import { clockFor, DISTRICTS, TOTAL_LEVELS, BOSSES } from '../data/levels.js';
 import { UPGRADES, upgradeById, stacks, rarityOf, RARITY } from '../data/upgrades.js';
@@ -12,7 +12,7 @@ import { ACHIEVEMENTS, EXTRAS, unlocked, extraUnlocked, cheats } from '../data/a
 import { store } from '../core/util.js';
 import { micro } from '../gfx/pix.js';
 import { dailyFor, dailyRecord } from '../data/daily.js';
-import { PERKS, perkTier, nextCost, tokens } from '../data/shop.js';
+import { shopItems, perkTier, nextCost, tokens, weaponTier } from '../data/shop.js';
 
 // ---------------------------------------------------------------- chrome logo
 let chromeCache = null;
@@ -417,7 +417,8 @@ export function drawSelect(g, ui, t, S) {
   g.drawImage(S.icons[hero.move.type].c, inner.x + 40, inner.y + 1);
   text(g, hero.ride.toUpperCase(), inner.x + 58, inner.y + 5, { font: 'small', color: PAL.winNavy });
   g.drawImage(S.icons[hero.gun.kind].c, inner.x + 40, inner.y + 18);
-  text(g, hero.weapon.toUpperCase(), inner.x + 58, inner.y + 22, { font: 'small', color: PAL.strawberryDark });
+  const upg = weaponTier(hero.id) && hero.gun2;
+  text(g, (upg ? `${hero.gun2.name} *` : hero.weapon).toUpperCase(), inner.x + 58, inner.y + 22, { font: 'small', color: upg ? PAL.grape : PAL.strawberryDark });
   const stats = [['SPD', hero.stats.speed], ['PWR', hero.stats.power], ['RNG', hero.stats.range]];
   stats.forEach(([k, v], j) => {
     text(g, k, inner.x + inner.w - 58, inner.y + 2 + j * 9, { font: 'small', color: PAL.ink });
@@ -1024,14 +1025,16 @@ export function drawShop(g, ui, t) {
   const game = ui.game;
   rect(g, 0, 0, W, H, '#00000077');
   const inner = window98(g, 24, 8, W - 48, H - 16, 'Upgrade Shop - SHOP.EXE');
+  const hero = heroById(game.heroId);
+  const items = shopItems(hero);
   text(g, 'PERMANENT PERKS FOR YOUR HERO', inner.x + 4, inner.y + 2, { font: 'small', color: PAL.winNavy });
   const tk = `${tokens()} TOKENS`;
   const coinX = inner.x + inner.w - 6 - textWidth(tk, 'big');
   rect(g, coinX - 11, inner.y + 1, 8, 8, PAL.gold);
   rect(g, coinX - 9, inner.y + 3, 4, 4, PAL.goldDark);
   text(g, tk, inner.x + inner.w - 4, inner.y + 1, { font: 'big', color: PAL.goldDark, align: 'right' });
-  const rowH = 27;
-  PERKS.forEach((p, i) => {
+  const rowH = 24;
+  items.forEach((p, i) => {
     const y = inner.y + 13 + i * rowH;
     const tier = perkTier(p.id);
     const cost = nextCost(p);
@@ -1039,20 +1042,20 @@ export function drawShop(g, ui, t) {
     rect(g, inner.x + 4, y + 4, 16, 16, p.color);
     rect(g, inner.x + 6, y + 6, 12, 12, PAL.ink);
     text(g, String(tier), inner.x + 12, y + 8, { font: 'small', color: p.color, align: 'center' });
-    text(g, p.name, inner.x + 25, y + 3, { font: 'big', color: PAL.ink });
+    text(g, p.weapon ? `${hero.name}: ${p.name}` : p.name, inner.x + 25, y + 3, { font: 'big', color: PAL.ink });
     text(g, p.desc, inner.x + 25, y + 14, { font: 'small', color: PAL.winShadow });
     // Tier pips.
     const px = inner.x + inner.w - 124;
-    p.costs.forEach((c, k) => rect(g, px + k * 9, y + 9, 7, 7, k < tier ? p.color : '#d0d0d0'));
+    if (!p.weapon) p.costs.forEach((c, k) => rect(g, px + k * 9, y + 9, 7, 7, k < tier ? p.color : '#d0d0d0'));
     const b = { x: inner.x + inner.w - 72, y: y + 5, w: 66, h: 14 };
     const can = cost && tokens() >= cost;
-    button(g, b.x, b.y, b.w, b.h, cost ? `Buy ${cost}` : 'MAXED', { focus: game.focus === i, disabled: !can });
+    button(g, b.x, b.y, b.w, b.h, cost ? `Buy ${cost}` : p.weapon ? 'OWNED' : 'MAXED', { focus: game.focus === i, disabled: !can });
     ui.addButton(b, () => game.buyPerk(p.id), i);
   });
   const by = inner.y + inner.h - 16;
   text(g, 'Earn tokens: levels, bosses, Jackpots, Endless.', inner.x + 4, by + 4, { font: 'small', color: PAL.winShadow });
   const back = { x: inner.x + inner.w - 60, y: by, w: 58, h: 14 };
-  button(g, back.x, back.y, back.w, back.h, 'Back', { focus: game.focus === PERKS.length });
-  ui.addButton(back, () => game.setMode('title'), PERKS.length);
+  button(g, back.x, back.y, back.w, back.h, 'Back', { focus: game.focus === items.length });
+  ui.addButton(back, () => game.setMode('title'), items.length);
   if (game.shopFlash && t - game.shopFlash.t < 1) text(g, game.shopFlash.text, W / 2, inner.y + inner.h - 30, { font: 'big', color: game.shopFlash.ok ? PAL.strawberryDark : PAL.red, outline: PAL.white, align: 'center' });
 }

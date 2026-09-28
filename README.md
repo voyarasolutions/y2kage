@@ -39,7 +39,10 @@ Runs in any modern browser, supports online co-op for up to four players, and sh
   big score prize, three pickups and a fistful of tokens.
 - **Tokens and the Upgrade Shop.** Every level, boss, Jackpot and Endless wave pays out tokens. Spend them in the
   Shop on permanent perks: more health, extra rerolls, luckier cards, a head start on your special and free upgrades
-  at the start of a run.
+  at the start of a run, and each hero's weapon upgrade.
+- **Weapon upgrades.** Every weapon has a second tier in the Shop: Tina's Soaker becomes the 1997 Soaker 3500 (high
+  pressure), Marcus's yo-yos become see-through X-Brains, Dot's floppies become CD-ROMs, Gus's bottle rocket tube
+  becomes dual Roman candles firing coloured fireballs, and Kev's laser pointer becomes a laser tag gun.
 - **Difficulty.** Easy, Normal or Hard in Options. Hard bites harder and brings more zombies but pays 1.5x tokens.
   The Daily Challenge is always Normal.
 - **Trophies and unlockables.** 19 trophies. Beating bosses and other feats unlock Endless mode and cheats.
@@ -124,6 +127,17 @@ Endless or Daily waves (2 each). Perks apply to your own hero only.
 | Lucky Charm | 50 / 100 / 200 | Rare cards +3% (legendary +1%) |
 | Power Surge | 50 / 120 | Special meter starts 25% full |
 | Head Start | 100 / 250 | A random upgrade at the start of each run |
+
+The Shop's last row is the weapon upgrade for the hero you have picked (150 tokens each). It works in co-op too: each
+player brings their own tier.
+
+| Hero | Upgrade | What changes |
+|---|---|---|
+| Tina | Soaker 3500 | 12 damage a shot (from 8), faster and further spray, 150 tank |
+| Marcus | X-Brain yo-yos | 26 damage (from 18), faster throws, 8.5 reach |
+| Dot | CD-ROMs | 32 damage (from 22), four ricochets, faster |
+| Gus | Dual Roman candles | A fireball every 0.32s, alternating fists (was a rocket every 0.75s), smaller blasts |
+| Kev | Laser tag gun | 105 damage a second (from 78), 22 reach, runs cooler, green beam |
 
 ## Trophies and extras
 
@@ -220,12 +234,11 @@ The app is locked to landscape. Fonts are bundled so it works offline.
 - `src/gfx/pipeline.js` renders the scene into a 384x216 target with nearest filtering, then a post pass quantises
   each channel with a 4x4 Bayer dither, adds Y2K glitch tearing and damage flashes. The browser upscales with hard edges.
 - `src/gfx/textures.js` paints every wall, floor, sky and prop skin at 32 texels per map unit.
-- `src/gfx/viewmodel.js` models all five first-person weapons in 3D (the Soaker 2500, Marcus's yo-yos, Dot's floppies,
-  Gus's firework launcher and pogo bar, Kev's laser pointer and scooter bar) with gripping hands and each hero's
-  sleeves. Toon shading, pixel-art canvas decals, a rim light and an ink outline are drawn into the same 384x216
-  target and dither as the world, so they still read as 16-bit sprites. It also handles weapon sway when you turn,
-  breathing, per-weapon recoil and a muzzle light. The muzzles are projected to the screen at boot and stored in
-  `src/data/muzzles.js`; the sim spawns shots at the same point in 3D.
+- `src/ui/weapon.js` paints the first-person weapons as 2D pixel sprites over the world, in the style of Dot's
+  floppies: flat textures skewed into the hero's fist (`src/gfx/model.js` has the Rig that shades tubes and slabs
+  along a screen axis), each hero's own sleeve and hand, and a 1px ink outline. It draws both tiers of every weapon,
+  works the Soaker's pump, and flashes each muzzle. Every weapon points straight ahead; the muzzle points live in
+  `src/data/muzzles.js` and the sim spawns shots from the same spot in 3D.
 - `src/gfx/bosses.js` draws the four district bosses after the Millennium Bug, their data packets and burrow mound.
 - `src/gfx/sprites.js` draws the horde (party shamblers, ravers, bouncers, CRT-headed Corrupted, the Millennium Bug),
   projectiles, pickups, hero portraits and icons, all with 1px outlines.

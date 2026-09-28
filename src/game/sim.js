@@ -11,7 +11,7 @@ import { rankFor, dmgMulFor, xpForRank } from '../data/progress.js';
 import { PARTY } from '../core/palette.js';
 import { rand, clamp, TAU, pickOne } from '../core/util.js';
 import { sfx } from '../audio/sfx.js';
-import { HEROES } from '../data/heroes.js';
+import { HEROES, heroAtTier, CANDLE_COLS } from '../data/heroes.js';
 
 export const EYE = 0.62;
 const GRAV = 16;
@@ -162,7 +162,7 @@ export class Sim {
   }
 
   makePlayer(e, i, n, s, face) {
-    const hero = e.hero;
+    const hero = heroAtTier(e.hero, e.tier);
     // Spread a party around the start point.
     let x = s.x;
     let y = s.y;
@@ -930,10 +930,16 @@ export class Sim {
       if (firing && P.fireCd <= 0) {
         P.fireCd = G.every * oc;
         P.fireAnim = 0.2;
-        const m = this.muzzle(P, 'rocket');
+        // Dual Roman candles fire from each fist in turn, a new colour each ball.
+        const hand = G.dual ? P.hand : 0;
+        if (G.dual) {
+          P.hand = 1 - hand;
+          P.candleN = (P.candleN || 0) + 1;
+        }
+        const m = G.dual ? this.muzzle(P, 'candle', hand) : this.muzzle(P, 'rocket');
         for (const off of this.spread()) {
           const b = m.a + off;
-          this.projs.push(this.aimRay({ kind: 'rocket', o: P.idx, x: m.x, y: m.y, z: m.z, vx: Math.cos(b) * G.speed, vy: Math.sin(b) * G.speed, vz: this.aimVz(P, m.z, G.speed), life: G.life, r: 0.2, dmg: G.direct, knock: 0 }, P));
+          this.projs.push(this.aimRay({ kind: 'rocket', o: P.idx, x: m.x, y: m.y, z: m.z, vx: Math.cos(b) * G.speed, vy: Math.sin(b) * G.speed, vz: this.aimVz(P, m.z, G.speed), life: G.life, r: 0.2, dmg: G.direct, knock: 0, candle: !!G.dual, spin: G.dual ? P.candleN % 5 : 0 }, P));
         }
         this.snd('shoot', 'rocket');
         if (this.isLocal(P)) this.shake = Math.min(1, this.shake + 0.15);
@@ -1255,7 +1261,7 @@ export class Sim {
         }
       }
       if (p.kind === 'rocket') {
-        p.spin = (p.spin || 0) + dt * 12;
+        if (!p.candle) p.spin = (p.spin || 0) + dt * 12;
         this.rocketTrail(p);
         if (!p.fall) {
           p.z += p.vz * dt;
@@ -1330,7 +1336,10 @@ export class Sim {
   }
 
   rocketTrail(p) {
-    if (Math.random() < 0.9) this.particles.push({ x: p.x, y: p.y, z: p.z, vx: rand(-0.3, 0.3), vy: rand(-0.3, 0.3), vz: rand(-0.2, 0.3), life: 0.35, color: Math.random() < 0.5 ? '#f6c945' : '#ff8a2a' });
+    // Roman candle balls (the spin carries the colour) leave sparks in their own colour.
+    const candle = this.players[p.o]?.hero.gun.dual;
+    const col = candle ? (Math.random() < 0.6 ? CANDLE_COLS[Math.floor(p.spin || 0) % CANDLE_COLS.length] : '#fff4d6') : Math.random() < 0.5 ? '#f6c945' : '#ff8a2a';
+    if (Math.random() < 0.9) this.particles.push({ x: p.x, y: p.y, z: p.z, vx: rand(-0.3, 0.3), vy: rand(-0.3, 0.3), vz: rand(-0.2, 0.3), life: 0.35, color: col });
   }
 
   explode(x, y, z, P, big = 1) {

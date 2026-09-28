@@ -16,7 +16,7 @@ for (const hid of heroes) {
   for (let n = L0; n <= L1; n++) {
     let res;
     for (let a = 1; a <= TRIES; a++) {
-      const sim = new Sim(parseMap(MAPS[Math.min(4, Math.floor((n - 1) / 10))], stageFor(n)), levelConfig(n), [{ hero, xp, ups, sp, name: hid, bot: true }], n, { botSkill: +(process.env.SKILL || 1), diff: process.env.DIFF || 'normal' });
+      const sim = new Sim(parseMap(MAPS[Math.min(4, Math.floor((n - 1) / 10))], stageFor(n)), levelConfig(n), [{ hero, xp, ups, sp, name: hid, bot: true, tier: +(process.env.TIER || 0) }], n, { botSkill: +(process.env.SKILL || 1), diff: process.env.DIFF || 'normal' });
       const dt = 1 / 30; let t = 0, idle = 0, minHp = 999, hurt = 0, lastHp = sim.player.hp, clear = false, dead = false, breakT = 0, specials = 0, pickups = 0;
       const pk = sim.pickups?.length ?? 0;
       while (t < 900) {

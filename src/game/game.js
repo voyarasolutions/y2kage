@@ -9,7 +9,7 @@ import { tex as pixTex } from '../gfx/sprites.js';
 import { settings, saveSettings, SENS_STEPS } from '../core/settings.js';
 import { heroXp, saveHeroXp, heroSp, saveHeroSp, rankFor } from '../data/progress.js';
 import { offer, upgradeById, UPGRADES, rarityOf } from '../data/upgrades.js';
-import { perkMods, addTokens, clearTokens, buyPerk, PERKS } from '../data/shop.js';
+import { perkMods, addTokens, clearTokens, buyPerk, shopItems, weaponTier } from '../data/shop.js';
 import { dailyFor, dailyStarted, dailyFinished, dailyRecord } from '../data/daily.js';
 import { grant, achById, cheats, addStat, stat, markHeroCleared, extraUnlocked, EXTRAS, toggleCheat } from '../data/achievements.js';
 import { World } from '../world/world.js';
@@ -18,12 +18,11 @@ import { Input } from '../core/input.js';
 import { W, H, TAU, rand, clamp, store, pickOne } from '../core/util.js';
 import { PAL, PARTY } from '../core/palette.js';
 import { MAPS, parseMap, stageFor } from '../data/maps.js';
-import { HEROES, heroById } from '../data/heroes.js';
+import { HEROES, heroById, CANDLE_COLS } from '../data/heroes.js';
 import { levelConfig, endlessConfig, clockFor, TOTAL_LEVELS, DISTRICTS, eventFor } from '../data/levels.js';
 import { sfx } from '../audio/sfx.js';
 import { music } from '../audio/music.js';
-import { WeaponView, weaponBob } from '../ui/weapon.js';
-import { ViewModel } from '../gfx/viewmodel.js';
+import { WeaponView } from '../ui/weapon.js';
 import { muzzleWorld } from '../data/muzzles.js';
 import { hit } from '../ui/win98.js';
 import * as HUD from '../ui/hud.js';
@@ -52,7 +51,6 @@ export class Game {
     this.g = uiCanvas.getContext('2d');
     this.g.imageSmoothingEnabled = false;
     this.weapon = new WeaponView();
-    this.vm = new ViewModel();
     this.best = store.get('best', 1);
     this.bestScore = store.get('bestScore', 0);
     this.heroId = store.get('hero', 'tina');
@@ -295,12 +293,12 @@ export class Game {
 
   // Offline party: you, then a CPU teammate on each of the next heroes in the roster.
   soloParty(ups, prev) {
-    const party = [{ hero: this.hero, xp: heroXp(this.hero.id), sp: heroSp(this.hero.id), name: 'YOU', ups, perk: perkMods() }];
+    const party = [{ hero: this.hero, xp: heroXp(this.hero.id), sp: heroSp(this.hero.id), name: 'YOU', ups, perk: perkMods(), tier: weaponTier(this.hero.id) }];
     const i = HEROES.findIndex((h) => h.id === this.hero.id);
     for (let k = 1; k <= this.cpu; k++) {
       const hero = HEROES[(i + k) % HEROES.length];
       const was = prev?.find((Q) => Q.bot && Q.hero.id === hero.id);
-      party.push({ hero, xp: heroXp(hero.id), sp: was && !was.spKind ? was.sp : 0, name: hero.name, ups: this.botUps[k - 1].slice(), bot: true });
+      party.push({ hero, xp: heroXp(hero.id), sp: was && !was.spKind ? was.sp : 0, name: hero.name, ups: this.botUps[k - 1].slice(), bot: true, tier: weaponTier(hero.id) });
     }
     return party;
   }
@@ -322,7 +320,7 @@ export class Game {
       if (prev && prev.length === party.length) party.forEach((p, i) => (p.sp = prev[i].spKind ? 0 : prev[i].sp));
       this.net.guests.forEach((g, i) => (g.slot = i + 1));
       const ch = cheats();
-      this.sim = new Sim(this.map, cfg, party.map((p, i) => ({ hero: heroById(p.heroId), xp: p.xp, sp: p.sp, name: p.name, ups: p.ups, perk: i === 0 ? perkMods() : null })), n, { mode: 'host', local: 0, cheats: ch, diff: settings.diff });
+      this.sim = new Sim(this.map, cfg, party.map((p, i) => ({ hero: heroById(p.heroId), xp: p.xp, sp: p.sp, name: p.name, ups: p.ups, perk: i === 0 ? perkMods() : null, tier: p.tier ? 1 : 0 })), n, { mode: 'host', local: 0, cheats: ch, diff: settings.diff });
       this.sim.out = [];
       this.net.guests.forEach((g) => this.net.send({ t: 'start', level: n, party, you: g.slot, cheats: ch }, g));
       this.snapT = 0;
@@ -438,7 +436,7 @@ export class Game {
   }
 
   buyPerk(id) {
-    const p = PERKS.find((q) => q.id === id);
+    const p = shopItems(heroById(this.heroId)).find((q) => q.id === id);
     const ok = buyPerk(id);
     this.shopFlash = { t: this.t, ok, text: ok ? `${p.name} installed!` : 'Not enough tokens' };
     if (ok) sfx.upgrade();
@@ -530,13 +528,14 @@ export class Game {
       return;
     }
     if (m === 'shop') {
-      const n = PERKS.length;
+      const items = shopItems(heroById(this.heroId));
+      const n = items.length;
       if (code === 'Escape' || code === 'Backspace') return this.setMode('title');
       if (code === 'ArrowDown' || code === 'KeyS' || code === 'Tab') this.focus = (this.focus + 1) % (n + 1);
       if (code === 'ArrowUp' || code === 'KeyW') this.focus = (this.focus + n) % (n + 1);
       if (code === 'Enter' || code === 'Space') {
         if (this.focus === n) return this.setMode('title');
-        this.buyPerk(PERKS[this.focus].id);
+        this.buyPerk(items[this.focus].id);
       }
       return;
     }
@@ -721,7 +720,7 @@ export class Game {
     try {
       await this.net.join(this.joinCode);
       this.netNote('Connected! Saying hello...');
-      this.net.send({ t: 'hello', hero: this.heroId, xp: heroXp(this.heroId), sp: heroSp(this.heroId) });
+      this.net.send({ t: 'hello', hero: this.heroId, xp: heroXp(this.heroId), sp: heroSp(this.heroId), tier: weaponTier(this.heroId) });
     } catch (e) {
       this.netNote(String(e), true);
     }
@@ -740,8 +739,8 @@ export class Game {
 
   // Host: the lobby roster, host first then guests in join order.
   lobbyPlayers() {
-    const list = [{ name: 'P1', heroId: this.heroId, xp: heroXp(this.heroId), sp: heroSp(this.heroId), ups: this.runUps.slice() }];
-    this.net.guests.forEach((g, i) => list.push({ name: `P${i + 2}`, heroId: g.info?.heroId || 'tina', xp: g.info?.xp || 0, sp: g.info?.sp || 0, ups: (g.info?.ups || []).slice() }));
+    const list = [{ name: 'P1', heroId: this.heroId, xp: heroXp(this.heroId), sp: heroSp(this.heroId), ups: this.runUps.slice(), tier: weaponTier(this.heroId) }];
+    this.net.guests.forEach((g, i) => list.push({ name: `P${i + 2}`, heroId: g.info?.heroId || 'tina', xp: g.info?.xp || 0, sp: g.info?.sp || 0, ups: (g.info?.ups || []).slice(), tier: g.info?.tier ? 1 : 0 }));
     return list;
   }
 
@@ -769,7 +768,7 @@ export class Game {
     sfx.click();
     if (this.net.role === 'host') this.broadcastLobby();
     else {
-      this.net.send({ t: 'pick', hero: this.heroId, xp: heroXp(this.heroId), sp: heroSp(this.heroId) });
+      this.net.send({ t: 'pick', hero: this.heroId, xp: heroXp(this.heroId), sp: heroSp(this.heroId), tier: weaponTier(this.heroId) });
       // Show the change straight away; the host's next roster confirms it.
       const me = this.lobby?.players[this.lobby.you];
       if (me) {
@@ -820,7 +819,7 @@ export class Game {
 
   fromGuest(g, m) {
     if (m.t === 'hello' || m.t === 'pick') {
-      g.info = { heroId: heroById(m.hero).id, xp: Math.max(0, Number(m.xp) || 0), sp: Math.max(0, Math.min(100, Number(m.sp) || 0)), ups: g.info?.ups || [] };
+      g.info = { heroId: heroById(m.hero).id, xp: Math.max(0, Number(m.xp) || 0), sp: Math.max(0, Math.min(100, Number(m.sp) || 0)), ups: g.info?.ups || [], tier: m.tier ? 1 : 0 };
       this.broadcastLobby();
     } else if (m.t === 'ups') {
       if (g.info && Array.isArray(m.ups)) g.info.ups = m.ups.filter((id) => upgradeById(id)).slice(0, 60);
@@ -857,7 +856,7 @@ export class Game {
         if (this.mapIdx !== 0) this.loadWorld(0, 1);
         this.setMode('lobby');
         if (first) sfx.select();
-        else this.net.send({ t: 'pick', hero: this.heroId, xp: heroXp(this.heroId), sp: heroSp(this.heroId) });
+        else this.net.send({ t: 'pick', hero: this.heroId, xp: heroXp(this.heroId), sp: heroSp(this.heroId), tier: weaponTier(this.heroId) });
       }
     } else if (m.t === 'start') {
       this.saveXp();
@@ -870,7 +869,7 @@ export class Game {
       this.runUps = (me.ups || []).filter((id) => upgradeById(id));
       this.levelStartUps = this.runUps.slice();
       this.endless = false;
-      this.sim = new Sim(this.map, cfg, m.party.map((p) => ({ hero: heroById(p.heroId), xp: p.xp, sp: p.sp, name: p.name, ups: (p.ups || []).filter((id) => upgradeById(id)) })), m.level, { mode: 'client', local: m.you, cheats: m.cheats || {} });
+      this.sim = new Sim(this.map, cfg, m.party.map((p) => ({ hero: heroById(p.heroId), xp: p.xp, sp: p.sp, name: p.name, ups: (p.ups || []).filter((id) => upgradeById(id)), tier: p.tier ? 1 : 0 })), m.level, { mode: 'client', local: m.you, cheats: m.cheats || {} });
       this.sim.act = (a, ...args) => this.net.send({ t: 'act', a, args });
       this.runScore = this.runScore || 0;
       this.levelStartScore = this.runScore;
@@ -1120,9 +1119,7 @@ export class Game {
     if (m === 'dialup' || m === 'howto') fx.fade = 0.4;
     if (m === 'dead') fx.fade = 0;
     if (!settings.glitch) fx.glitch = 0;
-    // 3D first-person weapons ride on top of the world in the same pixel pass.
-    const overlay = sim && (m === 'play' || m === 'paused' || m === 'pick') ? this.vm.frame(sim, this.t, dt, weaponBob(sim.player), this.world) : null;
-    this.pipe.render(W3.scene, W3.camera, fx, overlay);
+    this.pipe.render(W3.scene, W3.camera, fx);
     this.drawUI(g);
   }
 
@@ -1238,14 +1235,22 @@ export class Game {
     for (const p of sim.projs) {
       if (p.kind === 'water') W3.sprite(S.water, p.x, p.z - 0.05, p.y, 0.1, 0.1);
       else if (p.kind === 'yoyo') {
-        const set = p.hand ? S.yoyo2 : S.yoyo;
+        const tier = sim.players[p.o]?.hero.gun.tier;
+        const set = tier ? (p.hand ? S.xbrain2 : S.xbrain) : p.hand ? S.yoyo2 : S.yoyo;
         W3.sprite(set[Math.floor(p.spin) % 4], p.x, p.z - 0.1, p.y, 0.22, 0.22);
         // The string runs back to the hand that threw it (on screen, the yo-yo hand).
         const O = sim.players[p.o] || P;
         const h = muzzleWorld('yoyo', p.hand ? 1 : 0, O.x, O.y, O === P ? eye : EYE + (O.z || 0), O.a, O.pitch || 0);
         W3.line([h.x, h.z, h.y], [p.x, p.z, p.y], PAL.cream);
-      } else if (p.kind === 'floppy') W3.sprite(S.floppy[Math.floor(p.spin) % 4], p.x, p.z - 0.12, p.y, 0.24, 0.24);
-      else if (p.kind === 'rocket') W3.sprite(S.flare[Math.floor(this.t * 20) % 2], p.x, p.z - 0.14, p.y, 0.28, 0.28);
+      } else if (p.kind === 'floppy') {
+        // Thrown disks fly flat and tilted, spinning in their own plane; CDs once Dot upgrades.
+        const set = sim.players[p.o]?.hero.gun.tier ? S.cd : S.floppy;
+        W3.sprite(set[Math.floor(p.spin * 2) % 8], p.x, p.z - 0.1, p.y, 0.3, 0.23);
+      } else if (p.kind === 'rocket') {
+        const G = sim.players[p.o]?.hero.gun;
+        if (G?.dual) W3.sprite(S.fireball[Math.floor(p.spin || 0) % CANDLE_COLS.length][Math.floor(this.t * 20) % 2], p.x, p.z - 0.12, p.y, 0.24, 0.24);
+        else W3.sprite(S.flare[Math.floor(this.t * 20) % 2], p.x, p.z - 0.14, p.y, 0.28, 0.28);
+      }
     }
     for (const q of sim.particles) W3.particle(q.x, q.z, q.y, q.color);
     W3.ambient(this.t, P.x, P.y);
@@ -1270,10 +1275,12 @@ export class Game {
         const c = PARTY[(Math.floor(this.t * 8) + Math.round(l.a * 3)) % PARTY.length];
         for (let k = -2; k <= 2; k++) W3.line([mx, top + k * 0.01, my], [hx, end + k * 0.01, hy], k ? c : PAL.white);
       } else {
-        W3.line([mx, top, my], [hx, end, hy], PAL.red);
-        W3.line([mx, top - 0.005, my], [hx, end - 0.005, hy], '#ff9090');
+        // Kev's laser tag gun fires green.
+        const tag = sim.players[l.o]?.hero.gun.tier;
+        W3.line([mx, top, my], [hx, end, hy], tag ? PAL.lime : PAL.red);
+        W3.line([mx, top - 0.005, my], [hx, end - 0.005, hy], tag ? '#d8ffb0' : '#ff9090');
       }
-      W3.sprite(S.flare[1], hx - fx2 * 0.05, end - 0.12, hy - fy2 * 0.05, 0.14, 0.14, [1, 0.3, 0.3]);
+      W3.sprite(S.flare[1], hx - fx2 * 0.05, end - 0.12, hy - fy2 * 0.05, 0.14, 0.14, sim.players[l.o]?.hero.gun.tier && !l.sp ? [0.5, 1, 0.3] : [1, 0.3, 0.3]);
     }
     fx.glitch = sim.glitchT > 0 ? 0.6 : 0;
     if (sim.flash) {

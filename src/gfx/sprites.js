@@ -5,6 +5,7 @@ import { Pix, micro, microWidth, sevenSeg } from './pix.js';
 import { PAL, FLAVOURS } from '../core/palette.js';
 import { mulberry32 } from '../core/util.js';
 import { LOOKS, portrait, heroBody } from './heroart.js';
+import { CANDLE_COLS } from '../data/heroes.js';
 
 // ---------------------------------------------------------------- humanoid zombie base
 function legs(p, o, f) {
@@ -423,15 +424,74 @@ function floppyIcon(p, x, y, s = 1, col = PAL.bondi) {
   p.rect(x, y + 11 * s, s, s, PAL.ink);
 }
 
-function floppySpin(i) {
-  const p = new Pix(12, 12);
-  floppyIcon(p, 0, 0);
-  if (i === 0) return p;
-  const q = new Pix(12, 12);
-  q.g.translate(6, 6);
-  q.g.rotate((i * Math.PI) / 2);
-  q.g.drawImage(p.c, -6, -6);
+// A thrown disk flies flat like a frisbee, so it is seen tilted: the face squashed and banked,
+// spinning in its own plane, with a dark edge under it. draw paints the 12x12 face.
+function spinningDisk(draw, i, n = 8) {
+  const face = new Pix(12, 12);
+  draw(face);
+  const q = new Pix(18, 14);
+  q.g.imageSmoothingEnabled = false;
+  const paint = (src, dy) => {
+    q.g.save();
+    q.g.translate(9, 7 + dy);
+    q.g.rotate(-0.38);
+    q.g.scale(1, 0.46);
+    q.g.rotate((i * Math.PI * 2) / n);
+    q.g.drawImage(src.c, -6, -6);
+    q.g.restore();
+  };
+  paint(face.silhouette('#2a1e40'), 1.5);
+  paint(face, 0);
+  // Snap the soft edges from the transform back to hard pixels.
+  const img = q.g.getImageData(0, 0, q.w, q.h);
+  for (let k = 3; k < img.data.length; k += 4) img.data[k] = img.data[k] > 90 ? 255 : 0;
+  q.g.putImageData(img, 0, 0);
+  q.outline(PAL.ink);
   return q;
+}
+
+// Dot's CD-ROMs: silver with a rainbow sheen and a clear hub.
+function cdIcon(p) {
+  const cols = ['#ff8fc4', '#f6c945', '#9ef07a', '#7fdcec'];
+  for (let y = 0; y < 12; y++) {
+    for (let x = 0; x < 12; x++) {
+      const r = Math.hypot(x + 0.5 - 6, y + 0.5 - 6);
+      if (r > 6 || r < 1.2) continue;
+      const a = Math.atan2(y + 0.5 - 6, x + 0.5 - 6);
+      let c = r < 2.6 ? '#dce8f0' : PAL.steelLight;
+      if (r >= 3 && Math.abs(Math.sin(a * 2)) > 0.8) c = cols[Math.floor((a + Math.PI) * 1.3) % cols.length];
+      if (r > 5.3) c = PAL.steel;
+      p.px(x, y, c);
+    }
+  }
+  p.px(3, 3, PAL.white);
+}
+
+// Marcus's X-Brains in flight: see-through plastic around a steel brain.
+function xbrain(col, spin) {
+  const shell = new Pix(12, 12);
+  shell.oval(6, 6, 5, 5, col);
+  const p = new Pix(12, 12);
+  p.g.globalAlpha = 0.6;
+  p.draw(shell, 0, 0);
+  p.g.globalAlpha = 1;
+  const a = (spin / 4) * Math.PI;
+  for (let k = 0; k < 2; k++) {
+    const b = a + k * Math.PI;
+    p.px(6 + Math.round(Math.cos(b) * 2), 6 + Math.round(Math.sin(b) * 2), PAL.steelLight).px(6 + Math.round(Math.cos(b + 0.5) * 3), 6 + Math.round(Math.sin(b + 0.5) * 3), PAL.steel);
+  }
+  p.rect(5, 5, 2, 2, PAL.steelDark).px(3, 3, PAL.white);
+  p.outline(PAL.ink);
+  return p;
+}
+
+// A Roman candle ball: a hot white core in its colour, with a few sparks.
+function fireball(col, i) {
+  const p = new Pix(10, 10);
+  p.oval(5, 5, 4, 4, col).oval(5, 5, 2, 2, PAL.cream).px(5, 5, PAL.white);
+  if (i) p.px(1, 2, col).px(8, 1, PAL.white).px(8, 8, col);
+  else p.px(2, 8, PAL.white).px(1, 1, col).px(9, 5, col);
+  return p;
 }
 
 function rocketFlare(i) {
@@ -607,7 +667,11 @@ export function buildSprites() {
   S.water = tex(droplet());
   S.yoyo = [0, 1, 2, 3].map((i) => tex(yoyo(PAL.pink, PAL.strawberryDark, i)));
   S.yoyo2 = [0, 1, 2, 3].map((i) => tex(yoyo(PAL.cyan, PAL.cyanDark, i)));
-  S.floppy = [0, 1, 2, 3].map((i) => tex(floppySpin(i)));
+  S.floppy = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => tex(spinningDisk((p) => floppyIcon(p, 0, 0), i)));
+  S.cd = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => tex(spinningDisk(cdIcon, i)));
+  S.xbrain = [0, 1, 2, 3].map((i) => tex(xbrain('#9fd8ff', i)));
+  S.xbrain2 = [0, 1, 2, 3].map((i) => tex(xbrain('#ff8fc4', i)));
+  S.fireball = CANDLE_COLS.map((c) => [0, 1].map((i) => tex(fireball(c, i))));
   S.flare = [0, 1].map((i) => tex(rocketFlare(i)));
   S.pickups = { health: tex(cola()), armor: tex(badge()), overclock: tex(chip()), patch: tex(patchDisk()), multi: tex(multiWin()), freeze: tex(toaster(0)), cad: tex(cadKeys()) };
   S.toasters = [toaster(0), toaster(1)];

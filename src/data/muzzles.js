@@ -9,6 +9,8 @@ export const MUZZLE = {
   laser: { x: 236, y: 128 },
   floppy: { x: 298, y: 128 },
   yoyo: [{ x: 74, y: 146 }, { x: 310, y: 146 }],
+  // Gus's dual Roman candles (the rocket upgrade): left and right fists.
+  candle: [{ x: 134, y: 124 }, { x: 250, y: 124 }],
 };
 
 // Must match the camera in world.js.
@@ -16,7 +18,8 @@ const TAN_V = Math.tan(((62 / 2) * Math.PI) / 180);
 const TAN_H = (TAN_V * W) / H;
 
 export function muzzleScreen(kind, hand = 0) {
-  return kind === 'yoyo' ? MUZZLE.yoyo[hand ? 1 : 0] : MUZZLE[kind] || { x: W / 2, y: H / 2 };
+  const m = MUZZLE[kind];
+  return Array.isArray(m) ? m[hand ? 1 : 0] : m || { x: W / 2, y: H / 2 };
 }
 
 // The muzzle in view space, `fwd` ahead of the eye: how far right and how far down it sits.

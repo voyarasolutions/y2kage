@@ -1,6 +1,7 @@
 // Tokens and the Upgrade Shop: a currency earned every run (levels, bosses, the Jackpot,
 // Endless waves) that buys permanent perks. Perks only apply to your own hero.
 import { store } from '../core/util.js';
+import { heroById } from './heroes.js';
 
 export const PERKS = [
   { id: 'ram', name: 'RAM Upgrade', desc: '+10 max health per tier', costs: [40, 80, 160], color: '#7ac943' },
@@ -25,8 +26,19 @@ export function addTokens(n) {
 
 export const nextCost = (p) => p.costs[perkTier(p.id)];
 
+// Each hero's weapon upgrade (Soaker 3500, X-Brains, CDs, Roman candles, laser tag gun), stored
+// with the perks as 'w:<hero id>'.
+export const WEAPON_COST = 150;
+export function weaponItem(hero) {
+  return { id: `w:${hero.id}`, name: hero.gun2.name, desc: hero.gun2.desc, costs: [WEAPON_COST], color: '#b89cff', weapon: true };
+}
+export const weaponTier = (heroId) => perkTier(`w:${heroId}`);
+
+// What the shop lists for the hero you have picked: the perks, then that hero's weapon upgrade.
+export const shopItems = (hero) => [...PERKS, weaponItem(hero)];
+
 export function buyPerk(id) {
-  const p = PERKS.find((q) => q.id === id);
+  const p = PERKS.find((q) => q.id === id) || (id.startsWith('w:') ? weaponItem(heroById(id.slice(2))) : null);
   const cost = p && nextCost(p);
   if (!cost || tokens() < cost) return false;
   store.set('tokens', tokens() - cost);

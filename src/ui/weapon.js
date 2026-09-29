@@ -24,87 +24,76 @@ const NOZZLE = { green: { x: 36, y: 10 }, cps: { x: 150, y: 43 } };
 const DROP = { cpsPumpA: 19, cpsPumpB: 19 };
 import { W, H } from '../core/util.js';
 
-// A fist seen from behind, knuckles up, three-tone shaded, in the hero's own sleeve.
-// L is the hero look from heroart.js; i picks the sleeve style.
-function fist(p, x, y, L, i, flip = false, noArm = false) {
+// A fist seen from behind, knuckles up, curled round a grip at (cx, cy): four fingers over the top,
+// the thumb wrapped across on the inside, shaded like VS's painted hands. L is the hero look from
+// heroart.js; i picks the glove (Tina). The forearm comes from arm(), drawn first.
+function fist(p, cx, cy, L, i, flip = false) {
   const s = L.skin;
-  const t = L.top;
-  const side = (a, w) => (flip ? x + 20 - a - w : x + a);
-  // Forearm and sleeve down to the bottom of the sprite (angled weapons draw their own with arm()).
-  const armTop = noArm ? p.h : y + 13;
-  const armH = p.h - armTop;
-  const sleeveTop = i === 1 ? p.h : i === 3 ? armTop + 9 : armTop + 2;
-  if (!noArm) {
-  p.rect(x - 1, armTop, 22, armH, s.base);
-  p.rect(side(0, 3), armTop, 3, armH, s.light);
-  p.rect(side(16, 5), armTop, 5, armH, s.dark);
-  if (i === 1) {
-    // Marcus: bare forearm, terry wristband with two stripes.
-    p.rect(x - 1, armTop + 1, 22, 6, PAL.white).rect(x - 1, armTop + 2, 22, 1, PAL.tangerine).rect(x - 1, armTop + 5, 22, 1, PAL.tangerine);
-    p.rect(side(17, 4), armTop + 1, 4, 6, '#c8c8d0');
-    p.px(side(10, 1), armTop + 12, s.deep).px(side(12, 1), armTop + 16, s.deep);
-  } else {
-    const w = 24 + (i === 0 ? 2 : 0);
-    const sx = x - 2 - (i === 0 ? 1 : 0);
-    p.rect(sx, sleeveTop, w, p.h - sleeveTop, t.base);
-    p.rect(flip ? sx + w - 4 : sx, sleeveTop, 4, p.h - sleeveTop, t.light);
-    p.rect(flip ? sx : sx + w - 6, sleeveTop, 6, p.h - sleeveTop, t.dark);
-    p.rect(sx, sleeveTop, w, 2, t.dark).rect(sx, sleeveTop + 2, w, 1, t.deep);
-    if (i === 0) {
-      // Tina: windbreaker cuff with a pink stripe.
-      p.rect(sx, sleeveTop + 7, w, 3, PAL.pink).rect(sx, sleeveTop + 10, w, 1, PAL.white);
-      p.rect(sx, sleeveTop, w, 2, '#20202a');
-    }
-    if (i === 2) {
-      // Dot: chunky knit cuff.
-      for (let k = sx; k < sx + w; k += 2) p.rect(k, sleeveTop, 1, 6, t.light);
-      p.rect(sx, sleeveTop + 6, w, 1, t.deep);
-    }
-    if (i === 3) {
-      // Gus: rolled plaid flannel.
-      for (let yy = sleeveTop + 3; yy < p.h; yy++) {
-        for (let k = sx + 1; k < sx + w - 1; k++) {
-          if ((k - sx) % 5 === 2 || (yy - sleeveTop) % 5 === 3) p.px(k, yy, t.dark);
-          if ((k - sx) % 5 === 2 && (yy - sleeveTop) % 5 === 3) p.px(k, yy, t.deep);
-        }
-      }
-      p.rect(sx, sleeveTop, w, 3, t.light).rect(sx, sleeveTop + 3, w, 1, t.deep);
-    }
-    if (i === 4) {
-      // Kev: track sleeve with two white stripes.
-      const k = flip ? sx + 3 : sx + w - 9;
-      p.rect(k, sleeveTop + 3, 2, p.h - sleeveTop, PAL.white).rect(k + 4, sleeveTop + 3, 2, p.h - sleeveTop, PAL.white);
-      p.rect(sx, sleeveTop, w, 3, '#20202a');
-    }
-  }
-  }
-  // Back of the hand.
-  p.oval(x + 10, y + 9, 11, 7, s.base);
-  p.oval(flip ? x + 13 : x + 7, y + 8, 6, 4, s.light);
-  p.oval(x + 10, y + 10, 10, 5, s.base);
-  p.rect(side(15, 6), y + 6, 6, 9, s.dark);
-  p.rect(x + 2, y + 15, 17, 1, s.dark);
-  // Tendons.
-  for (let k = 0; k < 3; k++) p.rect(x + 5 + k * 5, y + 9, 1, 4, s.light);
-  // Four curled fingers with knuckles catching the light.
+  const f = new Pix(32, 26);
+  // Back of the hand, lit from the top left, falling off into shadow on the far side.
+  f.oval(17, 16, 13, 8, s.dark);
+  f.oval(16, 15, 12, 7, s.base);
+  f.oval(12, 13, 7, 4, s.light);
+  f.rect(9, 12, 4, 1, s.hi);
+  f.rect(6, 23, 22, 1, s.deep).rect(26, 13, 3, 9, s.dark);
+  // Tendons running up to the knuckles.
+  for (let k = 0; k < 3; k++) f.rect(11 + k * 5, 15, 1, 4, s.light).px(12 + k * 5, 16, s.dark);
+  // Four curled fingers, the index highest, the little finger tucked lower and smaller.
+  const top = [2, 1, 2, 4];
   for (let k = 0; k < 4; k++) {
-    const fx = x + 1 + k * 5;
-    p.rect(fx, y + 1, 5, 6, s.base);
-    p.rect(fx, y + 1, 4, 1, s.light).px(fx + 1, y + 2, s.hi);
-    p.rect(fx + 4, y + 2, 1, 5, s.dark);
-    p.rect(fx, y + 6, 5, 1, s.dark);
+    const fx = 6 + k * 6;
+    const fy = top[k];
+    const w = k === 3 ? 5 : 6;
+    f.oval(fx + 3, fy + 3, 3, 3, s.base).rect(fx, fy + 3, w, 7 - (k === 3 ? 1 : 0), s.base);
+    f.rect(fx + 1, fy, w - 3, 1, s.light).rect(fx, fy + 1, 2, 3, s.light).px(fx + 1, fy + 1, s.hi);
+    f.rect(fx + w - 1, fy + 1, 1, 9, s.dark).px(fx + w - 1, fy + 3, s.deep);
+    // The middle knuckle catches the light, the fold under it goes dark.
+    f.rect(fx + 1, fy + 5, 3, 1, s.light).rect(fx, fy + 8, w - 1, 1, s.dark);
   }
+  // Knuckle ridge where the fingers meet the back of the hand.
+  for (let k = 0; k < 4; k++) f.rect(7 + k * 6, 12, 3, 1, s.light).px(8 + k * 6, 11, s.hi);
   if (i === 0) {
     // Fingerless gloves: dark back of hand, bare fingers.
-    p.oval(x + 10, y + 10, 10, 5, '#20202a');
-    p.rect(x + 1, y + 6, 20, 2, '#20202a');
-    p.rect(x + 4, y + 9, 12, 1, '#3a3a4a').px(x + 10, y + 11, PAL.pink).px(x + 11, y + 11, PAL.cyan);
+    f.oval(16, 16, 12, 7, '#20202a').oval(13, 14, 7, 4, '#2e2e3a');
+    f.rect(6, 11, 23, 2, '#20202a').rect(10, 13, 12, 1, '#3a3a4a');
+    f.px(16, 17, PAL.pink).px(17, 17, PAL.cyan);
   }
-  // Thumb wrapping over the grip on the inside.
-  const tx = flip ? x + 17 : x - 3;
-  p.rect(tx, y + 4, 6, 8, s.base);
-  p.rect(tx, y + 4, 6, 1, s.light).rect(flip ? tx : tx + 5, y + 5, 1, 7, s.dark);
-  p.rect(flip ? tx + 1 : tx, y + 4, 2, 2, s.hi);
+  // Thumb wrapped over the grip on the inside, nail toward the index finger.
+  f.oval(4, 10, 4, 5, s.dark);
+  f.oval(4, 9, 3, 5, s.base);
+  f.rect(1, 6, 2, 6, s.light).px(2, 6, s.hi);
+  f.rect(5, 5, 3, 3, s.light).px(6, 5, s.hi).rect(5, 8, 3, 1, s.dark);
+  f.rect(7, 6, 1, 9, s.deep);
+  const x = Math.round(cx) - 16;
+  const y = Math.round(cy) - 12;
+  if (!flip) return p.draw(f, x, y);
+  p.g.save();
+  p.g.translate(x + 32, y);
+  p.g.scale(-1, 1);
+  p.g.drawImage(f.c, 0, 0);
+  p.g.restore();
+  return p;
+}
+
+// Cutouts: drop stray single pixels and fill pinholes, then ink the silhouette.
+function ink(p) {
+  const img = p.g.getImageData(0, 0, p.w, p.h);
+  const d = img.data;
+  const on = (x, y) => x >= 0 && y >= 0 && x < p.w && y < p.h && d[(y * p.w + x) * 4 + 3] > 0;
+  for (let y = 0; y < p.h; y++) {
+    for (let x = 0; x < p.w; x++) {
+      const n = on(x - 1, y) + on(x + 1, y) + on(x, y - 1) + on(x, y + 1);
+      const o = (y * p.w + x) * 4;
+      if (d[o + 3] > 0 && n <= 1) d[o + 3] = 0;
+      else if (!d[o + 3] && n >= 3) {
+        const q = on(x - 1, y) ? o - 4 : o + 4;
+        for (let c = 0; c < 4; c++) d[o + c] = d[q + c];
+        if (!d[o + 3]) d[o + 3] = 255;
+      }
+    }
+  }
+  p.g.putImageData(img, 0, 0);
+  return p.outline(PAL.ink);
 }
 
 // A forearm reaching in at an angle, from the wrist at w toward the edge of the screen along dir,
@@ -125,8 +114,8 @@ function arm(p, w, dir, L, i) {
   if (i === 2) stripe = (q, v) => (q < 0.1 && Math.floor((v + 1) * 6) % 2 ? ramp(t.light) : null);
   if (i === 3) stripe = (q, v) => (q < 0.07 ? ramp(t.light) : Math.floor(q * 22) % 4 === 0 || Math.floor((v + 1) * 5) % 3 === 0 ? ramp(t.dark) : null);
   if (i === 4) stripe = (q, v) => (q < 0.07 ? dark : v > 0.2 && v < 0.34 || v > 0.46 && v < 0.6 ? white : null);
-  R.tube(-0.05, 0.14, 0, 8, 9, sk);
-  R.tube(0.1, 1.3, 0, 11, 14, sleeve, { stripe, noEdge: true });
+  R.tube(-0.05, 0.14, 0, 10, 11, sk);
+  R.tube(0.1, 1.3, 0, 13, 16, sleeve, { stripe, noEdge: true });
   R.render(p);
 }
 
@@ -231,13 +220,13 @@ function floppyHand(L, hi, tier) {
   const e = new Pix(96, 110);
   const w = { x: 50, y: 58 };
   arm(e, w, { x: 30, y: 70 }, L, hi);
-  fist(e, w.x - 10, w.y - 14, L, hi, false, true);
-  e.outline(PAL.ink);
+  fist(e, w.x, w.y - 7, L, hi);
+  ink(e);
   const p = new Pix(96, 110);
   const [col, label] = DISKS[0];
   if (tier) tilted(p, cdTex(0), { x: 20, y: 12 }, { x: 36, y: -9 }, { x: 11, y: 36 }, 1);
   else tilted(p, floppyTex(col, label, 1), { x: 22, y: 14 }, { x: 34, y: -9 }, { x: 11, y: 34 }, 2);
-  p.outline(PAL.ink);
+  ink(p);
   p.draw(e, 0, 0);
   return { full: p, empty: e };
 }
@@ -253,10 +242,10 @@ function floppyStack(L, hi, tier, n = 4) {
     const tx = tier ? caseTex(col, label, i) : floppyTex(col, label, i);
     tilted(stack, tx, { x: 10, y: 34 - i * 4 }, { x: 44, y: -7 }, { x: 16, y: tier ? 12 : 13 }, 3);
   }
-  stack.outline(PAL.ink);
+  ink(stack);
   p.draw(stack, 0, 0);
-  fist(p, w.x - 10, w.y - 12, L, hi, true, true);
-  p.outline(PAL.ink);
+  fist(p, w.x, w.y - 5, L, hi, true);
+  ink(p);
   return p;
 }
 
@@ -279,6 +268,8 @@ function launcher(L, hi) {
     });
     R.tube(0, 0.03, 0, 18, 18, ramp('#9a6a3a'));
     R.tube(0.66, 0.74, 20, 1.6, 1.6, ramp('#3a2a1a'), { x: 4 });
+    // A broom handle taped along the right side for a grip.
+    R.tube(0.4, 0.95, -2, 3.2, 3.6, ramp('#c08a50'), { x: 22, stripe: (t) => ((t > 0.06 && t < 0.16) || (t > 0.84 && t < 0.94) ? ramp('#8a8a96') : null) });
     if (loaded) {
       // The rocket sits in the mouth of the tube, nose toward the crosshair.
       R.tube(-0.1, 0.03, 0, 7, 8, red, { stripe: (t) => (t > 0.45 && t < 0.62 ? ramp(PAL.cream) : null) });
@@ -289,10 +280,10 @@ function launcher(L, hi) {
     const boom = new Pix(21, 7);
     micro(boom, 'BOOM', 2, 1, PAL.strawberryDark);
     p.draw(boom, Math.round(lb.x - 10), Math.round(lb.y - 3));
-    const h = R.at(0.86, -4, 26);
-    arm(p, { x: h.x + 4, y: h.y + 10 }, { x: 30, y: 64 }, L, hi);
-    fist(p, Math.round(h.x - 10), Math.round(h.y - 6), L, hi, false, true);
-    p.outline(PAL.ink);
+    const h = R.at(0.68, -2, 22);
+    arm(p, { x: h.x + 2, y: h.y + 8 }, { x: 30, y: 64 }, L, hi);
+    fist(p, h.x, h.y + 1, L, hi);
+    ink(p);
     return p;
   };
   return { loaded: make(true), empty: make(false) };
@@ -326,28 +317,42 @@ function romanCandle(L, hi, flip) {
   p.draw(tag, Math.round(lb.x - 8), Math.round(lb.y - 3));
   const h = R.at(0.38, 0, 0);
   arm(p, { x: h.x + (flip ? -2 : 2), y: h.y + 10 }, { x: flip ? -26 : 26, y: 70 }, L, hi);
-  fist(p, Math.round(h.x - 10), Math.round(h.y - 7), L, hi, flip, true);
-  p.outline(PAL.ink);
+  fist(p, h.x, h.y, L, hi, flip);
+  ink(p);
   return p;
 }
 
-// Gus steers the pogo stick and Kev the scooter with their free hand: a handlebar across
-// the lower screen, the stem dropping out of view, the grip in their fist.
-function handlebar(L, hi, grip, ribbed) {
-  const p = new Pix(150, 80);
+// Gus steers the pogo stick and Kev the scooter with their free hand: a T-bar across the lower
+// screen, the stem dropping out of view in the middle, the left grip in their fist and the right one
+// free under the weapon hand. The pogo's pole is painted, the scooter's is chrome with a clamp.
+function handlebar(L, hi, grip, pogo) {
+  const p = new Pix(W, 72);
   const r = ramp(grip);
-  // Stem and clamp.
-  for (let x = 128; x < 140; x++) p.rect(x, 24, 1, 56, x < 130 ? PAL.steelDark : x < 132 ? PAL.steelLight : x < 137 ? PAL.steel : PAL.steelDark);
-  p.rect(126, 22, 16, 8, '#2a2a30').rect(126, 22, 16, 1, '#5a5a66').rect(127, 25, 2, 2, PAL.steel);
-  // The bar, rising slightly toward the stem.
-  for (let k = 0; k < 6; k++) p.line(22, 30 + k, 134, 22 + k, k < 1 ? PAL.steelLight : k < 2 ? PAL.white : k < 4 ? PAL.steel : PAL.steelDark);
-  // Grip under the fist, with an end cap poking out.
-  for (let y = 22; y < 37; y++) cyl(p, 20, y, 28, r);
-  if (ribbed) for (let y = 23; y < 37; y += 3) p.rect(7, y, 26, 1, r.deep);
-  else for (let x = 8; x < 33; x += 3) p.rect(x, 22, 1, 15, r.dark);
-  p.rect(5, 22, 3, 15, '#2a2a30').px(5, 22, '#5a5a66');
-  fist(p, 10, 20, L, hi, true);
-  p.outline(PAL.ink);
+  const st = ramp(PAL.steel);
+  const c = W / 2;
+  // Stem.
+  for (let y = 36; y < 72; y++) cyl(p, c, y, pogo ? 16 : 11, pogo ? r : st);
+  // The bar, a chrome tube lit from above.
+  const bar = ['light', 'hi', 'light', 'base', 'base', 'dark', 'dark', 'deep'];
+  bar.forEach((k, j) => p.rect(70, 36 + j, W - 140, 1, st[k]));
+  // Clamp where the bar meets the stem.
+  const cl = ramp(pogo ? PAL.steel : '#34343f');
+  for (let y = 28; y < 44; y++) cyl(p, c, y, pogo ? 22 : 17, cl);
+  p.rect(c - 10, 28, 20, 1, cl.hi).rect(c - 10, 43, 20, 1, cl.deep);
+  if (!pogo) p.rect(c + 9, 35, 7, 3, PAL.lime).rect(c + 9, 37, 7, 1, ramp(PAL.lime).dark);
+  // Grips, ribbed foam on the pogo, flanged rubber on the scooter, with end caps.
+  const rows = ['light', 'hi', 'light', 'base', 'base', 'base', 'dark', 'dark', 'dark', 'deep', 'deep'];
+  for (const [x0, x1] of [[40, 72], [W - 72, W - 40]]) {
+    rows.forEach((k, j) => p.rect(x0, 35 + j, x1 - x0, 1, r[k]));
+    for (let x = x0 + 4; x < x1 - 3; x += 3) p.rect(x, 36, 1, 10, pogo ? r.deep : r.dark);
+    const cap = x0 < c ? x0 - 3 : x1;
+    p.rect(cap, 35, 3, 11, '#2a2a30').rect(cap, 35, 3, 1, '#5a5a66');
+    const fl = x0 < c ? x1 - 2 : x0;
+    if (!pogo) p.rect(fl, 33, 2, 15, r.dark).rect(fl, 33, 2, 1, r.light);
+  }
+  arm(p, { x: 58, y: 48 }, { x: -18, y: 60 }, L, hi);
+  fist(p, 58, 42, L, hi, true);
+  ink(p);
   return p;
 }
 
@@ -365,12 +370,12 @@ function laserPen(L, hi) {
     stripe: (t) => (t > 0.55 && t < 0.95 && Math.floor(t * 50) % 2 === 0 ? knurl : t > 0.08 && t < 0.11 ? ramp(PAL.lime) : null),
   });
   R.box(0.18, 0.5, 9, 2.4, 2.8, chrome, { shade: 'chrome', x: -7 });
-  R.tube(0.36, 0.44, 10, 3.5, 3.5, ramp(PAL.strawberry), { round: true });
+  R.tube(0.42, 0.5, 10, 3.5, 3.5, ramp(PAL.strawberry), { round: true });
   const p = R.render();
-  const h = R.at(0.74, 0, 2);
+  const h = R.at(0.62, 0, 2);
   arm(p, { x: h.x + 2, y: h.y + 10 }, { x: 20, y: 70 }, L, hi);
-  fist(p, Math.round(h.x - 10), Math.round(h.y - 7), L, hi, false, true);
-  p.outline(PAL.ink);
+  fist(p, h.x, h.y, L, hi);
+  ink(p);
   return p;
 }
 
@@ -388,15 +393,15 @@ function laserTag(L, hi) {
   R.tube(0.27, 0.42, 12, 6, 7, ramp(PAL.tangerine), { shade: 'glass', round: true, cap: 0.9 });
   R.box(0.48, 0.62, 11, 4, 5, ramp('#2a2a34'), { shade: 'top' });
   const p = R.render();
-  const lb = R.at(0.47, 1, 0);
-  const d = new Pix(31, 7);
-  d.rect(0, 0, 31, 7, '#20202a');
+  const lb = R.at(0.4, 1, 0);
+  const d = new Pix(39, 7);
+  d.rect(0, 0, 39, 7, '#20202a');
   micro(d, 'LASER TAG', 2, 1, PAL.lime);
-  p.draw(d, Math.round(lb.x - 15), Math.round(lb.y - 3));
-  const h = R.at(0.56, -2, 4);
+  p.draw(d, Math.round(lb.x - 19), Math.round(lb.y - 3));
+  const h = R.at(0.66, -2, 4);
   arm(p, { x: h.x + 2, y: h.y + 10 }, { x: 20, y: 70 }, L, hi);
-  fist(p, Math.round(h.x - 10), Math.round(h.y - 7), L, hi, false, true);
-  p.outline(PAL.ink);
+  fist(p, h.x, h.y, L, hi);
+  ink(p);
   return p;
 }
 
@@ -490,10 +495,10 @@ function meleeArt(L, hi, kind) {
   if (kind === 'bat') batArt(item);
   if (kind === 'keyboard') keyboardArt(item);
   if (kind === 'bottle') bottleArt(item);
-  item.outline(PAL.ink);
+  ink(item);
   p.draw(item, 0, 0);
-  fist(p, PIVOT.x - 10, PIVOT.y - 8, L, hi, false, true);
-  p.outline(PAL.ink);
+  fist(p, PIVOT.x, PIVOT.y - 1, L, hi);
+  ink(p);
   return p;
 }
 
@@ -502,8 +507,8 @@ function shoveArt(L, hi) {
   const p = new Pix(96, 110);
   const w = { x: 46, y: 42 };
   arm(p, w, { x: -26, y: 70 }, L, hi);
-  fist(p, w.x - 10, w.y - 14, L, hi, true, true);
-  p.outline(PAL.ink);
+  fist(p, w.x, w.y - 7, L, hi, true);
+  ink(p);
   return p;
 }
 
@@ -637,12 +642,12 @@ export class WeaponView {
     } else if (G.kind === 'rocket') {
       const loaded = P.fireCd <= 0.05 && (P.ammo > 0 || P.zipT > 0) && !(P.reloadT > 0);
       const tube = loaded ? a.tube.loaded : a.tube.empty;
-      d(a.grip, 20, base - 62);
+      d(a.grip, 0, base - 66);
       d(tube, MUZZLE.rocket.x - TUBE.a.x, MUZZLE.rocket.y - TUBE.a.y + kick * 2);
       if (P.fireAnim > (sim.mode === 'client' ? 0 : 0.1)) flame(g, Math.round(MUZZLE.rocket.x + bx), Math.round(MUZZLE.rocket.y + kick * 2 + by), 1, [PAL.tangerine, PAL.gold, PAL.cream]);
     } else if (G.kind === 'laser') {
       const A = tier ? TAG.a : PEN.a;
-      d(a.bar, 20, base - 60);
+      d(a.bar, 0, base - 66);
       d(a.gun, MUZZLE.laser.x - A.x, MUZZLE.laser.y - A.y + kick);
       if (sim.laser || P.fireAnim > 0) {
         const lx = Math.round(MUZZLE.laser.x - 2 + bx);

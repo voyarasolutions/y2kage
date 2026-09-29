@@ -12,7 +12,7 @@ export const MUZZLE = {
   floppy: { x: 298, y: 128 },
   yoyo: [{ x: 70, y: 150 }, { x: 314, y: 150 }],
   // Gus's dual Roman candles (the rocket upgrade): left and right fists.
-  candle: [{ x: 134, y: 124 }, { x: 250, y: 124 }],
+  candle: [{ x: 134, y: 100 }, { x: 250, y: 100 }],
 };
 
 // Must match the camera in world.js.

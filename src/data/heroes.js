@@ -28,7 +28,7 @@ export const HEROES = [
     stats: { speed: 4, power: 3, range: 3 },
     move: { type: 'board', accel: 9, max: 5.2, friction: 0.55, strafe: 0.35, jump: 5.6, boost: 3.4, boostCd: 1.4 },
     gun: { kind: 'yoyo', every: 0.2, dmg: 18, speed: 15, range: 6.5, knock: 0.8 },
-    gun2: { name: 'X-Brain Yo-yos', desc: 'See-through, faster, longer reach', every: 0.16, dmg: 26, speed: 18, range: 8.5, knock: 1 },
+    gun2: { name: 'Pro Yo-yos', desc: 'Metal-rimmed, faster, longer reach', every: 0.16, dmg: 26, speed: 18, range: 8.5, knock: 1 },
     special: { name: 'AROUND THE WORLD', desc: 'Both yo-yos orbit you for 6 seconds, shredding anything close.', color: '#ff5fa2' },
   },
   {

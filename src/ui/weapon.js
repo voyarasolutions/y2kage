@@ -1,6 +1,6 @@
 // First-person weapons, drawn as pixel-art sprites over the 3D view the way the 16-bit shooters did:
 // flat painted parts, a Rig for the tubes, and the hero's own fist and sleeve. Each weapon has a
-// second tier bought in the Upgrade Shop (CPS 2500, X-Brains, CDs, Roman candles, laser tag gun).
+// second tier bought in the Upgrade Shop (CPS 2500, Pro Yo-yos, CDs, Roman candles, laser tag gun).
 // Tina's Soakers are VS's own painted sprites (gfx/art/soakers.js).
 import { Pix, micro } from '../gfx/pix.js';
 import { Rig, texture, skew } from '../gfx/model.js';
@@ -11,14 +11,15 @@ import { LOOKS, ramp } from '../gfx/heroart.js';
 import { PAL, FLAVOURS } from '../core/palette.js';
 import { MELEE } from '../data/melee.js';
 import * as SOAKER_ART from '../gfx/art/soakers.js';
+import * as YOYO_ART from '../gfx/art/yoyos.js';
 
 // VS's painted Soaker sprites (see gfx/art/soakers.js), and where each one's nozzle sits in it.
 const IMG = {};
-for (const k in SOAKER_ART) {
+for (const [k, src] of Object.entries({ ...SOAKER_ART, ...YOYO_ART })) {
   IMG[k] = new Image();
-  IMG[k].src = SOAKER_ART[k];
+  IMG[k].src = src;
 }
-const NOZZLE = { green: { x: 29, y: 31 }, cps: { x: 150, y: 43 } };
+const NOZZLE = { green: { x: 36, y: 10 }, cps: { x: 150, y: 43 } };
 // The pump strokes were painted a little further back, so they drop to line their nozzle up.
 const DROP = { cpsPumpA: 19, cpsPumpB: 19 };
 import { W, H } from '../core/util.js';
@@ -138,90 +139,6 @@ function cyl(p, cx, y, w, r) {
   p.px(x0 + Math.round(w * 0.24), y, r.hi);
   p.rect(x0 + Math.round(w * 0.66), y, Math.ceil(w * 0.34), 1, r.dark);
   p.rect(x0 + w - Math.max(1, Math.round(w * 0.1)), y, Math.max(1, Math.round(w * 0.1)), 1, r.deep);
-}
-
-// Marcus's yo-yos, turned a little toward you so you see the rim, the gap between the halves, the
-// shiny hub and a sticker that spins. Four frames of spin.
-function yoyoArt(col, rim, f) {
-  const p = new Pix(38, 40);
-  const c = ramp(col);
-  const cx = 17;
-  const cy = 19;
-  // Back half and the gap.
-  p.oval(cx + 5, cy, 13, 17, c.deep).oval(cx + 4, cy, 13, 17, c.dark);
-  p.oval(cx + 3, cy, 12, 16, '#1a1030');
-  // Front half: rim, dished face, inner ring, chrome hub.
-  p.oval(cx, cy, 13, 17, rim);
-  p.oval(cx - 1, cy, 12, 16, c.base);
-  p.oval(cx - 2, cy - 1, 10, 13, c.light);
-  p.oval(cx - 1, cy, 9, 12, c.base);
-  p.oval(cx - 1, cy, 7, 9, c.dark);
-  p.oval(cx - 1, cy, 6, 8, c.base);
-  // Sticker: a four-point star that turns with the spin.
-  const ang = (f / 4) * Math.PI * 0.5;
-  for (let k = 0; k < 4; k++) {
-    const a = ang + (k * Math.PI) / 2;
-    for (let r = 1; r < 7; r++) p.px(Math.round(cx - 1 + Math.cos(a) * r * 0.75), Math.round(cy + Math.sin(a) * r), k % 2 ? PAL.gold : PAL.white);
-  }
-  p.oval(cx - 1, cy, 2, 3, PAL.steel).px(cx - 2, cy - 1, PAL.white).px(cx, cy + 2, PAL.steelDark);
-  // Gloss along the upper-left of the rim.
-  p.px(cx - 9, cy - 9, PAL.white).px(cx - 8, cy - 11, PAL.white).px(cx - 10, cy - 7, PAL.white).px(cx - 11, cy - 4, c.hi).px(cx - 6, cy - 13, c.hi).px(cx - 11, cy - 2, c.hi);
-  p.outline(PAL.ink);
-  return p;
-}
-
-// The X-Brain: the same yo-yo in see-through plastic, so you can watch the steel clutch (the
-// "brain") and the bearing spin inside it. Four frames of spin.
-function xbrainArt(col, f) {
-  const c = ramp(col);
-  const cx = 17;
-  const cy = 19;
-  // The plastic, painted solid and then laid down at part strength so the hand shows through.
-  const shell = new Pix(38, 40);
-  shell.oval(cx + 5, cy, 13, 17, c.dark).oval(cx + 3, cy, 12, 16, c.deep);
-  shell.oval(cx, cy, 13, 17, c.base).oval(cx - 1, cy, 12, 16, c.light).oval(cx - 1, cy, 9, 12, c.base);
-  const p = new Pix(38, 40);
-  p.g.globalAlpha = 0.62;
-  p.draw(shell, 0, 0);
-  p.g.globalAlpha = 1;
-  // The brain: two steel clutch arms hugging a bearing, turning with the spin.
-  const ang = (f / 4) * Math.PI;
-  for (let k = 0; k < 2; k++) {
-    const a = ang + k * Math.PI;
-    for (let r = 2; r < 8; r++) {
-      const b = a + r * 0.12;
-      const x = Math.round(cx - 1 + Math.cos(b) * r * 0.75);
-      const y = Math.round(cy + Math.sin(b) * r);
-      p.px(x, y, r % 3 ? PAL.steelLight : PAL.steel).px(x + 1, y, PAL.steelDark);
-    }
-    p.px(Math.round(cx - 1 + Math.cos(a + 1) * 5.4), Math.round(cy + Math.sin(a + 1) * 7.5), PAL.red);
-  }
-  p.oval(cx - 1, cy, 3, 4, PAL.steelDark).oval(cx - 1, cy, 2, 3, PAL.steelLight).px(cx - 1, cy, PAL.ink);
-  // Rim edges and gloss stay crisp.
-  for (let a = 0; a < Math.PI * 2; a += 0.08) p.px(Math.round(cx + Math.cos(a) * 13), Math.round(cy + Math.sin(a) * 17), a > 2.2 && a < 4.4 ? c.hi : c.dark);
-  p.px(cx - 9, cy - 9, PAL.white).px(cx - 8, cy - 11, PAL.white).px(cx - 10, cy - 7, PAL.white).px(cx - 11, cy - 4, PAL.white).px(cx - 6, cy - 13, PAL.white);
-  p.outline(c.deep);
-  return p;
-}
-
-// A yo-yo hanging from a fist, the forearm angling in from the bottom corner of the screen.
-// flip is the left hand: its fist sits on the right of the sprite and the arm runs off to the left.
-function yoyoHand(L, hi, flip, col, rim, tier) {
-  const p = new Pix(96, 110);
-  const fx = flip ? 63 : 11;
-  const w = { x: fx + 10, y: 54 };
-  arm(p, w, { x: flip ? -30 : 30, y: 64 }, L, hi);
-  fist(p, fx, 40, L, hi, flip, true);
-  p.outline(PAL.ink);
-  const frames = [0, 1, 2, 3].map((f) => {
-    const yo = new Pix(96, 110);
-    yo.draw(p, 0, 0);
-    yo.draw(tier ? xbrainArt(col, f) : yoyoArt(col, rim, f), fx - 6, 2);
-    // String looped over the middle finger, running up to the axle.
-    yo.rect(fx + 10, 22, 1, 19, PAL.cream).px(fx + 11, 40, PAL.cream).px(fx + 9, 41, PAL.cream);
-    return yo;
-  });
-  return { empty: p, frames };
 }
 
 // Dot's floppies: a real 3.5" disk, drawn flat once and then tilted into her hand.
@@ -602,9 +519,7 @@ export class WeaponView {
     const fl = heroIdx;
     let a;
     if (kind === 'soaker') a = {};
-    if (kind === 'yoyo') a = tier
-      ? { l: yoyoHand(L, fl, true, '#9fd8ff', null, 1), r: yoyoHand(L, fl, false, '#ff8fc4', null, 1) }
-      : { l: yoyoHand(L, fl, true, PAL.pink, PAL.strawberryDark, 0), r: yoyoHand(L, fl, false, PAL.cyan, PAL.cyanDark, 0) };
+    if (kind === 'yoyo') a = {};
     if (kind === 'floppy') a = { r: floppyHand(L, fl, tier), ls: [0, 1, 2, 3, 4].map((n) => floppyStack(L, fl, tier, n)) };
     if (kind === 'rocket') a = tier ? { l: romanCandle(L, fl, true), r: romanCandle(L, fl, false) } : { tube: launcher(L, fl), grip: handlebar(L, fl, PAL.strawberry, true) };
     if (kind === 'laser') a = { gun: tier ? laserTag(L, fl) : laserPen(L, fl), bar: handlebar(L, fl, PAL.lime, false) };
@@ -692,11 +607,13 @@ export class WeaponView {
       }
     } else if (G.kind === 'yoyo') {
       const out = new Set(sim.projs.filter((p) => p.kind === 'yoyo' && p.o === sim.local && !p.orbit).map((p) => p.hand));
-      const f = Math.floor(t * 10) & 3;
-      const L = out.has(0) ? a.l.empty : a.l.frames[f];
-      const R = out.has(1) ? a.r.empty : a.r.frames[(f + 2) & 3];
-      d(L, 0, base - 84 + (out.has(0) ? -6 : 0));
-      d(R, W - 96, base - 84 + (out.has(1) ? -6 : 0));
+      // VS's painted hands: holding the yo-yo, or empty with the string out while it's thrown.
+      const pre = tier ? 'xb' : 'yo';
+      const L = IMG[pre + (out.has(0) ? 'LOut' : 'LHeld')];
+      const R = IMG[pre + (out.has(1) ? 'ROut' : 'RHeld')];
+      const bob = (k) => Math.round(Math.sin(t * 5 + k * 2) * 1.5);
+      if (L.complete && L.naturalWidth) d(L, 22, H - 6 - L.naturalHeight + (out.has(0) ? -6 : bob(0)));
+      if (R.complete && R.naturalWidth) d(R, W - 22 - R.naturalWidth, H - 6 - R.naturalHeight + (out.has(1) ? -6 : bob(1)));
     } else if (G.kind === 'floppy') {
       const throwing = P.fireAnim > 0;
       const dry = P.ammo <= 0 && P.zipT <= 0;

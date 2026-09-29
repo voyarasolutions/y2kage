@@ -5,12 +5,12 @@ import { W, H } from '../core/util.js';
 
 export const MUZZLE = {
   // Tina's green starter Soaker, and the CPS 2500 upgrade held at her right hip.
-  soaker: { x: 190, y: 92 },
-  soaker2: { x: 236, y: 94 },
+  soaker: { x: 226, y: 98 },
+  soaker2: { x: 236, y: 110 },
   rocket: { x: 240, y: 114 },
   laser: { x: 236, y: 128 },
   floppy: { x: 298, y: 128 },
-  yoyo: [{ x: 74, y: 146 }, { x: 310, y: 146 }],
+  yoyo: [{ x: 70, y: 150 }, { x: 314, y: 150 }],
   // Gus's dual Roman candles (the rocket upgrade): left and right fists.
   candle: [{ x: 134, y: 124 }, { x: 250, y: 124 }],
 };

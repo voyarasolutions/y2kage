@@ -467,25 +467,6 @@ function cdIcon(p) {
   p.px(3, 3, PAL.white);
 }
 
-// Marcus's X-Brains in flight: see-through plastic around a steel brain.
-function xbrain(col, spin) {
-  const shell = new Pix(12, 12);
-  shell.oval(6, 6, 5, 5, col);
-  const p = new Pix(12, 12);
-  p.g.globalAlpha = 0.6;
-  p.draw(shell, 0, 0);
-  p.g.globalAlpha = 1;
-  const a = (spin / 4) * Math.PI;
-  for (let k = 0; k < 2; k++) {
-    const b = a + k * Math.PI;
-    p.px(6 + Math.round(Math.cos(b) * 2), 6 + Math.round(Math.sin(b) * 2), PAL.steelLight).px(6 + Math.round(Math.cos(b + 0.5) * 3), 6 + Math.round(Math.sin(b + 0.5) * 3), PAL.steel);
-  }
-  p.rect(5, 5, 2, 2, PAL.steelDark).px(3, 3, PAL.white);
-  p.outline(PAL.ink);
-  return p;
-}
-
-// A Roman candle ball: a hot white core in its colour, with a few sparks.
 function fireball(col, i) {
   const p = new Pix(10, 10);
   p.oval(5, 5, 4, 4, col).oval(5, 5, 2, 2, PAL.cream).px(5, 5, PAL.white);
@@ -788,8 +769,9 @@ export function buildSprites() {
   S.yoyo2 = [0, 1, 2, 3].map((i) => tex(yoyo(PAL.cyan, PAL.cyanDark, i)));
   S.floppy = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => tex(spinningDisk((p) => floppyIcon(p, 0, 0), i)));
   S.cd = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => tex(spinningDisk(cdIcon, i)));
-  S.xbrain = [0, 1, 2, 3].map((i) => tex(xbrain('#9fd8ff', i)));
-  S.xbrain2 = [0, 1, 2, 3].map((i) => tex(xbrain('#ff8fc4', i)));
+  // Marcus's upgrade: orange pro yo-yos (VS's painted hands).
+  S.xbrain = [0, 1, 2, 3].map((i) => tex(yoyo(PAL.tangerine, PAL.tangerineDark, i)));
+  S.xbrain2 = S.xbrain;
   S.fireball = CANDLE_COLS.map((c) => [0, 1].map((i) => tex(fireball(c, i))));
   S.flare = [0, 1].map((i) => tex(rocketFlare(i)));
   S.pickups = { health: tex(cola()), armor: tex(badge()), overclock: tex(chip()), patch: tex(patchDisk()), multi: tex(multiWin()), freeze: tex(toaster(0)), cad: tex(cadKeys()), zip: tex(zipDisk()), bat: tex(batPick()), keyboard: tex(keyboardPick()), bottle: tex(bottlePick()) };

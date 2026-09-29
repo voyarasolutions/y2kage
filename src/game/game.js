@@ -558,6 +558,8 @@ export class Game {
       if (code === 'Space') this.sim.pressJump();
       if (code === 'ShiftLeft' || code === 'ShiftRight') this.sim.pressBoost();
       if ((code === 'KeyR' || code === 'Special') && this.sim.pressSpecial() && addStat('specials') >= 25) this.award('specials');
+      if (code === 'KeyV' || code === 'Melee') this.sim.pressMelee();
+      if (code === 'KeyX' || code === 'Reload') this.sim.pressReload();
       if (code === 'KeyP' || code === 'Escape') this.pause();
       return;
     }
@@ -1256,7 +1258,7 @@ export class Game {
     for (const p of sim.pickups) {
       if (p.t < 3 && Math.floor(p.t * 8) % 2) continue;
       const tex = S.pickups[p.kind];
-      const w = p.kind === 'health' ? 0.22 : p.kind === 'cad' ? 0.4 : 0.3;
+      const w = { health: 0.22, cad: 0.4, bat: 0.62, keyboard: 0.5, bottle: 0.16 }[p.kind] || 0.3;
       const hh = (w * tex.image.height) / tex.image.width;
       W3.sprite(tex, p.x, 0.1 + Math.sin(this.t * 3 + p.ph) * 0.05, p.y, w, hh);
       W3.decal(S.shadow, p.x, p.y, 0.4, 0, 0.3);
@@ -1402,6 +1404,7 @@ export class Game {
     if (m === 'play' || m === 'paused' || m === 'pick') {
       HUD.drawBuffFx(g, sim, this.S, this.t);
       HUD.drawBuffs(g, sim, this.S, this.t);
+      HUD.drawMelee(g, sim, this.S, this.t);
       HUD.drawXpBar(g, sim, this.t);
       HUD.drawSpecial(g, sim, this.t, this.input.touch.on);
       HUD.drawTeam(g, sim, this.S, this.t);

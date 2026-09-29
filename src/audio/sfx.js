@@ -142,6 +142,47 @@ export const sfx = {
   splash() {
     noise(0.08, 2600, 1, 0.07);
   },
+  // Reloading: Dot's box snaps open, Gus drags rockets off his back rack.
+  reload(weapon) {
+    if (weapon === 'floppy') {
+      noise(0.06, 1800, 2, 0.1);
+      tone(700, 0.05, 'square', 0.05, null, 0.08);
+    } else {
+      noise(0.18, 700, 1, 0.12);
+      tone(180, 0.1, 'square', 0.06, 120, 0.1);
+    }
+  },
+  reloaded(weapon) {
+    noise(0.05, weapon === 'floppy' ? 2600 : 1100, 2, 0.14);
+    tone(weapon === 'floppy' ? 1500 : 520, 0.05, 'square', 0.06, null, 0.04);
+  },
+  meleeSwish(kind) {
+    noise(0.14, kind === 'keyboard' ? 2400 : 1400, 0.8, 0.1, 'bandpass');
+  },
+  meleeHit(kind) {
+    if (kind === 'bat') {
+      tone(900, 0.12, 'triangle', 0.14, 500);
+      noise(0.12, 600, 1, 0.35);
+    } else if (kind === 'keyboard') {
+      for (let i = 0; i < 4; i++) tone(2600 + Math.random() * 900, 0.02, 'square', 0.05, null, i * 0.025);
+      noise(0.08, 900, 1.5, 0.25);
+    } else if (kind === 'bottle') {
+      tone(1300, 0.18, 'sine', 0.1, 1100);
+      noise(0.1, 500, 1, 0.3);
+    } else noise(0.08, 400, 1.2, 0.25);
+  },
+  meleeBreak(kind) {
+    if (kind === 'keyboard') for (let i = 0; i < 10; i++) tone(2000 + Math.random() * 1600, 0.03, 'square', 0.04, null, i * 0.03);
+    else if (kind === 'bat') {
+      noise(0.25, 900, 0.8, 0.35);
+      tone(300, 0.2, 'sawtooth', 0.06, 90);
+    }
+  },
+  // The champagne cork going off, then the fizz.
+  pop() {
+    tone(900, 0.06, 'square', 0.15, 300);
+    noise(0.9, 5200, 0.5, 0.12, 'highpass', 0.05);
+  },
   explode() {
     noise(0.7, 400, 0.4, 0.7, 'lowpass');
     tone(90, 0.4, 'square', 0.2, 30);

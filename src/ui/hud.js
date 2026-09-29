@@ -8,6 +8,7 @@ import { text, textWidth, wrap } from '../core/pixelfont.js';
 import { bevel, rect, progress, meter, window98, tooltip, iconError, iconInfo, iconWarn, startFlag } from './win98.js';
 import { clockFor, levelConfig } from '../data/levels.js';
 import { ENEMIES, MINIBOSS } from '../data/levels.js';
+import { MELEE } from '../data/melee.js';
 
 export const TASKBAR_H = 16;
 
@@ -53,15 +54,19 @@ function weaponMeter(g, sim, x, y, S) {
     label = 'X2';
     frac = 1 - sim.projs.filter((p) => p.kind === 'yoyo' && p.o === sim.local && !p.orbit).length / 2;
     col = PAL.pink;
-  } else if (G.kind === 'floppy') {
-    label = 'DISK';
-    frac = 1 - Math.max(0, P.fireCd) / G.every;
-  } else if (G.kind === 'rocket') {
-    label = 'LOAD';
-    frac = 1 - Math.max(0, P.fireCd) / G.every;
-    col = PAL.strawberry;
+  } else if (G.kind === 'floppy' || G.kind === 'rocket') {
+    // Box or rack: one notch per shot left, refilling while you reload.
+    col = G.kind === 'floppy' ? PAL.cyan : PAL.strawberry;
+    if (P.reloadT > 0) {
+      label = 'LOAD';
+      frac = 1 - P.reloadT / (P.reloadMax || G.reload);
+      col = PAL.winShadow;
+    } else frac = P.zipT > 0 ? 1 : P.ammo / G.mag;
   }
-  meter(g, x + 17, y + 3, 30, 7, frac, col);
+  meter(g, x + 17, y + 3, 30, 7, frac, P.zipT > 0 ? PAL.lilac : col);
+  if (G.mag && P.reloadT <= 0 && P.zipT <= 0) {
+    for (let i = 1; i < G.mag; i++) rect(g, x + 17 + Math.round((30 * i) / G.mag), y + 4, 1, 5, '#00000044');
+  }
   let rx = x + 52;
   g.drawImage(S.icons[M.type].c, rx, y - 1);
   rx += 17;
@@ -296,6 +301,7 @@ export const TOUCH = {
   jump: { x: 292, y: 176, r: 13 },
   boost: { x: 352, y: 106, r: 12 },
   special: { x: 290, y: 132, r: 13 },
+  melee: { x: 312, y: 104, r: 11 },
   pause: { x: 372, y: 28, r: 9 },
 };
 
@@ -314,6 +320,7 @@ export function drawTouch(g, input, hero) {
   if (hero.move.type === 'board' || hero.move.type === 'scooter') ring(TOUCH.boost, hero.move.type === 'board' ? 'KICK' : 'DASH', false);
   ring(TOUCH.pause, 'II', false);
   if (input.spReady) ring(TOUCH.special, 'SP!', false);
+  ring(TOUCH.melee, 'HIT', false);
   if (input.touch.mo) {
     const m = input.touch.mo;
     g.fillStyle = '#ffffff22';
@@ -401,14 +408,39 @@ export function drawBuffs(g, sim, S, t) {
   const list = [];
   for (const k of ['patch', 'multi', 'freeze']) if (sim.buffs[k] > 0) list.push([k, sim.buffs[k], { patch: 8, multi: 10, freeze: 7 }[k]]);
   if (sim.player.overclock > 0) list.push(['overclock', sim.player.overclock, 10]);
+  if (sim.player.zipT > 0) list.push(['zip', sim.player.zipT, 6]);
   list.forEach(([k, left, max], i) => {
     if (left < 2 && Math.floor(t * 8) % 2) return;
     const x = 5 + i * 22;
     const icon = S.buffIcons[k];
     g.drawImage(icon.c, x, 17, 16, Math.round((16 * icon.h) / icon.w));
     rect(g, x, 34, 18, 2, PAL.ink);
-    rect(g, x, 34, Math.round(18 * (left / max)), 2, k === 'patch' ? PAL.lime : k === 'freeze' ? PAL.cyan : PAL.tangerine);
+    rect(g, x, 34, Math.round(18 * Math.min(1, left / max)), 2, k === 'patch' ? PAL.lime : k === 'freeze' ? PAL.cyan : k === 'zip' ? PAL.lilac : PAL.tangerine);
   });
+}
+
+// The melee weapon in hand, just above the taskbar on the left, with its swings left;
+// and a RELOAD prompt when the box or rack runs dry.
+export function drawMelee(g, sim, S, t) {
+  const P = sim.player;
+  if (P.down) return;
+  const M = P.melee;
+  const y = H - TASKBAR_H - 30;
+  if (M) {
+    const icon = S.meleeIcons[M.kind];
+    const max = MELEE[M.kind].uses;
+    const ih = Math.min(12, icon.h);
+    const iw = Math.round((ih * icon.w) / icon.h);
+    const label = `${MELEE[M.kind].short} ${M.uses}`;
+    bevel(g, 2, y, iw + textWidth(label, 'small') + 10, 14);
+    g.drawImage(icon.c, 4, y + 1 + Math.round((12 - ih) / 2), iw, ih);
+    const low = M.uses <= Math.max(3, max * 0.2);
+    text(g, label, iw + 7, y + 4, { font: 'small', color: low && Math.floor(t * 4) % 2 ? PAL.red : PAL.ink });
+  }
+  const G = P.hero.gun;
+  if (G.mag && P.reloadT > 0 && P.ammo <= 0) {
+    text(g, 'RELOADING', W / 2, H / 2 + 22, { font: 'small', color: Math.floor(t * 6) % 2 ? PAL.gold : PAL.cream, outline: PAL.ink, align: 'center' });
+  }
 }
 
 export function drawLevelUp(g, sim, t) {

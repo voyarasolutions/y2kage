@@ -8,6 +8,7 @@ import { CANDLE_COLS } from '../data/heroes.js';
 import { sfx } from '../audio/sfx.js';
 import { LOOKS, ramp } from '../gfx/heroart.js';
 import { PAL, FLAVOURS } from '../core/palette.js';
+import { MELEE } from '../data/melee.js';
 import { W, H } from '../core/util.js';
 
 // A fist seen from behind, knuckles up, three-tone shaded, in the hero's own sleeve.
@@ -426,12 +427,13 @@ function floppyHand(L, hi, tier) {
   return { full: p, empty: e };
 }
 
-function floppyStack(L, hi, tier) {
+// The spares in her other hand: n of them (four is a full box).
+function floppyStack(L, hi, tier, n = 4) {
   const p = new Pix(90, 90);
   const w = { x: 36, y: 50 };
   arm(p, w, { x: -24, y: 60 }, L, hi);
   const stack = new Pix(90, 90);
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < n; i++) {
     const [col, label] = tier ? CASES[i] : DISKS[i + 1];
     const tx = tier ? caseTex(col, label, i) : floppyTex(col, label, i);
     tilted(stack, tx, { x: 10, y: 34 - i * 4 }, { x: 44, y: -7 }, { x: 16, y: tier ? 12 : 13 }, 3);
@@ -613,6 +615,83 @@ function flame(g, x, y, s, cols) {
 }
 
 
+// ---------------------------------------------------------------- melee
+// Melee weapons, held upright in the right fist and swung across the screen. Each is drawn standing
+// up with the fist at PIVOT; the swing rotates the whole sprite (arm too) around it.
+const PIVOT = { x: 40, y: 150 };
+
+function batArt(p) {
+  const wood = ramp('#d8a060');
+  const tape = ramp('#2a2a34');
+  for (let y = 8; y < 166; y++) {
+    // Barrel, a long taper, the handle, then the knob.
+    const w = y < 12 ? 10 + (y - 8) * 1.5 : y < 70 ? 16 : y < 118 ? 16 - ((y - 70) / 48) * 9 : y < 160 ? 7 : 11;
+    cyl(p, PIVOT.x, y, Math.round(w), y > 118 && y < 158 ? tape : wood);
+  }
+  // Tape wraps and the burnt-in brand.
+  for (let y = 121; y < 158; y += 5) p.rect(PIVOT.x - 3, y, 7, 1, '#4a4a58');
+  p.rect(PIVOT.x - 4, 40, 7, 16, '#8a5a2a').rect(PIVOT.x - 3, 42, 5, 12, '#6a3a1a');
+  p.rect(PIVOT.x - 2, 44, 1, 8, '#d8a060').rect(PIVOT.x, 44, 1, 8, '#d8a060');
+  // Grain.
+  for (let y = 16; y < 110; y += 7) p.px(PIVOT.x + 3, y, '#b88040').px(PIVOT.x - 5, y + 3, '#b88040');
+}
+
+function keyboardArt(p) {
+  // A beige PS/2 keyboard held by one end like a club, keys facing us, the cable whipping off the top.
+  const x0 = PIVOT.x - 15;
+  p.rect(x0, 14, 30, 150, '#d8d0b0').rect(x0, 14, 2, 150, PAL.white).rect(x0 + 27, 14, 3, 150, '#a09878').rect(x0, 162, 30, 2, '#a09878');
+  for (let r = 0; r < 23; r++) {
+    for (let k = 0; k < 4; k++) {
+      const kx = x0 + 3 + k * 6;
+      const ky = 18 + r * 6;
+      p.rect(kx, ky, 5, 5, '#ece6d0').rect(kx, ky + 4, 5, 1, '#8a8470').rect(kx + 4, ky, 1, 5, '#b0a890');
+    }
+  }
+  // Space bar down the side, and a couple of coloured keys.
+  p.rect(x0 + 3, 40, 3, 40, '#ece6d0').rect(x0 + 5, 40, 1, 40, '#8a8470');
+  p.rect(x0 + 21, 18, 5, 5, PAL.strawberry).rect(x0 + 15, 24, 5, 5, PAL.lime);
+  p.rect(PIVOT.x, 6, 2, 8, '#4a4a58').rect(PIVOT.x + 2, 2, 6, 2, '#4a4a58').rect(PIVOT.x + 7, 0, 2, 3, '#4a4a58');
+}
+
+function bottleArt(p) {
+  // Held by the neck, the heavy end out: a green champagne bottle with a label and gold foil.
+  const glass = ramp('#1e5a32');
+  const foil = ramp(PAL.gold);
+  for (let y = 12; y < 168; y++) {
+    const w = y < 16 ? 18 : y < 92 ? 24 : y < 112 ? 24 - ((y - 92) / 20) * 14 : y < 150 ? 10 : 12;
+    cyl(p, PIVOT.x, y, Math.round(w), y >= 138 ? foil : glass);
+  }
+  p.rect(PIVOT.x - 11, 40, 22, 26, PAL.cream).rect(PIVOT.x - 11, 40, 22, 2, PAL.gold).rect(PIVOT.x - 11, 64, 22, 2, PAL.gold);
+  p.rect(PIVOT.x + 6, 42, 5, 22, '#d8ccb0');
+  micro(p, 'Y2K', PIVOT.x - 7, 46, PAL.strawberryDark);
+  micro(p, '1999', PIVOT.x - 9, 54, PAL.ink);
+  p.rect(PIVOT.x - 6, 18, 2, 60, '#5aa06e');
+}
+
+function meleeArt(L, hi, kind) {
+  const p = new Pix(90, 200);
+  arm(p, { x: PIVOT.x + 2, y: PIVOT.y + 8 }, { x: 34, y: 60 }, L, hi);
+  const item = new Pix(90, 200);
+  if (kind === 'bat') batArt(item);
+  if (kind === 'keyboard') keyboardArt(item);
+  if (kind === 'bottle') bottleArt(item);
+  item.outline(PAL.ink);
+  p.draw(item, 0, 0);
+  fist(p, PIVOT.x - 10, PIVOT.y - 8, L, hi, false, true);
+  p.outline(PAL.ink);
+  return p;
+}
+
+// Empty-handed: a straight-arm shove with the left hand.
+function shoveArt(L, hi) {
+  const p = new Pix(96, 110);
+  const w = { x: 46, y: 42 };
+  arm(p, w, { x: -26, y: 70 }, L, hi);
+  fist(p, w.x - 10, w.y - 14, L, hi, true, true);
+  p.outline(PAL.ink);
+  return p;
+}
+
 export class WeaponView {
   constructor() {
     this.cache = {};
@@ -628,11 +707,44 @@ export class WeaponView {
     if (kind === 'yoyo') a = tier
       ? { l: yoyoHand(L, fl, true, '#9fd8ff', null, 1), r: yoyoHand(L, fl, false, '#ff8fc4', null, 1) }
       : { l: yoyoHand(L, fl, true, PAL.pink, PAL.strawberryDark, 0), r: yoyoHand(L, fl, false, PAL.cyan, PAL.cyanDark, 0) };
-    if (kind === 'floppy') a = { r: floppyHand(L, fl, tier), l: floppyStack(L, fl, tier) };
+    if (kind === 'floppy') a = { r: floppyHand(L, fl, tier), ls: [0, 1, 2, 3, 4].map((n) => floppyStack(L, fl, tier, n)) };
     if (kind === 'rocket') a = tier ? { l: romanCandle(L, fl, true), r: romanCandle(L, fl, false) } : { tube: launcher(L, fl), grip: handlebar(L, fl, PAL.strawberry, true) };
     if (kind === 'laser') a = { gun: tier ? laserTag(L, fl) : laserPen(L, fl), bar: handlebar(L, fl, PAL.lime, false) };
     this.cache[key] = a;
     return a;
+  }
+
+  melee(heroIdx, kind) {
+    const key = `m${heroIdx}${kind}`;
+    return (this.cache[key] ||= kind === 'shove' ? shoveArt(LOOKS[heroIdx], heroIdx) : meleeArt(LOOKS[heroIdx], heroIdx, kind));
+  }
+
+  // The swing: the melee weapon sweeps from the right across to the left, with a smear behind it.
+  drawSwing(g, P, heroIdx, bx, by) {
+    const kind = P.melee?.kind || 'shove';
+    const M = MELEE[kind];
+    const ph = 1 - P.swingT / M.swing;
+    const art = this.melee(heroIdx, kind);
+    if (kind === 'shove') {
+      const k = Math.sin(Math.PI * Math.min(1, ph * 1.2));
+      g.drawImage(art.c, Math.round(W * 0.28 + k * 34 + bx), Math.round(H - 40 - k * 70 + by));
+      return;
+    }
+    const ease = (q) => 1 - (1 - q) * (1 - q);
+    const ang = (q) => 0.7 - 2.1 * ease(Math.min(1, q));
+    const px = W * 0.7 + bx;
+    const py = H - 30 + by - Math.sin(Math.PI * ph) * 20;
+    const put = (a, alpha) => {
+      g.save();
+      g.globalAlpha = alpha;
+      g.translate(Math.round(px), Math.round(py));
+      g.rotate(a);
+      g.drawImage(art.c, -PIVOT.x, -PIVOT.y);
+      g.restore();
+    };
+    put(ang(ph - 0.2), 0.18);
+    put(ang(ph - 0.1), 0.35);
+    put(ang(ph), 1);
   }
 
   draw(g, sim, heroIdx, t) {
@@ -640,8 +752,18 @@ export class WeaponView {
     const G = P.hero.gun;
     const tier = G.tier || 0;
     const a = this.art(heroIdx, G.kind, tier);
-    const { bx, by } = weaponBob(P);
+    let { bx, by } = weaponBob(P);
     const kick = P.fireAnim > 0 ? 3 : 0;
+    // Swinging drops the weapon out of the way; reloading dips it down and back up.
+    const swing = P.swingT > 0;
+    if (swing) {
+      const M = MELEE[P.melee?.kind || 'shove'];
+      by += Math.sin(Math.PI * (1 - P.swingT / M.swing)) * 70;
+    }
+    if (G.mag && P.reloadT > 0) {
+      const q = 1 - P.reloadT / (P.reloadMax || G.reload);
+      by += Math.sin(Math.PI * Math.min(1, Math.max(0, q))) * 30;
+    }
     const base = H - 16;
     const d = (p, x, y) => g.drawImage(p.c || p, Math.round(x + bx), Math.round(y + by));
 
@@ -677,8 +799,10 @@ export class WeaponView {
       d(R, W - 96, base - 84 + (out.has(1) ? -6 : 0));
     } else if (G.kind === 'floppy') {
       const throwing = P.fireAnim > 0;
-      const r = throwing ? a.r.empty : a.r.full;
-      d(a.l, 20, base - 76);
+      const dry = P.ammo <= 0 && P.zipT <= 0;
+      const r = throwing || dry ? a.r.empty : a.r.full;
+      // The spares in her left hand go down as the box empties.
+      d(a.ls[P.zipT > 0 ? 4 : Math.ceil((4 * Math.max(0, P.ammo - 1)) / Math.max(1, G.mag - 1))], 20, base - 76);
       d(r, W - 128 + (throwing ? -14 : 0), base - 92 + (throwing ? -12 : 0) + (P.fireCd > 0.05 && !throwing ? 12 : 0));
     } else if (G.kind === 'rocket' && tier) {
       // The candle that just fired kicks back; the other waits its turn.
@@ -694,7 +818,7 @@ export class WeaponView {
         flame(g, Math.round(m.x + bx), Math.round(m.y + kk(fired) + by), 0.6, [c, PAL.gold, PAL.white]);
       }
     } else if (G.kind === 'rocket') {
-      const loaded = P.fireCd <= 0.05;
+      const loaded = P.fireCd <= 0.05 && (P.ammo > 0 || P.zipT > 0) && !(P.reloadT > 0);
       const tube = loaded ? a.tube.loaded : a.tube.empty;
       d(a.grip, 20, base - 62);
       d(tube, MUZZLE.rocket.x - TUBE.a.x, MUZZLE.rocket.y - TUBE.a.y + kick * 2);
@@ -714,6 +838,7 @@ export class WeaponView {
         g.fillRect(lx + 1, ly + 1, 2, 2);
       }
     }
+    if (swing) this.drawSwing(g, P, heroIdx, bx, by - Math.sin(Math.PI * (1 - P.swingT / MELEE[P.melee?.kind || 'shove'].swing)) * 70);
     return { bx, by };
   }
 }

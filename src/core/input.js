@@ -19,7 +19,7 @@ export class Input {
     this.bind();
   }
 
-  // Standard mapping: A jump, B or LB ride trick, Y or RB special, RT or X fire, Start pause.
+  // Standard mapping: A jump, B ride trick, Y or RB special, RT fire, X reload, LB or R3 melee, Start pause.
   // In menus: d-pad or left stick move, A select, B back, X switches (Endless on hero select).
   pollPad(dt) {
     const P = this.pad;
@@ -54,13 +54,15 @@ export class Input {
     P.move = { x: ax(0), y: ax(1) };
     P.look = { x: ax(2), y: ax(3) };
     if (this.playing) {
-      P.fire = !!(down[7] || down[2]);
+      P.fire = !!down[7];
       // Curved stick response: fine aim near the centre, fast turns at full tilt.
       this.lookDX += P.look.x * Math.abs(P.look.x) * 1100 * dt;
       this.lookDY += P.look.y * Math.abs(P.look.y) * 650 * dt;
       if (hit(0)) this.h.key('Space');
       if (rel(0)) this.h.keyUp('Space');
-      if (hit(1) || hit(4)) this.h.key('ShiftLeft');
+      if (hit(1)) this.h.key('ShiftLeft');
+      if (hit(4) || hit(11)) this.h.key('Melee');
+      if (hit(2)) this.h.key('Reload');
       if (hit(3) || hit(5)) this.h.key('Special');
       if (hit(9) || hit(8)) this.h.key('Escape');
     } else {
@@ -129,6 +131,8 @@ export class Input {
       this.mouse.y = p.y;
       // Right button fires the special while playing.
       if (e.button === 2 && this.playing) return this.h.key('Special');
+      // Middle button swings the melee weapon.
+      if (e.button === 1 && this.playing) return this.h.key('Melee');
       this.mouse.down = true;
       this.h.press(p.x, p.y, 'mouse');
     });
@@ -157,6 +161,7 @@ export class Input {
           this.h.key('Space');
         } else if (btn === 'boost') this.h.key('ShiftLeft');
         else if (btn === 'special') this.h.key('Special');
+        else if (btn === 'melee') this.h.key('Melee');
         else if (btn === 'pause') this.h.key('Escape');
         else if (p.x < W * 0.42 && this.touch.move == null) {
           this.touch.move = t.identifier;

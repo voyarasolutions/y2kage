@@ -310,8 +310,6 @@ function drawDailyCard(g, x, y, t, focus) {
 
 // ---------------------------------------------------------------- how to play (Notepad)
 const HOWTO = [
-  'README.TXT',
-  '',
   'It is 11:10 PM, Dec 31 1999. The Y2K bug hit early and the',
   'party turned. Hold out through 50 levels, one per minute,',
   'until the ball drops at midnight.',
@@ -319,13 +317,15 @@ const HOWTO = [
   'MOVE   W A S D  (arrows turn)     AIM   mouse',
   'FIRE   click, hold for auto       RIDE  SPACE / SHIFT',
   'SPECIAL R / right-click when full  PAUSE ESC   MUTE M',
+  'MELEE  V / middle-click           RELOAD X (Dot, Gus)',
   'Phone: left thumb moves, right thumb aims, tap FIRE.',
   'ONLINE CO-OP: host a room, up to 3 friends join by code.',
   'Each hero has a ride and a weapon of their own.',
   'Headshots do double damage. Water fries Corrupted zombies.',
   'Kills earn XP. Every LEVEL UP makes that hero hit harder.',
   'Powerups: FIX disk invincible, x3 triple shot,',
-  'toaster slow-mo, C-A-D ends every zombie in sight.',
+  'toaster slow-mo, C-A-D ends every zombie in sight,',
+  'ZIP disk bottomless ammo. Grab bats, keyboards, bubbly.',
   'Clear a level to pick an UPGRADE. They stack all run.',
   'Every 10th level has a boss. Jump their shockwaves.',
   'Trophies unlock Endless mode and cheats. Gamepads work.',

@@ -12,6 +12,7 @@ import { PARTY } from '../core/palette.js';
 import { rand, clamp, TAU, pickOne } from '../core/util.js';
 import { sfx } from '../audio/sfx.js';
 import { HEROES, heroAtTier, CANDLE_COLS } from '../data/heroes.js';
+import { MELEE, MELEE_KINDS } from '../data/melee.js';
 
 export const EYE = 0.62;
 const GRAV = 16;
@@ -54,7 +55,10 @@ const AFFIX_TIPS = {
 export const PROJ_KINDS = ['water', 'yoyo', 'floppy', 'rocket'];
 // Boss moves and how long until each one comes round again (seconds).
 const BOSS_CD = { charge: [4, 6], ring: [3.2, 4.4], burrow: [5, 7], bolts: [2.6, 3.6], summon: [9, 12], blink: [5, 7] };
-export const PICK_KINDS = ['health', 'armor', 'overclock', 'patch', 'multi', 'freeze', 'cad'];
+// New kinds go on the end so guests on an older index still line up.
+export const PICK_KINDS = ['health', 'armor', 'overclock', 'patch', 'multi', 'freeze', 'cad', 'zip', 'bat', 'keyboard', 'bottle'];
+// Seconds of bottomless ammo from a Zip Disk.
+const ZIP_T = 6;
 const ZSTATES = ['walk', 'attack', 'windup'];
 
 // The special meter fills slowly on its own and much faster with kills.
@@ -205,6 +209,8 @@ export class Sim {
       hp: mods.maxHp, armor: mods.armor, hurtT: 0, overclock: 0, charge: 0, charging: false, boostCd: 0,
       charges: hero.move.charges || 0, rechargeT: 0, mega: false, bob: 0, onGround: true, dashT: 0,
       tank: hero.gun.tank || 0, heat: 0, overheated: false, fireCd: 0, hand: 0, fireAnim: 0, pumpT: 0, speed: 0, stride: 0,
+      // Box or rack (Dot and Gus), the Zip Disk's bottomless timer, and the melee weapon in hand (null: shove).
+      ammo: hero.gun.mag || 0, reloadT: 0, zipT: 0, melee: null, meleeCd: 0, swingT: 0, swingN: 0,
     };
   }
 
@@ -482,6 +488,9 @@ export class Sim {
     P.iT = Math.max(0, P.iT - dt);
     P.overclock = Math.max(0, P.overclock - dt);
     P.fireAnim = Math.max(0, P.fireAnim - dt);
+    P.zipT = Math.max(0, P.zipT - dt);
+    P.meleeCd = Math.max(0, P.meleeCd - dt);
+    P.swingT = Math.max(0, P.swingT - dt);
     if (P.mods.regen && !P.down && this.lv.phase !== 'done') P.hp = Math.min(P.maxHp, P.hp + P.mods.regen * dt);
     if (P.down) this.lasers = this.lasers.filter((l) => l.o !== P.idx);
     if (!P.down && !P.spKind && this.lv.phase !== 'done') this.chargeSpecial(P, SP_PER_SEC * dt);
@@ -559,6 +568,92 @@ export class Sim {
       return true;
     }
     return this.special(P);
+  }
+
+  // Melee (V, middle mouse, LB): shove, or swing whatever melee weapon you picked up.
+  pressMelee(P = this.player) {
+    if (P.down || P.meleeCd > 0 || P.spKind) return false;
+    if (this.mode === 'client' && P === this.player) {
+      // Guests swing straight away on screen; the host decides what it hits.
+      const M = MELEE[P.melee?.kind || 'shove'];
+      P.meleeCd = M.every;
+      P.swingT = M.swing;
+      P.swingN = (P.swingN || 0) + 1;
+      this.act?.('melee');
+      return true;
+    }
+    return this.swing(P);
+  }
+
+  // Reload (X): start refilling a part-used box or rack early.
+  pressReload(P = this.player) {
+    if (P.down) return;
+    if (this.mode === 'client' && P === this.player) return this.act?.('reload');
+    this.startReload(P);
+  }
+
+  startReload(P) {
+    const G = P.hero.gun;
+    if (!G.mag || P.reloadT > 0 || P.ammo >= G.mag) return;
+    P.reloadT = G.reload / P.mods.rate * (P.overclock > 0 ? 0.5 : 1);
+    P.reloadMax = P.reloadT;
+    this.snd('reload', G.kind);
+  }
+
+  swing(P) {
+    const kind = P.melee?.kind || 'shove';
+    const M = MELEE[kind];
+    P.meleeCd = M.every / (P.overclock > 0 ? 1.4 : 1);
+    P.swingT = M.swing;
+    P.swingN = (P.swingN || 0) + 1;
+    const dx = Math.cos(P.a);
+    const dy = Math.sin(P.a);
+    const hits = [];
+    for (const z of this.zombies) {
+      if (z.bs || z.dead || z.spawnT > 0.3 || z.hp <= 0) continue;
+      const rx = z.x - P.x;
+      const ry = z.y - P.y;
+      const d = Math.hypot(rx, ry);
+      if (d > M.reach + hitR(z)) continue;
+      const da = Math.abs(Math.atan2(rx * -dy + ry * dx, rx * dx + ry * dy));
+      if (d > hitR(z) + 0.3 && da > M.arc / 2) continue;
+      hits.push([d, z]);
+    }
+    hits.sort((a, b) => a[0] - b[0]);
+    const hit = hits.slice(0, M.max);
+    for (const [d, z] of hit) {
+      const nx = (z.x - P.x) / (d || 1);
+      const ny = (z.y - P.y) / (d || 1);
+      this.hurtZombie(z, M.dmg * (z.kind === 'boss' ? 0.6 : 1), nx, ny, M.knock, P, 'body');
+      this.puff(z.x, z.y, ZHEIGHT[z.kind] * (z.sc || 1) * 0.6, this.goo(), kind === 'shove' ? 3 : 8);
+      if (kind === 'keyboard') for (let k = 0; k < 4; k++) this.particles.push({ x: z.x, y: z.y, z: 0.8, vx: rand(-2, 2), vy: rand(-2, 2), vz: rand(1.5, 3.5), life: rand(0.5, 0.9), color: k % 2 ? '#e8e4d8' : '#8a8a96' });
+    }
+    this.snd(hit.length ? 'meleeHit' : 'meleeSwish', kind);
+    if (hit.length) {
+      if (this.isLocal(P)) this.shake = Math.min(1, this.shake + (kind === 'shove' ? 0.08 : 0.2));
+      this.hitStop = Math.max(this.hitStop || 0, kind === 'shove' ? 0.02 : 0.05);
+      if (P.melee && --P.melee.uses <= 0) this.breakMelee(P);
+    }
+    return true;
+  }
+
+  // The melee weapon gives out. The champagne goes off like a bomb on its way.
+  breakMelee(P) {
+    const kind = P.melee.kind;
+    const M = MELEE[kind];
+    P.melee = null;
+    if (M.burst) {
+      const fx = P.x + Math.cos(P.a) * 1.2;
+      const fy = P.y + Math.sin(P.a) * 1.2;
+      for (const z of this.zombies) {
+        const d = Math.hypot(z.x - fx, z.y - fy);
+        if (d < 2.4 && !z.bs) this.hurtZombie(z, M.burst * (1 - d / 3.2), (z.x - fx) / (d || 1), (z.y - fy) / (d || 1), 3, P, 'body');
+      }
+      for (let k = 0; k < 40; k++) this.particles.push({ x: fx, y: fy, z: 0.9, vx: rand(-3, 3), vy: rand(-3, 3), vz: rand(1, 5), life: rand(0.5, 1.1), color: k % 3 ? '#fff4c8' : '#f6c945' });
+      this.snd('pop');
+      this.personal(P, 'toast', 'POP!', 'The bubbly went off');
+    } else this.personal(P, 'toast', `${M.short} BROKE`, 'Back to shoving');
+    this.snd('meleeBreak', kind);
   }
 
   updatePlayer(P, dt) {
@@ -783,6 +878,9 @@ export class Sim {
       if (B.dry) fire = false;
     }
     P.input = { move: { f: 0, s: 0 }, turn: 0, fire, look: 0 };
+    // Too close to shoot comfortably: swing. Nothing around: top up the box or rack.
+    if (T && P.meleeCd <= 0 && !P.spKind && Math.hypot(T.x - P.x, T.y - P.y) < MELEE[P.melee?.kind || 'shove'].reach + hitR(T) - 0.1) this.swing(P);
+    if (!T && G.mag && P.ammo < G.mag / 2) this.startReload(P);
     // Specials: save them for a crowd or the boss.
     if (P.sp >= SP_MAX && !P.spKind) {
       const near = this.zombies.filter((z) => !z.bs && Math.hypot(z.x - P.x, z.y - P.y) < 7);
@@ -893,7 +991,21 @@ export class Sim {
     const G = P.hero.gun;
     const oc = (P.overclock > 0 ? 0.5 : 1) / P.mods.rate / (this.overdrive() ? OVERDRIVE_RATE : 1);
     P.fireCd -= dt;
-    const firing = P.input.fire;
+    // Mid-swing the weapon hand is busy.
+    let firing = P.input.fire && P.swingT <= 0;
+    const bottomless = P.zipT > 0;
+    if (G.mag) {
+      if (P.reloadT > 0) {
+        P.reloadT -= dt;
+        firing = false;
+        if (P.reloadT <= 0) {
+          P.reloadT = 0;
+          P.ammo = G.mag;
+          this.snd('reloaded', G.kind);
+        }
+      } else if (P.ammo <= 0 && !bottomless) this.startReload(P);
+      else if (P.ammo < G.mag && !P.input.fire && (this.lv.phase === 'break' || this.lv.phase === 'intro')) this.startReload(P);
+    }
     this.lasers = this.lasers.filter((l) => l.o !== P.idx || l.sp);
     const eyeZ = EYE + P.z;
     const dx = Math.cos(P.a);
@@ -903,7 +1015,7 @@ export class Sim {
       if (firing && P.tank > G.drain) {
         while (P.fireCd <= 0) {
           P.fireCd += G.every / P.mods.rate;
-          P.tank -= G.drain * (P.overclock > 0 ? 0.5 : 1);
+          if (!bottomless) P.tank -= G.drain * (P.overclock > 0 ? 0.5 : 1);
           const m = this.muzzle(P, 'soaker');
           const a = m.a + rand(-G.spread, G.spread);
           for (const off of this.spread()) {
@@ -935,15 +1047,17 @@ export class Sim {
         }
       }
     } else if (G.kind === 'floppy') {
-      if (firing && P.fireCd <= 0) {
+      if (firing && P.fireCd <= 0 && (P.ammo > 0 || bottomless)) {
         P.fireCd = G.every * oc;
+        if (!bottomless) P.ammo--;
         P.fireAnim = 0.16;
         for (const off of this.spread()) this.throwFloppy(P, P.a + off, G.dmg, G.bounces, G.life, true);
         this.snd('shoot', 'floppy');
       }
     } else if (G.kind === 'rocket') {
-      if (firing && P.fireCd <= 0) {
+      if (firing && P.fireCd <= 0 && (P.ammo > 0 || bottomless)) {
         P.fireCd = G.every * oc;
+        if (!bottomless) P.ammo--;
         P.fireAnim = 0.2;
         // Dual Roman candles fire from each fist in turn, a new colour each ball.
         const hand = G.dual ? P.hand : 0;
@@ -964,7 +1078,7 @@ export class Sim {
         P.heat -= G.cool * dt;
         if (P.heat <= 30) P.overheated = false;
       } else if (firing) {
-        P.heat += G.heat * oc * dt;
+        if (!bottomless) P.heat += G.heat * oc * dt;
         if (P.heat >= 100) {
           P.overheated = true;
           P.heat = 100;
@@ -2369,7 +2483,9 @@ export class Sim {
     if (roll < (weak ? 0.09 : 0.04)) this.dropPickup(z.x, z.y, 'health');
     else if (roll < 0.115) this.dropPickup(z.x, z.y, 'armor');
     else if (roll < 0.14) this.dropPickup(z.x, z.y, 'overclock');
-    else if (roll < 0.14 + 0.025 * Math.max(...this.players.map((Q) => Q.mods.luck)) + (z.kind === 'brute' ? 0.25 : 0) + (this.event === 'supply' ? 0.12 : 0)) this.dropPickup(z.x, z.y, pickOne(['patch', 'multi', 'freeze', 'multi', 'patch', 'cad']));
+    else if (roll < 0.14 + 0.025 * Math.max(...this.players.map((Q) => Q.mods.luck)) + (z.kind === 'brute' ? 0.25 : 0) + (this.event === 'supply' ? 0.12 : 0)) this.dropPickup(z.x, z.y, pickOne(['patch', 'multi', 'freeze', 'multi', 'patch', 'cad', 'zip', 'zip']));
+    // Melee weapons: Bouncers are carrying, and now and then anyone else is.
+    else if (Math.random() < (z.kind === 'brute' ? 0.45 : z.affix === 3 ? 0.2 : 0.025) && this.pickups.filter((q) => MELEE[q.kind]).length < 2) this.dropPickup(z.x, z.y, pickOne(MELEE_KINDS));
   }
 
   gainXp(P, n) {
@@ -2449,6 +2565,27 @@ export class Sim {
         } else if (p.kind === 'cad') {
           this.toast('CTRL+ALT+DEL', 'End task: everything');
           this.nuke(P);
+        } else if (p.kind === 'zip') {
+          // Zip Disk: everyone's weapon topped up, and a few seconds of never running out.
+          for (const Q of this.players) {
+            if (Q.down) continue;
+            const QG = Q.hero.gun;
+            if (QG.mag) Q.ammo = QG.mag;
+            Q.reloadT = 0;
+            if (QG.tank) Q.tank = QG.tank;
+            Q.heat = 0;
+            Q.overheated = false;
+            Q.zipT = ZIP_T * P.mods.buff;
+          }
+          this.toast('ZIP DISK: 100 MB', `Bottomless ammo for ${Math.round(ZIP_T * P.mods.buff)} seconds`);
+          this.fx('flash', '#b89cff', 0.12, 0.2);
+        } else if (MELEE[p.kind]) {
+          // Melee weapons: grab one if your hands are free, it's the same kind, or yours is nearly done.
+          const M = MELEE[p.kind];
+          if (P.melee && P.melee.kind !== p.kind && P.melee.uses > MELEE[P.melee.kind].uses * 0.34) continue;
+          P.melee = { kind: p.kind, uses: M.uses };
+          this.personal(P, 'flash', '#f6c945', 0.1, 0.18);
+          this.personal(P, 'toast', M.name, M.tip);
         }
         this.snd('pickup');
         this.pickups.splice(i, 1);
@@ -2629,6 +2766,8 @@ export class Sim {
     const P = this.players[i];
     if (!P || P.down) return;
     if (kind === 'sp') this.special(P);
+    if (kind === 'melee') this.pressMelee(P);
+    if (kind === 'reload') this.startReload(P);
     if (kind === 'stomp' && P.hero.move.type === 'pogo') this.stomp(P, a[0], a[1]);
   }
 
@@ -2637,7 +2776,7 @@ export class Sim {
     const L = this.lv;
     const snap = {
       t: 'snap',
-      p: this.players.map((P) => [r2(P.x), r2(P.y), r2(P.a), r2(P.z), Math.ceil(P.hp), Math.ceil(P.armor), P.down ? 1 : 0, Math.floor(P.sp), Math.floor(P.xp), r2(P.overclock), r2(P.tank), r2(P.heat), P.overheated ? 1 : 0, r2(P.fireCd), P.fireAnim > 0 ? 1 : 0, P.spKind ? 1 : 0, r2(P.iT), r2(P.pitch || 0), P.hand || 0, (P.candleN || 0) % 5]),
+      p: this.players.map((P) => [r2(P.x), r2(P.y), r2(P.a), r2(P.z), Math.ceil(P.hp), Math.ceil(P.armor), P.down ? 1 : 0, Math.floor(P.sp), Math.floor(P.xp), r2(P.overclock), r2(P.tank), r2(P.heat), P.overheated ? 1 : 0, r2(P.fireCd), P.fireAnim > 0 ? 1 : 0, P.spKind ? 1 : 0, r2(P.iT), r2(P.pitch || 0), P.hand || 0, (P.candleN || 0) % 5, P.ammo || 0, r2(P.reloadT || 0), P.melee ? MELEE_KINDS.indexOf(P.melee.kind) + 1 : 0, P.melee ? P.melee.uses : 0, P.swingN || 0, r2(P.zipT || 0)]),
       z: this.zombies.map((z) => [z.id, ZKINDS.indexOf(z.kind), r2(z.x), r2(z.y), r2(z.hp / z.max), ZSTATES.indexOf(z.state), r2(z.atkT), r2(z.anim), z.hurtT > 0 ? 1 : 0, r2(z.spawnT), z.look, z.sc, z.warp ? 1 : 0, z.bs || 0, z.gold ? 1 : 0, z.elite ? 1 : 0, z.affix || 0]),
       rg: this.rings.map((g) => [g.x, g.y, r2(g.r), g.v]),
       bo: this.bolts.map((b) => [r2(b.x), r2(b.y), r2(b.z), r2(b.vx), r2(b.vy), b.c]),
@@ -2705,6 +2844,13 @@ export class Sim {
       if (!me) P.pitch = a[17] || 0;
       P.hand = a[18] || 0;
       P.candleN = a[19] || 0;
+      P.ammo = a[20] ?? P.ammo;
+      P.reloadT = a[21] || 0;
+      P.melee = a[22] ? { kind: MELEE_KINDS[a[22] - 1], uses: a[23] } : null;
+      // Someone else swung: play their swing (our own already started when we pressed).
+      if (!me && a[24] && a[24] !== P.swingN) P.swingT = MELEE[P.melee?.kind || 'shove'].swing;
+      if (!me || (a[24] || 0) > (P.swingN || 0)) P.swingN = a[24] || 0;
+      P.zipT = a[25] || 0;
     });
     const old = new Map(this.zombies.map((z) => [z.id, z]));
     this.zombies = s.z.map((a) => {
@@ -2762,6 +2908,10 @@ export class Sim {
     if (!P.down) this.updatePlayer(P, dt);
     P.hurtT = Math.max(0, P.hurtT - dt);
     P.fireAnim = Math.max(0, P.fireAnim - dt);
+    for (const Q of this.players) {
+      Q.meleeCd = Math.max(0, (Q.meleeCd || 0) - dt);
+      Q.swingT = Math.max(0, (Q.swingT || 0) - dt);
+    }
     const G = P.hero.gun;
     if (input.fire && !P.down && (G.kind === 'soaker' ? P.tank > G.drain : G.kind === 'laser' ? !P.overheated : false)) P.fireAnim = 0.06;
     // The pump animation needs to know when the guest last sprayed.

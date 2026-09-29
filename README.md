@@ -66,14 +66,20 @@ Runs in any modern browser, supports online co-op for up to four players, and sh
   special move that charges over time and with kills (R or right-click). Weapons point straight ahead and every shot leaves
   from the muzzle you see. Tina's Soaker 2500 has a see-through reservoir that drains as she sprays and a pump she works
   to build pressure back up.
+- **Every weapon has a rhythm.** Tina's tank and Kev's heat meter were already there; Dot throws from a box of 12
+  floppies (16 CDs) and Gus fires from a rack of 6 rockets (12 candle balls), then reloads. Reloading starts by itself
+  when you run dry and between waves, or press X. `tools/dpsbench.mjs` holds fire for 20 seconds at a tough zombie and
+  reports each weapon's real damage per second.
+- **Melee.** Anyone can shove (V, middle-click, LB). Bouncers and Tanks drop melee weapons that replace the shove until
+  they break: a Louisville Slugger, a clicky PC keyboard, and a champagne bottle that goes off on its last swing.
 - **A 90s horde.** Party Shamblers, Ravers, Bouncers, Bloaters, Crawlers, CRT-headed Corrupted, and the Millennium Bug,
   dressed for whichever district you're in.
 - **Headshots and combos.** Headshots deal double damage and pop heads off; chained kills build a score multiplier with
   90s call-outs.
 - **Hero progression.** Each hero earns XP that persists between runs; every rank adds 4% damage. A first run through
   all 50 levels reaches about rank 40.
-- **Powerups.** Y2K Patch (invincibility), Multitasking (triple, piercing shots), Screensaver (slow motion) and
-  Ctrl+Alt+Del (clears the screen).
+- **Powerups.** Y2K Patch (invincibility), Multitasking (triple, piercing shots), Screensaver (slow motion),
+  Ctrl+Alt+Del (clears the screen) and Zip Disk (tops up everyone's weapon, 6 seconds of bottomless ammo).
 - **CPU teammates.** Play offline with up to three computer-controlled heroes. They stick with you, keep their distance
   from the horde, pick their own upgrades and fire their specials into crowds.
 - **Online co-op** for up to four players with room codes and join links.
@@ -272,12 +278,12 @@ The app is locked to landscape. Fonts are bundled so it works offline.
 
 **Keyboard and mouse:** WASD move, arrows or Q/E turn, mouse look up/down/around (click to lock); headshots do double
 damage, legs 60%, click fire, Space and Shift for ride tricks, R or right-click for the hero's special once its meter
-is full, P or Esc pause, M mute.
+is full, V or middle-click melee, X reload (Dot and Gus), P or Esc pause, M mute.
 
-**Gamepad:** left stick moves, right stick aims, RT (or X) fires, A jumps, B or LB for the ride trick, Y or RB for the
-special, Start pauses. In menus the d-pad or left stick moves, A selects, B goes back, X switches between the
+**Gamepad:** left stick moves, right stick aims, RT fires, X reloads, LB or R3 melee, A jumps, B for the ride trick, Y or
+RB for the special, Start pauses. In menus the d-pad or left stick moves, A selects, B goes back, X switches between the
 campaign and Endless on the hero select screen, and Y changes the number of CPU teammates.
 
 **Hero select:** C (or the CPU button) cycles 0 to 3 CPU teammates; they play the next heroes along from yours.
 
-**Touch:** left thumb moves, right thumb looks, with on-screen fire, jump and boost buttons.
+**Touch:** left thumb moves, right thumb looks, with on-screen fire, jump, boost and HIT (melee) buttons.

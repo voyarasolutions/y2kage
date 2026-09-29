@@ -37,12 +37,13 @@ export const HEROES = [
     nick: 'Disk',
     ride: 'Slinky Springs',
     weapon: 'Floppy Disks',
-    blurb: 'Hold SPACE to coil the slinky, release to spring across the street. Floppies ricochet off walls twice.',
+    blurb: 'Hold SPACE to coil the slinky, release to spring across the street. Floppies ricochet off walls twice, 12 to a box.',
     controls: 'hold SPACE, release to leap',
     stats: { speed: 3, power: 3, range: 5 },
     move: { type: 'slinky', accel: 36, max: 3.8, friction: 11, strafe: 1, jump: 3.6, leap: 11 },
-    gun: { kind: 'floppy', every: 0.24, dmg: 22, speed: 15, bounces: 2, life: 1.6, knock: 0.6 },
-    gun2: { name: 'CD-ROMs', desc: 'Hit harder and ricochet four times', dmg: 32, speed: 18, bounces: 4, life: 2, knock: 0.8 },
+    // A box of floppies: throw the lot, then grab a new box (mag throws, reload seconds).
+    gun: { kind: 'floppy', every: 0.24, dmg: 22, speed: 15, bounces: 2, life: 1.6, knock: 0.6, mag: 12, reload: 1.3 },
+    gun2: { name: 'CD-ROMs', desc: 'Hit harder and ricochet four times', dmg: 32, speed: 18, bounces: 4, life: 2, knock: 0.8, mag: 16, reload: 1.2 },
     special: { name: 'DEFRAG', desc: 'Two rings of 24 floppies burst out and ricochet everywhere.', color: '#3de0e0' },
   },
   {
@@ -51,12 +52,13 @@ export const HEROES = [
     nick: 'Pogo',
     ride: 'Pogo Stick',
     weapon: 'Bottle Rockets',
-    blurb: 'Never stops bouncing. SPACE for a mega-bounce that shockwaves the street when you land. Rockets burst like fireworks.',
+    blurb: 'Never stops bouncing. SPACE for a mega-bounce that shockwaves the street when you land. Rockets burst like fireworks, 6 to a rack.',
     controls: 'SPACE mega-bounce',
     stats: { speed: 3, power: 5, range: 4 },
     move: { type: 'pogo', accel: 28, max: 3.9, friction: 8, strafe: 1, jump: 6.4, stomp: 50, stompR: 2.3 },
-    gun: { kind: 'rocket', every: 0.75, dmg: 55, direct: 20, radius: 1.9, speed: 10, life: 2, knock: 2.5 },
-    gun2: { name: 'Dual Roman Candles', desc: 'Two candles firing coloured fireballs', every: 0.32, dmg: 30, direct: 14, radius: 1.4, speed: 15, knock: 1.6, dual: true },
+    // A rack of rockets on his back, restocked between volleys.
+    gun: { kind: 'rocket', every: 0.75, dmg: 55, direct: 20, radius: 1.9, speed: 10, life: 2, knock: 2.5, mag: 6, reload: 1.4 },
+    gun2: { name: 'Dual Roman Candles', desc: 'Two candles firing coloured fireballs', every: 0.32, dmg: 30, direct: 14, radius: 1.4, speed: 15, knock: 1.6, dual: true, mag: 12, reload: 1.5 },
     special: { name: 'GRAND FINALE', desc: 'Sixteen fireworks rain down on the horde around you.', color: '#ff8a2a' },
   },
   {

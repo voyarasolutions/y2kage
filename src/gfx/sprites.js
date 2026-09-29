@@ -578,6 +578,55 @@ function cadKeys() {
   return p;
 }
 
+// A blue Iomega Zip disk: 100 MB of ammo.
+function zipDisk() {
+  const p = new Pix(16, 17);
+  p.rect(1, 1, 14, 15, '#2a4ab8').rect(1, 1, 14, 1, '#6a8ae8').rect(14, 1, 1, 15, '#1a2a70').rect(1, 15, 14, 1, '#1a2a70');
+  p.rect(3, 2, 10, 3, '#1a2a70').rect(4, 3, 8, 1, '#3a5ad0');
+  p.rect(3, 7, 10, 7, PAL.cream).rect(3, 7, 10, 1, PAL.lilac);
+  micro(p, 'ZIP', 3, 8, PAL.winNavy);
+  p.rect(4, 13, 3, 1, '#8a8aa0').rect(8, 13, 4, 1, '#8a8aa0');
+  p.outline(PAL.ink);
+  return p;
+}
+
+// Melee pickups lying in the street: a Louisville Slugger, a beige clicky keyboard, a bottle of bubbly.
+function batPick() {
+  const p = new Pix(30, 9);
+  for (let x = 1; x < 29; x++) {
+    const r = x < 3 ? 2 : x < 12 ? 1 : x < 18 ? 2 : 3;
+    p.rect(x, 4 - r, 1, r * 2 + 1, '#d8a060');
+    p.px(x, 4 - r, '#f0c888').px(x, 4 + r, '#8a5a2a');
+  }
+  p.rect(1, 2, 2, 5, '#6a3a1a');
+  p.rect(3, 3, 8, 3, '#20202a').rect(3, 3, 8, 1, '#4a4a58');
+  p.rect(19, 3, 5, 1, '#6a3a1a');
+  p.outline(PAL.ink);
+  return p;
+}
+
+function keyboardPick() {
+  const p = new Pix(28, 11);
+  p.rect(1, 2, 26, 8, '#d8d0b0').rect(1, 2, 26, 1, PAL.white).rect(1, 9, 26, 1, '#a09878');
+  for (let r = 0; r < 3; r++) for (let k = 0; k < 11; k++) p.rect(2 + k * 2 + (r % 2), 3 + r * 2, 1, 1, '#8a8470');
+  p.rect(7, 8, 10, 1, '#8a8470');
+  p.rect(12, 0, 1, 2, '#6a6a78');
+  p.outline(PAL.ink);
+  return p;
+}
+
+function bottlePick() {
+  const p = new Pix(9, 22);
+  p.rect(3, 1, 3, 5, PAL.gold).rect(3, 1, 1, 5, PAL.cream);
+  p.rect(3, 6, 3, 3, '#1e4a2a');
+  p.rect(2, 9, 5, 2, '#1e4a2a');
+  p.rect(1, 11, 7, 10, '#1e4a2a').rect(2, 11, 1, 10, '#3a7a4a').rect(7, 11, 1, 10, '#0e2a18');
+  p.rect(1, 13, 7, 5, PAL.cream).rect(1, 13, 7, 1, PAL.gold);
+  p.px(3, 15, PAL.strawberry).px(5, 15, PAL.strawberry);
+  p.outline(PAL.ink);
+  return p;
+}
+
 function goo(big) {
   const s = big ? 48 : 32;
   const p = new Pix(s, s);
@@ -673,9 +722,10 @@ export function buildSprites() {
   S.xbrain2 = [0, 1, 2, 3].map((i) => tex(xbrain('#ff8fc4', i)));
   S.fireball = CANDLE_COLS.map((c) => [0, 1].map((i) => tex(fireball(c, i))));
   S.flare = [0, 1].map((i) => tex(rocketFlare(i)));
-  S.pickups = { health: tex(cola()), armor: tex(badge()), overclock: tex(chip()), patch: tex(patchDisk()), multi: tex(multiWin()), freeze: tex(toaster(0)), cad: tex(cadKeys()) };
+  S.pickups = { health: tex(cola()), armor: tex(badge()), overclock: tex(chip()), patch: tex(patchDisk()), multi: tex(multiWin()), freeze: tex(toaster(0)), cad: tex(cadKeys()), zip: tex(zipDisk()), bat: tex(batPick()), keyboard: tex(keyboardPick()), bottle: tex(bottlePick()) };
   S.toasters = [toaster(0), toaster(1)];
-  S.buffIcons = { patch: patchDisk(), multi: multiWin(), freeze: toaster(0), overclock: chip() };
+  S.buffIcons = { patch: patchDisk(), multi: multiWin(), freeze: toaster(0), overclock: chip(), zip: zipDisk() };
+  S.meleeIcons = { bat: batPick(), keyboard: keyboardPick(), bottle: bottlePick() };
   S.goo = tex(goo(false));
   S.gooBig = tex(goo(true));
   S.shadow = tex(shadowBlob());

@@ -156,6 +156,16 @@ export const sfx = {
     noise(0.05, weapon === 'floppy' ? 2600 : 1100, 2, 0.14);
     tone(weapon === 'floppy' ? 1500 : 520, 0.05, 'square', 0.06, null, 0.04);
   },
+  // Swapping weapon slots: a cloth-and-strap rustle, then a click as the new one comes up (a knock
+  // of knuckles for melee, a latch for the gun).
+  swap(slot) {
+    noise(0.07, 900, 0.9, 0.08, 'bandpass');
+    if (slot) tone(210, 0.05, 'triangle', 0.1, 150, 0.14);
+    else {
+      tone(1600, 0.02, 'square', 0.05, null, 0.13);
+      tone(700, 0.03, 'square', 0.05, null, 0.16);
+    }
+  },
   meleeSwish(kind) {
     noise(0.14, kind === 'keyboard' ? 2400 : 1400, 0.8, 0.1, 'bandpass');
   },

@@ -318,7 +318,7 @@ const HOWTO = [
   'MOVE   W A S D  (arrows turn)     AIM   mouse',
   'FIRE   click, hold for auto       RIDE  SPACE / SHIFT',
   'SPECIAL R / right-click when full  PAUSE ESC   MUTE M',
-  'MELEE  V / middle-click           RELOAD X (Dot, Gus)',
+  'SWAP   Q / 1 2 / wheel (melee)    RELOAD X (Dot, Gus)',
   'Phone: left thumb moves, right thumb aims, tap FIRE.',
   'ONLINE CO-OP: host a room, up to 3 friends join by code.',
   'Each hero has a ride and a weapon of their own.',

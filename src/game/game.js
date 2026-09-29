@@ -568,7 +568,9 @@ export class Game {
       if (code === 'Space') this.sim.pressJump();
       if (code === 'ShiftLeft' || code === 'ShiftRight') this.sim.pressBoost();
       if ((code === 'KeyR' || code === 'Special') && this.sim.pressSpecial() && addStat('specials') >= 25) this.award('specials');
-      if (code === 'KeyV' || code === 'Melee') this.sim.pressMelee();
+      // Weapon slots: Q, V, the wheel, middle mouse, LB or HIT toggle; 1 and 2 pick one.
+      if (['KeyQ', 'KeyV', 'Swap', 'WheelUp', 'WheelDown'].includes(code)) this.sim.pressSlot();
+      if (code === 'Digit1' || code === 'Digit2') this.sim.pressSlot(+code.slice(5) - 1);
       if (code === 'KeyX' || code === 'Reload') this.sim.pressReload();
       if (code === 'KeyP' || code === 'Escape') this.pause();
       return;
@@ -1029,7 +1031,6 @@ export class Game {
     if (m === 'bios' && this.modeT > 3.9) this.setMode('dialup');
     if (m === 'dialup' && this.modeT > (this.dialLen || 5.2)) this.setMode('title');
     if (m === 'scene' && this.scene) this.scene.t += dt;
-    this.input.storyUse = !!this.story;
     this.copiedT = Math.max(0, (this.copiedT || 0) - dt);
     // Online, the level keeps running behind the pause menu.
     const online = this.net.active && this.sim && m === 'paused';
@@ -1457,7 +1458,7 @@ export class Game {
     }
     HUD.drawToast(g, sim, this.input.touch.on);
     HUD.drawTaskbar(g, sim, this.S, heroIdx, this.t);
-    if (m === 'play') HUD.drawTouch(g, this.input, sim.hero);
+    if (m === 'play') HUD.drawTouch(g, this.input, sim.hero, sim.player.slot);
     if (sim.glitchT > 0 && settings.glitch) HUD.drawGlitch(g, sim.glitchT);
     if (m === 'paused') SCR.drawPause(g, ui, this.t);
     if (m === 'clear') SCR.drawClear(g, ui, this.t, this.clearStats);

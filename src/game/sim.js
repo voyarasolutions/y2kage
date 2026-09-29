@@ -12,7 +12,7 @@ import { PARTY } from '../core/palette.js';
 import { rand, clamp, TAU, pickOne } from '../core/util.js';
 import { sfx } from '../audio/sfx.js';
 import { HEROES, heroAtTier, CANDLE_COLS } from '../data/heroes.js';
-import { MELEE, MELEE_KINDS } from '../data/melee.js';
+import { MELEE, MELEE_KINDS, SWAP_T } from '../data/melee.js';
 
 export const EYE = 0.62;
 const GRAV = 16;
@@ -209,8 +209,10 @@ export class Sim {
       hp: mods.maxHp, armor: mods.armor, hurtT: 0, overclock: 0, charge: 0, charging: false, boostCd: 0,
       charges: hero.move.charges || 0, rechargeT: 0, mega: false, bob: 0, onGround: true, dashT: 0,
       tank: hero.gun.tank || 0, heat: 0, overheated: false, fireCd: 0, hand: 0, fireAnim: 0, pumpT: 0, speed: 0, stride: 0,
-      // Box or rack (Dot and Gus), the Zip Disk's bottomless timer, and the melee weapon in hand (null: shove).
-      ammo: hero.gun.mag || 0, reloadT: 0, zipT: 0, melee: null, meleeCd: 0, swingT: 0, swingN: 0,
+      // Box or rack (Dot and Gus), the Zip Disk's bottomless timer, and the melee weapon carried (null: fists).
+      ammo: hero.gun.mag || 0, reloadT: 0, zipT: 0, melee: null, meleeCd: 0, swingT: 0, swingN: 0, struck: true, hitHold: 0,
+      // Which slot is in hand (0 the gun, 1 melee) and how far through swapping to it.
+      slot: 0, swapT: 0,
     };
   }
 
@@ -290,6 +292,10 @@ export class Sim {
       this.shake = Math.min(1, this.shake + 0.4);
       this.flash = { color: '#ff2020', t: 0.18, amt: 0.35 };
       sfx.hurt();
+    } else if (kind === 'meleeHit') {
+      // A swing connected: the screen jolts and the weapon view flashes at the point of impact.
+      this.shake = Math.min(1, this.shake + (a[0] === 'shove' ? 0.1 : 0.25));
+      this.player.impactT = 0.12;
     } else if (kind === 'shield') this.flash = { color: '#7ac943', t: 0.06, amt: 0.15 };
     else if (kind === 'flash') this.flash = { color: a[0], t: a[1], amt: a[2] };
     else if (kind === 'special') {
@@ -489,8 +495,7 @@ export class Sim {
     P.overclock = Math.max(0, P.overclock - dt);
     P.fireAnim = Math.max(0, P.fireAnim - dt);
     P.zipT = Math.max(0, P.zipT - dt);
-    P.meleeCd = Math.max(0, P.meleeCd - dt);
-    P.swingT = Math.max(0, P.swingT - dt);
+    this.tickMelee(P, dt);
     if (P.mods.regen && !P.down && this.lv.phase !== 'done') P.hp = Math.min(P.maxHp, P.hp + P.mods.regen * dt);
     if (P.down) this.lasers = this.lasers.filter((l) => l.o !== P.idx);
     if (!P.down && !P.spKind && this.lv.phase !== 'done') this.chargeSpecial(P, SP_PER_SEC * dt);
@@ -563,6 +568,8 @@ export class Sim {
   pressSpecial() {
     const P = this.player;
     if (P.down || P.sp < SP_MAX || P.spKind) return false;
+    // Specials come out of the gun, so it comes back into your hand.
+    this.equip(P, 0);
     if (this.mode === 'client') {
       this.act?.('sp');
       return true;
@@ -570,42 +577,50 @@ export class Sim {
     return this.special(P);
   }
 
-  // Melee (V, middle mouse, LB): shove, or swing whatever melee weapon you picked up.
-  pressMelee(P = this.player) {
-    if (P.down || P.meleeCd > 0 || P.spKind) return false;
-    if (this.mode === 'client' && P === this.player) {
-      // Guests swing straight away on screen; the host decides what it hits.
-      const M = MELEE[P.melee?.kind || 'shove'];
-      P.meleeCd = M.every;
-      P.swingT = M.swing;
-      P.swingN = (P.swingN || 0) + 1;
-      this.act?.('melee');
-      return true;
-    }
-    return this.swing(P);
-  }
-
-  // Reload (X): start refilling a part-used box or rack early.
-  pressReload(P = this.player) {
+  // Weapon slots (Q, V, 1/2, mouse wheel, middle mouse, LB, the touch HIT button): slot 1 the gun,
+  // slot 2 melee. No slot given: toggle. Guests switch straight away and tell the host in their input.
+  pressSlot(slot, P = this.player) {
     if (P.down) return;
-    if (this.mode === 'client' && P === this.player) return this.act?.('reload');
-    this.startReload(P);
+    this.equip(P, slot ?? 1 - P.slot);
   }
 
-  startReload(P) {
-    const G = P.hero.gun;
-    if (!G.mag || P.reloadT > 0 || P.ammo >= G.mag) return;
-    P.reloadT = G.reload / P.mods.rate * (P.overclock > 0 ? 0.5 : 1);
-    P.reloadMax = P.reloadT;
-    this.snd('reload', G.kind);
+  // Put one weapon away and bring the other up. Swapping again halfway turns straight back.
+  equip(P, slot) {
+    if (P.slot === slot) return;
+    P.slot = slot;
+    P.swapT = P.swapT > 0 ? SWAP_T - P.swapT : SWAP_T;
+    P.swingT = 0;
+    P.struck = true;
+    if (this.isLocal(P)) sfx.swap(slot);
   }
 
-  swing(P) {
-    const kind = P.melee?.kind || 'shove';
-    const M = MELEE[kind];
+  // Swap, swing and hit-stop timers. A connecting swing holds still for a beat (hitHold) so it lands.
+  tickMelee(P, dt) {
+    P.swapT = Math.max(0, P.swapT - dt);
+    P.impactT = Math.max(0, (P.impactT || 0) - dt);
+    if (P.hitHold > 0) return (P.hitHold -= dt);
+    P.meleeCd = Math.max(0, P.meleeCd - dt);
+    P.swingT = Math.max(0, P.swingT - dt);
+  }
+
+  // How far into the current swing, in seconds (0 when not swinging).
+  swingAge(P) {
+    return P.swingT > 0 ? MELEE[P.melee?.kind || 'shove'].swing - P.swingT : 0;
+  }
+
+  // Wind up a swing. It connects later, at the weapon's hit time (see strike).
+  startSwing(P) {
+    const M = MELEE[P.melee?.kind || 'shove'];
     P.meleeCd = M.every / (P.overclock > 0 ? 1.4 : 1);
     P.swingT = M.swing;
     P.swingN = (P.swingN || 0) + 1;
+    P.struck = false;
+    this.snd('meleeSwish', P.melee?.kind || 'shove');
+  }
+
+  // What a swing connects with: zombies in reach inside the arc in front, nearest first, or anything
+  // close enough to be touching you.
+  meleeTargets(P, M) {
     const dx = Math.cos(P.a);
     const dy = Math.sin(P.a);
     const hits = [];
@@ -620,7 +635,31 @@ export class Sim {
       hits.push([d, z]);
     }
     hits.sort((a, b) => a[0] - b[0]);
-    const hit = hits.slice(0, M.max);
+    return hits.slice(0, M.max);
+  }
+
+  // Reload (X): start refilling a part-used box or rack early. With melee out, it brings the gun back first.
+  pressReload(P = this.player) {
+    if (P.down) return;
+    if (P.slot) this.equip(P, 0);
+    if (this.mode === 'client' && P === this.player) return this.act?.('reload');
+    this.startReload(P);
+  }
+
+  startReload(P) {
+    const G = P.hero.gun;
+    if (!G.mag || P.reloadT > 0 || P.ammo >= G.mag) return;
+    P.reloadT = G.reload / P.mods.rate * (P.overclock > 0 ? 0.5 : 1);
+    P.reloadMax = P.reloadT;
+    this.snd('reload', G.kind);
+  }
+
+  // The swing reaches the middle of the screen: whatever is in the arc gets hit.
+  strike(P) {
+    P.struck = true;
+    const kind = P.melee?.kind || 'shove';
+    const M = MELEE[kind];
+    const hit = this.meleeTargets(P, M);
     for (const [d, z] of hit) {
       const nx = (z.x - P.x) / (d || 1);
       const ny = (z.y - P.y) / (d || 1);
@@ -628,13 +667,15 @@ export class Sim {
       this.puff(z.x, z.y, ZHEIGHT[z.kind] * (z.sc || 1) * 0.6, this.goo(), kind === 'shove' ? 3 : 8);
       if (kind === 'keyboard') for (let k = 0; k < 4; k++) this.particles.push({ x: z.x, y: z.y, z: 0.8, vx: rand(-2, 2), vy: rand(-2, 2), vz: rand(1.5, 3.5), life: rand(0.5, 0.9), color: k % 2 ? '#e8e4d8' : '#8a8a96' });
     }
-    this.snd(hit.length ? 'meleeHit' : 'meleeSwish', kind);
     if (hit.length) {
-      if (this.isLocal(P)) this.shake = Math.min(1, this.shake + (kind === 'shove' ? 0.08 : 0.2));
+      this.snd('meleeHit', kind);
+      P.hitHold = kind === 'shove' ? 0.03 : 0.05;
+      // Guests show their own impacts as they swing (see updateClient), so this is for us only.
+      if (this.isLocal(P)) this.feel('meleeHit', kind);
       this.hitStop = Math.max(this.hitStop || 0, kind === 'shove' ? 0.02 : 0.05);
       if (P.melee && --P.melee.uses <= 0) this.breakMelee(P);
     }
-    return true;
+    return hit.length > 0;
   }
 
   // The melee weapon gives out. The champagne goes off like a bomb on its way.
@@ -652,7 +693,7 @@ export class Sim {
       for (let k = 0; k < 40; k++) this.particles.push({ x: fx, y: fy, z: 0.9, vx: rand(-3, 3), vy: rand(-3, 3), vz: rand(1, 5), life: rand(0.5, 1.1), color: k % 3 ? '#fff4c8' : '#f6c945' });
       this.snd('pop');
       this.personal(P, 'toast', 'POP!', 'The bubbly went off');
-    } else this.personal(P, 'toast', `${M.short} BROKE`, 'Back to shoving');
+    } else this.personal(P, 'toast', `${M.short} BROKE`, 'Back to your fists');
     this.snd('meleeBreak', kind);
   }
 
@@ -877,14 +918,36 @@ export class Sim {
       if (B.dry && P.tank > G.tank * 0.7) B.dry = false;
       if (B.dry) fire = false;
     }
+    // Too close to shoot comfortably: out with the melee weapon, and back to the gun once there's
+    // room again (held for a moment either way so they don't flick back and forth).
+    const MM = MELEE[P.melee?.kind || 'shove'];
+    B.slotT = (B.slotT || 0) - dt;
+    if (T) {
+      const d = Math.hypot(T.x - P.x, T.y - P.y);
+      const reach = MM.reach + hitR(T);
+      // Bare fists only beat the gun for Gus, whose rockets can't go off that close, and Dot, whose
+      // floppies are slow to throw.
+      const worth = P.melee || G.kind === 'rocket' || G.kind === 'floppy';
+      const want = worth && d < reach + (P.melee ? 0.3 : -0.1) ? 1 : !worth || d > reach + 1.2 ? 0 : P.slot;
+      if (want !== P.slot && B.slotT <= 0 && !P.spKind) {
+        this.equip(P, want);
+        B.slotT = 0.7;
+      }
+      if (P.slot) {
+        const da = Math.atan2(Math.sin(Math.atan2(T.y - P.y, T.x - P.x) - P.a), Math.cos(Math.atan2(T.y - P.y, T.x - P.x) - P.a));
+        fire = d < reach - 0.1 && Math.abs(da) < MM.arc * 0.4;
+      }
+    } else if (P.slot && B.slotT <= 0) this.equip(P, 0);
     P.input = { move: { f: 0, s: 0 }, turn: 0, fire, look: 0 };
-    // Too close to shoot comfortably: swing. Nothing around: top up the box or rack.
-    if (T && P.meleeCd <= 0 && !P.spKind && Math.hypot(T.x - P.x, T.y - P.y) < MELEE[P.melee?.kind || 'shove'].reach + hitR(T) - 0.1) this.swing(P);
+    // Nothing around: top up the box or rack.
     if (!T && G.mag && P.ammo < G.mag / 2) this.startReload(P);
     // Specials: save them for a crowd or the boss.
     if (P.sp >= SP_MAX && !P.spKind) {
       const near = this.zombies.filter((z) => !z.bs && Math.hypot(z.x - P.x, z.y - P.y) < 7);
-      if (near.length >= 4 || this.zombies.some((z) => z.kind === 'boss' && !z.bs && Math.hypot(z.x - P.x, z.y - P.y) < 9)) this.special(P);
+      if (near.length >= 4 || this.zombies.some((z) => z.kind === 'boss' && !z.bs && Math.hypot(z.x - P.x, z.y - P.y) < 9)) {
+        this.equip(P, 0);
+        this.special(P);
+      }
     }
 
     // Where to go: a spot beside the lead player, away from anything too close, sidestepping in a fight.
@@ -991,10 +1054,13 @@ export class Sim {
     const G = P.hero.gun;
     const oc = (P.overclock > 0 ? 0.5 : 1) / P.mods.rate / (this.overdrive() ? OVERDRIVE_RATE : 1);
     P.fireCd -= dt;
-    // Mid-swing the weapon hand is busy.
-    let firing = P.input.fire && P.swingT <= 0;
+    // The gun only fires from slot 1, once it's all the way up.
+    const gunUp = P.slot === 0 && P.swapT <= 0;
+    let firing = P.input.fire && gunUp;
     const bottomless = P.zipT > 0;
-    if (G.mag) {
+    this.updateMelee(P);
+    // A box or rack only reloads with the gun in hand (it waits, half done, while you're swinging).
+    if (G.mag && P.slot === 0) {
       if (P.reloadT > 0) {
         P.reloadT -= dt;
         firing = false;
@@ -1096,6 +1162,12 @@ export class Sim {
         P.heat = Math.max(0, P.heat - G.cool * dt);
       }
     }
+  }
+
+  // Slot 2: holding fire keeps swinging at the weapon's pace; each swing connects partway through.
+  updateMelee(P) {
+    if (P.swingT > 0 && !P.struck && this.swingAge(P) >= MELEE[P.melee?.kind || 'shove'].hit) this.strike(P);
+    if (P.slot === 1 && P.swapT <= 0 && P.input.fire && P.meleeCd <= 0 && !P.spKind) this.startSwing(P);
   }
 
   // Burn along a line. Returns how far the beam reaches: the first zombie, or the wall when piercing.
@@ -2586,6 +2658,8 @@ export class Sim {
           const M = MELEE[p.kind];
           if (P.melee && P.melee.kind !== p.kind && P.melee.uses > MELEE[P.melee.kind].uses * 0.34) continue;
           P.melee = { kind: p.kind, uses: M.uses };
+          // Straight into your hand so you notice (guests switch themselves when the snapshot says so).
+          if (!P.remote) this.equip(P, 1);
           this.personal(P, 'flash', '#f6c945', 0.1, 0.18);
           this.personal(P, 'toast', M.name, M.tip);
         }
@@ -2764,13 +2838,14 @@ export class Sim {
       P.dashT = s.dash ? 0.1 : 0;
     }
     P.input = { move: { f: 0, s: 0 }, turn: 0, fire: !!s.fire, look: 0 };
+    // Each guest owns which slot they have out.
+    if (s.sl != null && !P.down) this.equip(P, s.sl ? 1 : 0);
   }
 
   remoteAct(i, kind, ...a) {
     const P = this.players[i];
     if (!P || P.down) return;
     if (kind === 'sp') this.special(P);
-    if (kind === 'melee') this.pressMelee(P);
     if (kind === 'reload') this.startReload(P);
     if (kind === 'stomp' && P.hero.move.type === 'pogo') this.stomp(P, a[0], a[1]);
   }
@@ -2780,7 +2855,7 @@ export class Sim {
     const L = this.lv;
     const snap = {
       t: 'snap',
-      p: this.players.map((P) => [r2(P.x), r2(P.y), r2(P.a), r2(P.z), Math.ceil(P.hp), Math.ceil(P.armor), P.down ? 1 : 0, Math.floor(P.sp), Math.floor(P.xp), r2(P.overclock), r2(P.tank), r2(P.heat), P.overheated ? 1 : 0, r2(P.fireCd), P.fireAnim > 0 ? 1 : 0, P.spKind ? 1 : 0, r2(P.iT), r2(P.pitch || 0), P.hand || 0, (P.candleN || 0) % 5, P.ammo || 0, r2(P.reloadT || 0), P.melee ? MELEE_KINDS.indexOf(P.melee.kind) + 1 : 0, P.melee ? P.melee.uses : 0, P.swingN || 0, r2(P.zipT || 0)]),
+      p: this.players.map((P) => [r2(P.x), r2(P.y), r2(P.a), r2(P.z), Math.ceil(P.hp), Math.ceil(P.armor), P.down ? 1 : 0, Math.floor(P.sp), Math.floor(P.xp), r2(P.overclock), r2(P.tank), r2(P.heat), P.overheated ? 1 : 0, r2(P.fireCd), P.fireAnim > 0 ? 1 : 0, P.spKind ? 1 : 0, r2(P.iT), r2(P.pitch || 0), P.hand || 0, (P.candleN || 0) % 5, P.ammo || 0, r2(P.reloadT || 0), P.melee ? MELEE_KINDS.indexOf(P.melee.kind) + 1 : 0, P.melee ? P.melee.uses : 0, P.swingN || 0, r2(P.zipT || 0), P.slot || 0]),
       z: this.zombies.map((z) => [z.id, ZKINDS.indexOf(z.kind), r2(z.x), r2(z.y), r2(z.hp / z.max), ZSTATES.indexOf(z.state), r2(z.atkT), r2(z.anim), z.hurtT > 0 ? 1 : 0, r2(z.spawnT), z.look, z.sc, z.warp ? 1 : 0, z.bs || 0, z.gold ? 1 : 0, z.elite ? 1 : 0, z.affix || 0]),
       rg: this.rings.map((g) => [g.x, g.y, r2(g.r), g.v]),
       bo: this.bolts.map((b) => [r2(b.x), r2(b.y), r2(b.z), r2(b.vx), r2(b.vy), b.c]),
@@ -2850,11 +2925,16 @@ export class Sim {
       P.candleN = a[19] || 0;
       P.ammo = a[20] ?? P.ammo;
       P.reloadT = a[21] || 0;
+      const was = P.melee;
       P.melee = a[22] ? { kind: MELEE_KINDS[a[22] - 1], uses: a[23] } : null;
+      // We picked something up (a new kind, or a fresh one of the same): into our hand with it.
+      if (me && P.melee && !P.down && (!was || was.kind !== P.melee.kind || P.melee.uses > was.uses)) this.equip(P, 1);
       // Someone else swung: play their swing (our own already started when we pressed).
       if (!me && a[24] && a[24] !== P.swingN) P.swingT = MELEE[P.melee?.kind || 'shove'].swing;
       if (!me || (a[24] || 0) > (P.swingN || 0)) P.swingN = a[24] || 0;
       P.zipT = a[25] || 0;
+      // Our own slot is ours to say; everyone else's comes from the host.
+      if (!me) P.slot = a[26] || 0;
     });
     const old = new Map(this.zombies.map((z) => [z.id, z]));
     this.zombies = s.z.map((a) => {
@@ -2912,17 +2992,32 @@ export class Sim {
     if (!P.down) this.updatePlayer(P, dt);
     P.hurtT = Math.max(0, P.hurtT - dt);
     P.fireAnim = Math.max(0, P.fireAnim - dt);
-    for (const Q of this.players) {
-      Q.meleeCd = Math.max(0, (Q.meleeCd || 0) - dt);
-      Q.swingT = Math.max(0, (Q.swingT || 0) - dt);
+    for (const Q of this.players) this.tickMelee(Q, dt);
+    // Our own swings start here straight away; the host decides what they hit, but we show the
+    // impact ourselves when the swing reaches something on our screen.
+    if (!P.down && P.slot === 1 && P.swapT <= 0 && input.fire && P.meleeCd <= 0 && !P.spKind) {
+      const M = MELEE[P.melee?.kind || 'shove'];
+      P.meleeCd = M.every / (P.overclock > 0 ? 1.4 : 1);
+      P.swingT = M.swing;
+      P.swingN = (P.swingN || 0) + 1;
+      P.struck = false;
+    }
+    if (P.swingT > 0 && !P.struck && this.swingAge(P) >= MELEE[P.melee?.kind || 'shove'].hit) {
+      P.struck = true;
+      const M = MELEE[P.melee?.kind || 'shove'];
+      if (this.meleeTargets(P, M).length) {
+        P.hitHold = P.melee ? 0.05 : 0.03;
+        this.feel('meleeHit', P.melee?.kind || 'shove');
+      }
     }
     const G = P.hero.gun;
-    if (input.fire && !P.down && (G.kind === 'soaker' ? P.tank > G.drain : G.kind === 'laser' ? !P.overheated : false)) P.fireAnim = 0.06;
+    const gunUp = P.slot === 0 && P.swapT <= 0;
+    if (gunUp && input.fire && !P.down && (G.kind === 'soaker' ? P.tank > G.drain : G.kind === 'laser' ? !P.overheated : false)) P.fireAnim = 0.06;
     // The pump animation needs to know when the guest last sprayed.
-    P.pumpT = input.fire && !P.down ? 0.35 : P.pumpT - dt;
+    P.pumpT = gunUp && input.fire && !P.down ? 0.35 : P.pumpT - dt;
     // Draw our own laser from where we are now, not where the host last saw us.
     this.lasers = this.lasers.filter((l) => l.o !== this.local || l.sp);
-    if (G.kind === 'laser' && input.fire && !P.overheated && !P.down) {
+    if (G.kind === 'laser' && gunUp && input.fire && !P.overheated && !P.down) {
       const dx = Math.cos(P.a);
       const dy = Math.sin(P.a);
       const slope = Math.tan(P.pitch);
@@ -2968,7 +3063,7 @@ export class Sim {
   // Guest side: what we send the host about ourselves.
   inputState() {
     const P = this.player;
-    return { t: 'in', p: [r2(P.x), r2(P.y), r2(P.a), r2(P.z), r2(P.pitch)], v: [r2(P.vx), r2(P.vy)], fire: P.input.fire && !P.down ? 1 : 0, dash: P.dashT > 0 ? 1 : 0 };
+    return { t: 'in', p: [r2(P.x), r2(P.y), r2(P.a), r2(P.z), r2(P.pitch)], v: [r2(P.vx), r2(P.vy)], fire: P.input.fire && !P.down ? 1 : 0, dash: P.dashT > 0 ? 1 : 0, sl: P.slot || 0 };
   }
 }
 

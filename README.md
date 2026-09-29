@@ -80,8 +80,15 @@ Runs in any modern browser, supports online co-op for up to four players, and sh
   floppies (16 CDs) and Gus fires from a rack of 6 rockets (12 candle balls), then reloads. Reloading starts by itself
   when you run dry and between waves, or press X. `tools/dpsbench.mjs` holds fire for 20 seconds at a tough zombie and
   reports each weapon's real damage per second.
-- **Melee.** Anyone can shove (V, middle-click, LB). Bouncers and Tanks drop melee weapons that replace the shove until
-  they break: a Louisville Slugger, a clicky PC keyboard, and a champagne bottle that goes off on its last swing.
+- **Melee.** Every hero carries two weapon slots, Doom style: 1 is their gun, 2 is melee. Swap with Q (or V, the mouse
+  wheel, middle-click, 1 and 2, LB on a pad, HIT on touch): the weapon in hand drops out of view and the other comes up.
+  With melee out, fire swings it and holding fire keeps swinging: a wind-up, a fast strike that connects as it crosses
+  the middle of the screen (anything in the arc in front of you), a hit-stop and burst on contact, and a follow-through.
+  Empty-handed you jab with your fists, alternating hands (Gus and Kev keep one hand on the bar). Bouncers and Tanks drop
+  melee weapons that go straight into your hand until they break: a Louisville Slugger, a clicky PC keyboard, and a
+  champagne bottle that goes off on its last swing; then you're back to your fists. Reload (X) with melee out brings the
+  gun back and reloads it; a reload waits, half done, while the gun is put away. Specials bring the gun back too. CPU
+  teammates swap to melee when something gets too close and back once there's room.
 - **A 90s horde.** Party Shamblers, Ravers, Bouncers, Bloaters, Crawlers, CRT-headed Corrupted, and the Millennium Bug,
   dressed for whichever district you're in.
 - **Headshots and combos.** Headshots deal double damage and pop heads off; chained kills build a score multiplier with
@@ -298,15 +305,16 @@ The app is locked to landscape. Fonts are bundled so it works offline.
 
 ## Controls
 
-**Keyboard and mouse:** WASD move, arrows or Q/E turn, mouse look up/down/around (click to lock); headshots do double
-damage, legs 60%, click fire, Space and Shift for ride tricks, R or right-click for the hero's special once its meter
-is full, V or middle-click melee, X reload (Dot and Gus), P or Esc pause, M mute. In story mode, hold E to use things
-(fuse boxes, payphones, junction boxes; E stops turning right there) and type digits on keypads.
+**Keyboard and mouse:** WASD move, arrows turn, mouse look up/down/around (click to lock); headshots do double
+damage, legs 60%, click fire (or swing), Space and Shift for ride tricks, R or right-click for the hero's special once its
+meter is full, Q, V, the wheel or middle-click swap between gun and melee (1 and 2 pick one), X reload (Dot and Gus),
+P or Esc pause, M mute. In story mode, hold E to use things (fuse boxes, payphones, junction boxes) and type digits on
+keypads (the number keys go to the keypad while it's open).
 
-**Gamepad:** left stick moves, right stick aims, RT fires, X reloads, LB or R3 melee, A jumps, B for the ride trick, Y or
+**Gamepad:** left stick moves, right stick aims, RT fires (or swings), X reloads, LB or R3 swap gun/melee, A jumps, B for the ride trick, Y or
 RB for the special, Start pauses. In story mode, hold LT to use things and work keypads with the d-pad and LT. In menus the d-pad or left stick moves, A selects, B goes back, X switches between the
 campaign and Endless on the hero select screen, and Y changes the number of CPU teammates.
 
 **Hero select:** C (or the CPU button) cycles 0 to 3 CPU teammates; they play the next heroes along from yours.
 
-**Touch:** left thumb moves, right thumb looks, with on-screen fire, jump, boost and HIT (melee) buttons.
+**Touch:** left thumb moves, right thumb looks, with on-screen fire, jump, boost and HIT buttons (HIT swaps to melee and shows GUN to swap back).

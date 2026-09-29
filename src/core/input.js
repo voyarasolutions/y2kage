@@ -19,7 +19,7 @@ export class Input {
     this.bind();
   }
 
-  // Standard mapping: A jump, B ride trick, Y or RB special, RT fire, X reload, LB or R3 melee, Start pause.
+  // Standard mapping: A jump, B ride trick, Y or RB special, RT fire, X reload, LB or R3 swap gun/melee, Start pause.
   // In menus: d-pad or left stick move, A select, B back, X switches (Endless on hero select).
   pollPad(dt) {
     const P = this.pad;
@@ -61,7 +61,7 @@ export class Input {
       if (hit(0)) this.h.key('Space');
       if (rel(0)) this.h.keyUp('Space');
       if (hit(1)) this.h.key('ShiftLeft');
-      if (hit(4) || hit(11)) this.h.key('Melee');
+      if (hit(4) || hit(11)) this.h.key('Swap');
       if (hit(2)) this.h.key('Reload');
       if (hit(3) || hit(5)) this.h.key('Special');
       if (hit(9) || hit(8)) this.h.key('Escape');
@@ -139,13 +139,26 @@ export class Input {
       this.mouse.y = p.y;
       // Right button fires the special while playing.
       if (e.button === 2 && this.playing) return this.h.key('Special');
-      // Middle button swings the melee weapon.
-      if (e.button === 1 && this.playing) return this.h.key('Melee');
+      // Middle button swaps between the gun and melee.
+      if (e.button === 1 && this.playing) return this.h.key('Swap');
       this.mouse.down = true;
       this.h.press(p.x, p.y, 'mouse');
     });
     window.addEventListener('mouseup', () => (this.mouse.down = false));
     cv.addEventListener('contextmenu', (e) => e.preventDefault());
+    // The wheel swaps weapon slots too: one swap per flick, however many events a trackpad sends.
+    cv.addEventListener(
+      'wheel',
+      (e) => {
+        if (!this.playing) return;
+        e.preventDefault();
+        const now = performance.now();
+        if (Math.abs(e.deltaY) < 1 || now - (this.wheelT || 0) < 220) return;
+        this.wheelT = now;
+        this.h.key(e.deltaY > 0 ? 'WheelDown' : 'WheelUp');
+      },
+      { passive: false },
+    );
     document.addEventListener('pointerlockerror', () => (this.noLock = true));
     document.addEventListener('pointerlockchange', () => {
       const locked = document.pointerLockElement === cv;
@@ -169,7 +182,7 @@ export class Input {
           this.h.key('Space');
         } else if (btn === 'boost') this.h.key('ShiftLeft');
         else if (btn === 'special') this.h.key('Special');
-        else if (btn === 'melee') this.h.key('Melee');
+        else if (btn === 'melee') this.h.key('Swap');
         else if (btn === 'pause') this.h.key('Escape');
         else if (p.x < W * 0.42 && this.touch.move == null) {
           this.touch.move = t.identifier;
@@ -249,7 +262,7 @@ export class Input {
       f -= this.pad.move.y;
       s += this.pad.move.x;
     }
-    const turn = (k.has('ArrowLeft') || k.has('KeyQ') ? -1 : 0) + (k.has('ArrowRight') || (k.has('KeyE') && !this.storyUse) ? 1 : 0);
+    const turn = (k.has('ArrowLeft') ? -1 : 0) + (k.has('ArrowRight') ? 1 : 0);
     const fire = this.mouse.down || this.touch.fire != null || this.pad.fire || k.has('KeyF') || k.has('ControlLeft') || k.has('Enter');
     const look = this.lookDX;
     const lookY = this.lookDY;

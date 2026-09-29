@@ -608,6 +608,16 @@ function bottlePick() {
   return p;
 }
 
+// Bare knuckles, for the melee slot when there's nothing in it.
+function fistPick() {
+  const p = new Pix(12, 11);
+  p.rect(1, 3, 10, 7, '#c88a5a').rect(1, 3, 10, 1, '#e8b080').rect(1, 9, 10, 1, '#8a5a3a');
+  for (let k = 0; k < 4; k++) p.rect(1 + k * 2 + (k > 1 ? 1 : 0), 1, 2, 3, '#e8b080').px(2 + k * 2 + (k > 1 ? 1 : 0), 3, '#8a5a3a');
+  p.rect(1, 5, 4, 2, '#e8b080').rect(4, 6, 1, 2, '#8a5a3a');
+  p.outline(PAL.ink);
+  return p;
+}
+
 // Story mode parts and the markers over the things you work: a cartridge fuse, a quarter, Dot's
 // bag with the patch floppies poking out, a fuse box, a payphone handset, a keypad, a junction box.
 function fusePick() {
@@ -777,7 +787,7 @@ export function buildSprites() {
   S.pickups = { health: tex(cola()), armor: tex(badge()), overclock: tex(chip()), patch: tex(patchDisk()), multi: tex(multiWin()), freeze: tex(toaster(0)), cad: tex(cadKeys()), zip: tex(zipDisk()), bat: tex(batPick()), keyboard: tex(keyboardPick()), bottle: tex(bottlePick()) };
   S.toasters = [toaster(0), toaster(1)];
   S.buffIcons = { patch: patchDisk(), multi: multiWin(), freeze: toaster(0), overclock: chip(), zip: zipDisk() };
-  S.meleeIcons = { bat: batPick(), keyboard: keyboardPick(), bottle: bottlePick() };
+  S.meleeIcons = { bat: batPick(), keyboard: keyboardPick(), bottle: bottlePick(), shove: fistPick() };
   S.goo = tex(goo(false));
   S.gooBig = tex(goo(true));
   S.shadow = tex(shadowBlob());

@@ -305,7 +305,7 @@ export const TOUCH = {
   pause: { x: 372, y: 28, r: 9 },
 };
 
-export function drawTouch(g, input, hero) {
+export function drawTouch(g, input, hero, slot = 0) {
   if (!input.touch.on) return;
   const ring = (b, label, on) => {
     g.fillStyle = on ? '#ffffff55' : '#ffffff22';
@@ -320,7 +320,8 @@ export function drawTouch(g, input, hero) {
   if (hero.move.type === 'board' || hero.move.type === 'scooter') ring(TOUCH.boost, hero.move.type === 'board' ? 'KICK' : 'DASH', false);
   ring(TOUCH.pause, 'II', false);
   if (input.spReady) ring(TOUCH.special, 'SP!', false);
-  ring(TOUCH.melee, 'HIT', false);
+  // The melee button swaps slots: HIT to bring melee out, GUN to go back.
+  ring(TOUCH.melee, slot ? 'GUN' : 'HIT', false);
   if (input.touch.mo) {
     const m = input.touch.mo;
     g.fillStyle = '#ffffff22';
@@ -419,26 +420,39 @@ export function drawBuffs(g, sim, S, t) {
   });
 }
 
-// The melee weapon in hand, just above the taskbar on the left, with its swings left;
-// and a RELOAD prompt when the box or rack runs dry.
+// The two weapon slots, centred just above the taskbar (clear of the handlebar fists), as taskbar buttons: 1 the gun, 2 melee
+// (the weapon and its swings left, or bare fists). The slot in hand is the pressed-in one. Also a RELOAD prompt
+// when the box or rack runs dry.
 export function drawMelee(g, sim, S, t) {
   const P = sim.player;
   if (P.down) return;
   const M = P.melee;
-  const y = H - TASKBAR_H - 30;
-  if (M) {
-    const icon = S.meleeIcons[M.kind];
-    const max = MELEE[M.kind].uses;
-    const ih = Math.min(12, icon.h);
+  const y = H - TASKBAR_H - 16;
+  const button = (x, n, icon, ih, label, on, low) => {
     const iw = Math.round((ih * icon.w) / icon.h);
-    const label = `${MELEE[M.kind].short} ${M.uses}`;
-    bevel(g, 2, y, iw + textWidth(label, 'small') + 10, 14);
-    g.drawImage(icon.c, 4, y + 1 + Math.round((12 - ih) / 2), iw, ih);
-    const low = M.uses <= Math.max(3, max * 0.2);
-    text(g, label, iw + 7, y + 4, { font: 'small', color: low && Math.floor(t * 4) % 2 ? PAL.red : PAL.ink });
-  }
+    const w = iw + 14 + (label ? textWidth(label, 'small') + 3 : 0);
+    bevel(g, x, y, w, 14, on, on ? PAL.winLight : PAL.winFace);
+    // Pressed in, like the active window's taskbar button: checkered face, contents nudged down a pixel.
+    if (on) for (let yy = y + 2; yy < y + 12; yy++) for (let xx = x + 2 + (yy % 2); xx < x + w - 2; xx += 2) rect(g, xx, yy, 1, 1, PAL.white);
+    const o = on ? 1 : 0;
+    text(g, String(n), x + 3 + o, y + 4 + o, { font: 'small', color: on ? PAL.winNavy : PAL.winShadow });
+    g.globalAlpha = on ? 1 : 0.55;
+    g.drawImage(icon.c, x + 9 + o, y + 1 + o + Math.round((12 - ih) / 2), iw, ih);
+    g.globalAlpha = 1;
+    if (label) text(g, label, x + iw + 12 + o, y + 4 + o, { font: 'small', color: low && Math.floor(t * 4) % 2 ? PAL.red : on ? PAL.ink : PAL.winShadow });
+    return x + w + 1;
+  };
+  const gunIcon = S.icons[P.hero.gun.kind];
+  const icon = S.meleeIcons[M ? M.kind : 'shove'];
+  const low = M && M.uses <= Math.max(3, MELEE[M.kind].uses * 0.2);
+  // Measure both buttons first so the pair sits centred.
+  const width = (ic, label) => Math.round((Math.min(12, ic.h) * ic.w) / ic.h) + 14 + (label ? textWidth(label, 'small') + 3 : 0);
+  const label = M ? String(M.uses) : '';
+  const x1 = Math.round(W / 2 - (width(gunIcon, '') + 1 + width(icon, label)) / 2);
+  const x2 = button(x1, 1, gunIcon, Math.min(12, gunIcon.h), '', P.slot === 0);
+  button(x2, 2, icon, Math.min(12, icon.h), label, P.slot === 1, low);
   const G = P.hero.gun;
-  if (G.mag && P.reloadT > 0 && P.ammo <= 0) {
+  if (G.mag && P.slot === 0 && P.reloadT > 0 && P.ammo <= 0) {
     text(g, 'RELOADING', W / 2, H / 2 + 22, { font: 'small', color: Math.floor(t * 6) % 2 ? PAL.gold : PAL.cream, outline: PAL.ink, align: 'center' });
   }
 }

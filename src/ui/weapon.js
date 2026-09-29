@@ -9,7 +9,7 @@ import { CANDLE_COLS } from '../data/heroes.js';
 import { sfx } from '../audio/sfx.js';
 import { LOOKS, ramp } from '../gfx/heroart.js';
 import { PAL, FLAVOURS } from '../core/palette.js';
-import { MELEE } from '../data/melee.js';
+import { MELEE, SWAP_T } from '../data/melee.js';
 import * as SOAKER_ART from '../gfx/art/soakers.js';
 import * as YOYO_ART from '../gfx/art/yoyos.js';
 
@@ -436,8 +436,8 @@ function flame(g, x, y, s, cols) {
 
 
 // ---------------------------------------------------------------- melee
-// Melee weapons, held upright in the right fist and swung across the screen. Each is drawn standing
-// up with the fist at PIVOT; the swing rotates the whole sprite (arm too) around it.
+// Melee weapons, held in the right fist and swung across the screen. Each is drawn standing up with
+// the fist at PIVOT; the swing turns the weapon around it while the forearm follows from the shoulder.
 const PIVOT = { x: 40, y: 150 };
 
 function batArt(p) {
@@ -488,28 +488,125 @@ function bottleArt(p) {
   p.rect(PIVOT.x - 6, 18, 2, 60, '#5aa06e');
 }
 
+// The weapon and the fist gripping it, standing upright with the fist at PIVOT. The forearm is
+// drawn separately (armArt) so it always reaches back to the shoulder however the swing turns.
 function meleeArt(L, hi, kind) {
   const p = new Pix(90, 200);
-  arm(p, { x: PIVOT.x + 2, y: PIVOT.y + 8 }, { x: 34, y: 60 }, L, hi);
-  const item = new Pix(90, 200);
-  if (kind === 'bat') batArt(item);
-  if (kind === 'keyboard') keyboardArt(item);
-  if (kind === 'bottle') bottleArt(item);
-  ink(item);
-  p.draw(item, 0, 0);
+  if (kind === 'bat') batArt(p);
+  if (kind === 'keyboard') keyboardArt(p);
+  if (kind === 'bottle') bottleArt(p);
+  ink(p);
   fist(p, PIVOT.x, PIVOT.y - 1, L, hi);
   ink(p);
   return p;
 }
 
-// Empty-handed: a straight-arm shove with the left hand.
-function shoveArt(L, hi) {
-  const p = new Pix(96, 110);
-  const w = { x: 46, y: 42 };
-  arm(p, w, { x: -26, y: 70 }, L, hi);
-  fist(p, w.x, w.y - 7, L, hi, true);
+// A bare fist, knuckles up, centred on (16, 12) of its sprite. flip: the left hand.
+function fistArt(L, hi, flip) {
+  const p = new Pix(32, 26);
+  fist(p, 16, 12, L, hi, flip);
+  return ink(p);
+}
+
+// A forearm in the hero's sleeve running from the wrist at w off toward the shoulder at angle ang.
+const ARM_LEN = 120;
+function armArt(L, hi, ang) {
+  const dx = Math.cos(ang) * ARM_LEN;
+  const dy = Math.sin(ang) * ARM_LEN;
+  const pad = 20;
+  const w = { x: pad + Math.max(0, -dx * 1.3), y: pad + Math.max(0, -dy * 1.3) };
+  const p = new Pix(Math.ceil(Math.abs(dx) * 1.3 + pad * 2), Math.ceil(Math.abs(dy) * 1.3 + pad * 2));
+  arm(p, w, { x: dx, y: dy }, L, hi);
   ink(p);
-  return p;
+  return { p, w };
+}
+
+// Where the arms come from: the shoulders, just off the bottom corners of the screen.
+const SHOULDER = [{ x: W * 0.06, y: H + 70 }, { x: W * 0.94, y: H + 70 }];
+const ARM_STEPS = 48;
+
+// Held melee poses: the fist as a fraction of the screen, and the weapon's lean in radians (0 upright,
+// negative toward the left). idle is the batter's stance, weapon up over the right shoulder; wind
+// cocks it further back; hit is the moment of contact, laid across the middle of the screen; end is
+// where the follow-through carries it before it drops out and comes back up to idle.
+const POSE = {
+  bat: { idle: [0.68, 0.85, 0.5], wind: [0.76, 0.86, 1.05], hit: [0.6, 0.62, -1.3], end: [0.3, 0.8, -2.25] },
+  keyboard: { idle: [0.7, 0.85, 0.4], wind: [0.77, 0.86, 0.9], hit: [0.6, 0.64, -1.25], end: [0.34, 0.8, -2.1] },
+  bottle: { idle: [0.68, 0.86, 0.3], wind: [0.74, 0.78, 0.15], hit: [0.58, 0.64, -0.85], end: [0.38, 0.92, -1.7] },
+};
+const lerp = (a, b, q) => a + (b - a) * q;
+const easeOut = (q) => 1 - (1 - q) * (1 - q);
+const easeIn = (q) => q * q;
+const smooth = (q) => q * q * (3 - 2 * q);
+
+// Swap lowering: how far down (pixels) the weapon in hand is, and which slot is showing.
+const SWAP_DROP = 150;
+function swapPose(P) {
+  if (!(P.swapT > 0)) return { slot: P.slot, drop: 0 };
+  const half = SWAP_T / 2;
+  if (P.swapT > half) return { slot: 1 - P.slot, drop: SWAP_DROP * easeIn((SWAP_T - P.swapT) / half) };
+  return { slot: P.slot, drop: SWAP_DROP * easeIn(P.swapT / half) };
+}
+
+// The pose of a held weapon s seconds into its swing (0: at rest): fist position and lean. The strike
+// speeds up into the contact and slows out of it; strike is set while the blow is travelling fast.
+function swingPose(kind, s) {
+  const M = MELEE[kind];
+  const K = POSE[kind];
+  const at = (A) => ({ x: A[0] * W, y: A[1] * H, a: A[2] });
+  const mix = (A, B, q) => ({ x: lerp(A.x, B.x, q), y: lerp(A.y, B.y, q), a: lerp(A.a, B.a, q) });
+  const idle = at(K.idle);
+  if (s <= 0) return idle;
+  const end = at(K.end);
+  const e = M.hit + (M.hit - M.wind) * 1.2;
+  if (s < M.wind) return mix(idle, at(K.wind), easeOut(s / M.wind));
+  if (s < M.hit) return { ...mix(at(K.wind), at(K.hit), easeIn((s - M.wind) / (M.hit - M.wind))), strike: true };
+  if (s < e) return { ...mix(at(K.hit), end, easeOut((s - M.hit) / (e - M.hit))), strike: true };
+  // Follow-through: carry on past, drop out of view, and come back up at rest.
+  const r = Math.min(1, (s - e) / Math.max(0.01, M.swing - e));
+  if (r < 0.5) {
+    const q = r / 0.5;
+    return { x: end.x - 12 * easeOut(q), y: end.y + 120 * q * q, a: end.a - 0.2 * easeOut(q) };
+  }
+  const q = (r - 0.5) / 0.5;
+  return { x: idle.x, y: idle.y + 120 * (1 - q) * (1 - q), a: idle.a };
+}
+
+// A point along the weapon, r pixels out from the fist, for a pose.
+function along(o, r) {
+  return { x: o.x + Math.sin(o.a) * r, y: o.y - Math.cos(o.a) * r };
+}
+
+// Fists: the guard each hand rests in, and the jab. s seconds into the punch; h the punching hand.
+function fistPose(hand, s, h) {
+  const M = MELEE.shove;
+  const side = hand ? 1 : -1;
+  const guard = { x: W / 2 + side * W * 0.25, y: H - 46 };
+  if (s <= 0 || hand !== h) return guard;
+  const back = { x: guard.x + side * 6, y: guard.y + 12 };
+  const hit = { x: W / 2 + side * 20, y: H * 0.55 };
+  if (s < M.wind) {
+    const q = easeOut(s / M.wind);
+    return { x: lerp(guard.x, back.x, q), y: lerp(guard.y, back.y, q) };
+  }
+  if (s < M.hit + 0.03) {
+    const q = easeOut(Math.min(1, (s - M.wind) / (M.hit - M.wind)));
+    return { x: lerp(back.x, hit.x, q), y: lerp(back.y, hit.y, q), strike: true };
+  }
+  const q = smooth(Math.min(1, (s - M.hit - 0.03) / (M.swing - M.hit - 0.03)));
+  return { x: lerp(hit.x, guard.x, q), y: lerp(hit.y, guard.y, q) };
+}
+
+// Where a swing lands on screen, for the impact burst.
+function impactStar(g, x, y, k) {
+  const r = Math.round(3 + k * 9);
+  g.fillStyle = PAL.gold;
+  for (const [sx, sy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) g.fillRect(Math.round(x + sx * r * 0.4 - 1), Math.round(y + sy * r * 0.4 - 1), sx ? r : 3, sy ? r : 3);
+  g.fillStyle = PAL.white;
+  for (const [sx, sy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) for (let i = 2; i < r * 0.7; i++) g.fillRect(Math.round(x + sx * i), Math.round(y + sy * i), 2, 2);
+  g.fillRect(Math.round(x - 3), Math.round(y - 3), 7, 7);
+  g.fillStyle = PAL.cream;
+  g.fillRect(Math.round(x - 1), Math.round(y - 1), 3, 3);
 }
 
 export class WeaponView {
@@ -533,36 +630,87 @@ export class WeaponView {
   }
 
   melee(heroIdx, kind) {
-    const key = `m${heroIdx}${kind}`;
-    return (this.cache[key] ||= kind === 'shove' ? shoveArt(LOOKS[heroIdx], heroIdx) : meleeArt(LOOKS[heroIdx], heroIdx, kind));
+    return (this.cache[`m${heroIdx}${kind}`] ||= meleeArt(LOOKS[heroIdx], heroIdx, kind));
   }
 
-  // The swing: the melee weapon sweeps from the right across to the left, with a smear behind it.
-  drawSwing(g, P, heroIdx, bx, by) {
+  fistArt(heroIdx, flip) {
+    return (this.cache[`f${heroIdx}${flip}`] ||= fistArt(LOOKS[heroIdx], heroIdx, flip));
+  }
+
+  // Gus and Kev keep their free hand on the pogo or scooter bar while they fight up close.
+  bar(heroIdx, type) {
+    return (this.cache[`b${heroIdx}${type}`] ||= handlebar(LOOKS[heroIdx], heroIdx, type === 'pogo' ? PAL.strawberry : PAL.lime, type === 'pogo'));
+  }
+
+  // The forearm from a wrist at w back to the shoulder on one side (1 right, 0 left).
+  drawArm(g, heroIdx, w, side) {
+    const S = SHOULDER[side];
+    const step = Math.round((Math.atan2(S.y - w.y, S.x - w.x) / (Math.PI * 2)) * ARM_STEPS);
+    const A = (this.cache[`a${heroIdx}${step}`] ||= armArt(LOOKS[heroIdx], heroIdx, (step / ARM_STEPS) * Math.PI * 2));
+    g.drawImage(A.p.c, Math.round(w.x - A.w.x), Math.round(w.y - A.w.y));
+  }
+
+  // Slot 2 in hand: the melee weapon held at rest, or swinging; fists up in a guard, or jabbing.
+  drawMelee(g, sim, P, heroIdx, t, bx, by, drop) {
     const kind = P.melee?.kind || 'shove';
     const M = MELEE[kind];
-    const ph = 1 - P.swingT / M.swing;
-    const art = this.melee(heroIdx, kind);
+    const s = P.swingT > 0 ? M.swing - P.swingT : 0;
+    const ride = P.hero.move.type;
+    const bar = ride === 'pogo' || ride === 'scooter';
+    const breathe = Math.sin(t * 1.8) * 1.5;
+    if (bar) g.drawImage(this.bar(heroIdx, ride).c, Math.round(bx), Math.round(H - 16 - 66 + by));
+    let impact = null;
     if (kind === 'shove') {
-      const k = Math.sin(Math.PI * Math.min(1, ph * 1.2));
-      g.drawImage(art.c, Math.round(W * 0.28 + k * 34 + bx), Math.round(H - 40 - k * 70 + by));
-      return;
-    }
-    const ease = (q) => 1 - (1 - q) * (1 - q);
-    const ang = (q) => 0.7 - 2.1 * ease(Math.min(1, q));
-    const px = W * 0.7 + bx;
-    const py = H - 30 + by - Math.sin(Math.PI * ph) * 20;
-    const put = (a, alpha) => {
+      // Alternate hands, unless the other one is steering.
+      const h = bar ? 1 : (P.swingN || 0) % 2;
+      for (const hand of bar ? [1] : [0, 1]) {
+        const o = fistPose(hand, s, h);
+        const x = o.x + bx;
+        const y = o.y + by + drop + (o.strike ? 0 : breathe * (hand ? 1 : -1));
+        this.drawArm(g, heroIdx, { x: x + (hand ? 2 : -2), y: y + 8 }, hand);
+        g.drawImage(this.fistArt(heroIdx, !hand).c, Math.round(x - 16), Math.round(y - 12));
+        if (hand === h && P.impactT > 0) impact = { x, y: y - 10 };
+      }
+    } else {
+      const o = swingPose(kind, s);
+      o.x += bx;
+      o.y += by + drop + (s > 0 ? 0 : breathe);
+      // A smear along the path the head just took, newest brightest.
+      if (o.strike) {
+        const n = 60;
+        for (let k = 0; k < n; k++) {
+          const q = swingPose(kind, s - 0.02 + (k / n) * 0.02);
+          if (!q.strike) continue;
+          g.globalAlpha = 0.1 + (k / n) * 0.35;
+          g.fillStyle = k > n * 0.6 ? PAL.white : PAL.cream;
+          for (let r = 118; r <= 150; r += 2) {
+            const p = along(q, r);
+            g.fillRect(Math.round(p.x + bx) - 1, Math.round(p.y + by + drop) - 1, 3, 3);
+          }
+        }
+        g.globalAlpha = 1;
+      }
+      // The wrist sits just below the fist, turned with it.
+      const wr = along(o, -9);
+      this.drawArm(g, heroIdx, { x: wr.x + 2, y: wr.y }, 1);
+      const a = Math.round((o.a / (Math.PI * 2)) * 96) * ((Math.PI * 2) / 96);
       g.save();
-      g.globalAlpha = alpha;
-      g.translate(Math.round(px), Math.round(py));
+      g.translate(Math.round(o.x), Math.round(o.y));
       g.rotate(a);
-      g.drawImage(art.c, -PIVOT.x, -PIVOT.y);
+      g.drawImage(this.melee(heroIdx, kind).c, -PIVOT.x, -PIVOT.y);
       g.restore();
-    };
-    put(ang(ph - 0.2), 0.18);
-    put(ang(ph - 0.1), 0.35);
-    put(ang(ph), 1);
+      // The burst goes where the weapon crosses nearest the crosshair.
+      if (P.impactT > 0) {
+        let best = Infinity;
+        for (let r = 50; r <= 140; r += 5) {
+          const p = along(o, r);
+          const d = Math.hypot(p.x - W / 2, p.y - H / 2);
+          if (d < best) [best, impact] = [d, p];
+        }
+      }
+    }
+    // Contact: a burst where the blow lands, shrinking away.
+    if (impact && P.impactT > 0) impactStar(g, impact.x, impact.y, P.impactT / 0.12);
   }
 
   draw(g, sim, heroIdx, t) {
@@ -571,17 +719,21 @@ export class WeaponView {
     const tier = G.tier || 0;
     const a = this.art(heroIdx, G.kind, tier);
     let { bx, by } = weaponBob(P);
-    const kick = P.fireAnim > 0 ? 3 : 0;
-    // Swinging drops the weapon out of the way; reloading dips it down and back up.
-    const swing = P.swingT > 0;
-    if (swing) {
-      const M = MELEE[P.melee?.kind || 'shove'];
-      by += Math.sin(Math.PI * (1 - P.swingT / M.swing)) * 70;
+    // Swapping slots: the one in hand drops out of view, then the other comes up.
+    const sw = swapPose(P);
+    if (sw.slot === 1) {
+      this.drawMelee(g, sim, P, heroIdx, t, bx, by, sw.drop);
+      return { bx, by };
     }
+    const kick = P.fireAnim > 0 ? 3 : 0;
+    // Reloading dips the gun down and back up.
     if (G.mag && P.reloadT > 0) {
       const q = 1 - P.reloadT / (P.reloadMax || G.reload);
       by += Math.sin(Math.PI * Math.min(1, Math.max(0, q))) * 30;
     }
+    // Gus and Kev's handlebar stays put while the gun goes down.
+    const barY = by;
+    by += sw.drop;
     const base = H - 16;
     const d = (p, x, y) => g.drawImage(p.c || p, Math.round(x + bx), Math.round(y + by));
 
@@ -642,12 +794,12 @@ export class WeaponView {
     } else if (G.kind === 'rocket') {
       const loaded = P.fireCd <= 0.05 && (P.ammo > 0 || P.zipT > 0) && !(P.reloadT > 0);
       const tube = loaded ? a.tube.loaded : a.tube.empty;
-      d(a.grip, 0, base - 66);
+      d(a.grip, 0, base - 66 - by + barY);
       d(tube, MUZZLE.rocket.x - TUBE.a.x, MUZZLE.rocket.y - TUBE.a.y + kick * 2);
       if (P.fireAnim > (sim.mode === 'client' ? 0 : 0.1)) flame(g, Math.round(MUZZLE.rocket.x + bx), Math.round(MUZZLE.rocket.y + kick * 2 + by), 1, [PAL.tangerine, PAL.gold, PAL.cream]);
     } else if (G.kind === 'laser') {
       const A = tier ? TAG.a : PEN.a;
-      d(a.bar, 0, base - 66);
+      d(a.bar, 0, base - 66 - by + barY);
       d(a.gun, MUZZLE.laser.x - A.x, MUZZLE.laser.y - A.y + kick);
       if (sim.laser || P.fireAnim > 0) {
         const lx = Math.round(MUZZLE.laser.x - 2 + bx);
@@ -660,7 +812,6 @@ export class WeaponView {
         g.fillRect(lx + 1, ly + 1, 2, 2);
       }
     }
-    if (swing) this.drawSwing(g, P, heroIdx, bx, by - Math.sin(Math.PI * (1 - P.swingT / MELEE[P.melee?.kind || 'shove'].swing)) * 70);
     return { bx, by };
   }
 }

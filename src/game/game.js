@@ -29,6 +29,9 @@ import { hit } from '../ui/win98.js';
 import * as HUD from '../ui/hud.js';
 import * as SCR from '../ui/screens.js';
 import { Net } from '../net/net.js';
+import { StoryMode } from './storymode.js';
+import * as STORY from '../ui/story.js';
+import { STATIONS } from '../data/story.js';
 
 // The Jackpot zombie's gold plating (a multiply tint on its sprite).
 const GOLD_TINT = [1, 0.74, 0.08];
@@ -36,7 +39,7 @@ const ELITE_TINT = [1, 0.55, 0.5];
 // Special zombies (sim AFFIXES): Spitter green, Sprinter yellow, Tank purple.
 const AFFIX_TINT = [null, [0.6, 1.15, 0.5], [1.5, 1.3, 0.25], [0.8, 0.45, 1.6]];
 const DIFF_IDS = ['easy', 'normal', 'hard'];
-const MENU_COUNT = { title: 7, paused: 4, clear: 2, dead: 2, mp: 3 };
+const MENU_COUNT = { title: 8, paused: 4, clear: 2, dead: 2, mp: 3 };
 
 export class Game {
   constructor(glCanvas, uiCanvas) {
@@ -193,6 +196,7 @@ export class Game {
   // ------------------------------------------------------------ flow
   toSelect() {
     this.saveXp();
+    if (this.story) return this.openStory();
     if (this.net.role === 'host') return this.backToLobby();
     if (this.net.role === 'guest') return this.leaveOnline();
     this.input.unlock();
@@ -251,6 +255,7 @@ export class Game {
   // Endless mode (solo): one district, waves until you drop.
   startEndless(d) {
     this.saveXp();
+    this.story = null;
     this.endless = true;
     this.endlessD = d;
     this.levelN = d * 10 + 1;
@@ -315,6 +320,7 @@ export class Game {
 
   startLevel(n, fromWave = 0) {
     this.saveXp();
+    this.story = null;
     this.endless = false;
     this.levelN = n;
     this.levelStartUps = this.runUps.slice();
@@ -450,6 +456,7 @@ export class Game {
 
   retry() {
     if (this.net.role === 'guest') return;
+    if (this.story) return this.launchMission();
     if (this.daily) return this.startDaily();
     if (this.endless) return this.startEndless(this.endlessD);
     this.runScore = this.levelStartScore;
@@ -552,9 +559,12 @@ export class Game {
       return;
     }
     if (m === 'join') return this.joinKey(code);
+    if (m === 'story') return this.storyKey(code);
+    if (m === 'scene') return this.sceneKey(code);
     if (m === 'lobby') return this.lobbyKey(code);
     if (m === 'mp' && code === 'Escape') return this.setMode('title');
     if (m === 'play') {
+      if (this.story && this.storyDigit(code)) return;
       if (code === 'Space') this.sim.pressJump();
       if (code === 'ShiftLeft' || code === 'ShiftRight') this.sim.pressBoost();
       if ((code === 'KeyR' || code === 'Special') && this.sim.pressSpecial() && addStat('specials') >= 25) this.award('specials');
@@ -653,7 +663,13 @@ export class Game {
     if (m === 'power') return this.powerOn();
     if (m === 'bios') return this.setMode('dialup');
     if (m === 'dialup') return this.setMode('title');
+    if (m === 'scene') return this.sceneKey('Press');
     if (m === 'play') {
+      // The bag-check keypad takes taps and clicks while it is open.
+      if (this.sim?.mission?.keypad) {
+        const b = this.buttons.find((q) => q.idx >= 60 && q.idx < 70 && hit(q, x, y));
+        if (b) return b.on();
+      }
       this.input.lock();
       return;
     }
@@ -678,6 +694,7 @@ export class Game {
 
   toTitle() {
     this.saveXp();
+    this.story = null;
     if (this.net.active) this.net.leave();
     this.sim = null;
     if (this.mapIdx !== 0) this.loadWorld(0, 1);
@@ -1011,6 +1028,8 @@ export class Game {
     }
     if (m === 'bios' && this.modeT > 3.9) this.setMode('dialup');
     if (m === 'dialup' && this.modeT > (this.dialLen || 5.2)) this.setMode('title');
+    if (m === 'scene' && this.scene) this.scene.t += dt;
+    this.input.storyUse = !!this.story;
     this.copiedT = Math.max(0, (this.copiedT || 0) - dt);
     // Online, the level keeps running behind the pause menu.
     const online = this.net.active && this.sim && m === 'paused';
@@ -1020,13 +1039,14 @@ export class Game {
       LP.a += inp.look * 0.0026 * settings.sens;
       LP.pitch = clamp((LP.pitch || 0) - (inp.lookY || 0) * 0.0026 * settings.sens, -MAX_PITCH, MAX_PITCH);
       this.input.spReady = this.sim.player.sp >= 100 && !this.sim.player.spKind;
+      this.storyTick();
       // Hit-stop: the world holds still for a beat on a big kill (offline only; online keeps time).
       if (this.sim.hitStop > 0 && !this.net.active) this.sim.hitStop -= dt;
       else this.sim.update(this.sim.cheats.turbo ? dt * 1.25 : dt, inp);
       if (this.endless && this.sim.lv.wave + 1 >= 20) this.award('wave20');
       this.netTick(dt);
       this.handleEvents();
-      if (this.sim && this.mode === 'play') {
+      if (this.sim && this.mode === 'play' && !this.story) {
         if (this.sim.boss) music.play('boss', { transpose: 0, tempo: 1 });
         else if (music.name === 'boss') {
           const d = Math.floor((this.levelN - 1) / 10);
@@ -1080,10 +1100,14 @@ export class Game {
         }
         this.bestScore = Math.max(this.bestScore, this.runScore + this.sim.score);
         store.set('bestScore', this.bestScore);
+        if (this.story) this.storyDead();
         this.input.unlock();
         this.setMode('dead');
       }
-      if (e.type === 'clear') this.levelClear();
+      if (e.type === 'clear') {
+        if (this.story) this.storyClear();
+        else this.levelClear();
+      }
       if (e.type === 'bossDown') for (let i = 0; i < 5; i++) this.launchBurst();
       if (e.type === 'jackpot') this.award('jackpot');
       if (e.type === 'endlessPick' && this.mode === 'play') this.openEndlessPick(e.wave);
@@ -1161,6 +1185,7 @@ export class Game {
     W3.endFrame();
     if (m === 'power' || m === 'crt' || m === 'bios') fx.fade = 0;
     if (m === 'dialup' || m === 'howto') fx.fade = 0.4;
+    if (m === 'story' || m === 'scene') fx.fade = 0.5;
     if (m === 'dead') fx.fade = 0;
     if (!settings.glitch) fx.glitch = 0;
     this.pipe.render(W3.scene, W3.camera, fx);
@@ -1263,6 +1288,7 @@ export class Game {
       W3.sprite(tex, p.x, 0.1 + Math.sin(this.t * 3 + p.ph) * 0.05, p.y, w, hh);
       W3.decal(S.shadow, p.x, p.y, 0.4, 0, 0.3);
     }
+    if (sim.mission) this.renderMission(sim);
     // Teammates, standing on their rides.
     for (const Q of sim.players) {
       if (Q === P) continue;
@@ -1386,6 +1412,11 @@ export class Game {
     if (m === 'mp') return SCR.drawMp(g, ui, this.t);
     if (m === 'join') return SCR.drawJoin(g, ui, this.t);
     if (m === 'lobby') return SCR.drawLobby(g, ui, this.t, this.S);
+    if (m === 'story') return STORY.drawStoryMenu(g, ui, this.t, this.S);
+    if (m === 'scene') {
+      const L = this.sceneLine();
+      return L && STORY.drawScene(g, ui, this.scene.t, this.S, L, this.sceneShown(), this.scene.i, this.scene.lines.length);
+    }
     const sim = this.sim;
     if (!sim) return;
     if (m === 'dead') return SCR.drawBsod(g, ui, this.t, this.deadStats);
@@ -1397,7 +1428,8 @@ export class Game {
       HUD.drawPopups(g, this.projectPopups(sim));
     }
     HUD.drawHurt(g, sim, this.t);
-    HUD.drawTopHud(g, sim, this.t);
+    if (sim.mission) STORY.drawObjective(g, sim, this.t);
+    else HUD.drawTopHud(g, sim, this.t);
     HUD.drawBossBar(g, sim, this.t);
     if (m === 'play') HUD.drawStragglers(g, this.projectStragglers(sim), this.t);
     if (m === 'play') HUD.drawJackpot(g, this.projectJackpot(sim), sim, this.t);
@@ -1415,6 +1447,14 @@ export class Game {
     if (m === 'play') HUD.drawLevelUp(g, sim, this.t);
     if (m === 'play') HUD.drawCombo(g, sim, this.t, 2.2);
     if (m === 'play') HUD.drawBanner(g, sim, this.t);
+    if (sim.mission && (m === 'play' || m === 'paused')) {
+      if (m === 'play') STORY.drawTargets(g, this.projectTargets(sim), this.t);
+      STORY.drawMissionBanner(g, sim, this.t);
+      STORY.drawTicker(g, sim, this.t);
+      STORY.drawChat(g, sim, this.S, this.t);
+      if (m === 'play') STORY.drawUsePrompt(g, sim, this.t, this.input);
+      if (m === 'play') STORY.drawKeypad(g, ui, sim, this.t);
+    }
     HUD.drawToast(g, sim, this.input.touch.on);
     HUD.drawTaskbar(g, sim, this.S, heroIdx, this.t);
     if (m === 'play') HUD.drawTouch(g, this.input, sim.hero);
@@ -1438,6 +1478,58 @@ export class Game {
   }
 
   // Where the last few zombies of a wave are: on screen, or which way to turn.
+  // Story mode: where the objective markers go, on screen or as an arrow at the edge.
+  projectTargets(sim) {
+    const cam = this.world.camera;
+    const v = this._pv || (this._pv = new THREE.Vector3());
+    const P = sim.player;
+    return sim.mission.targets().map((o) => {
+      const d = Math.hypot(o.x - P.x, o.y - P.y);
+      v.set(o.x, (o.h || 0.5) + 0.3, o.y).project(cam);
+      if (v.z < 1 && Math.abs(v.x) < 0.95 && Math.abs(v.y) < 0.9) return { sx: ((v.x + 1) / 2) * W, sy: ((1 - v.y) / 2) * H, d };
+      const a = Math.atan2(o.y - P.y, o.x - P.x) - P.a;
+      return { rel: Math.atan2(Math.sin(a), Math.cos(a)), d };
+    });
+  }
+
+  // Story mode things in the world: parts to pick up, stations to work, a hero waiting, the zone to hold.
+  renderMission(sim) {
+    const W3 = this.world;
+    const S = this.S;
+    const Ms = sim.mission;
+    for (const it of Ms.items) {
+      if (it.got) continue;
+      const tex = S.story[it.kind];
+      const w = { fuse: 0.18, quarter: 0.2, bag: 0.42 }[it.kind] || 0.25;
+      const hh = (w * tex.image.height) / tex.image.width;
+      W3.sprite(tex, it.x, 0.18 + Math.sin(this.t * 3 + it.ph) * 0.06, it.y, w, hh);
+      W3.decal(S.shadow, it.x, it.y, 0.35, 0, 0.35);
+      this.floorRing(it.x, it.y, 0.35 + 0.05 * Math.sin(this.t * 5), PAL.gold);
+      if (Math.random() < 0.3) W3.particle(it.x + rand(-0.2, 0.2), rand(0.1, 0.6), it.y + rand(-0.2, 0.2), Math.random() < 0.5 ? PAL.gold : PAL.cream);
+    }
+    for (const st of Ms.stations) {
+      if (st.done) continue;
+      const col = STATIONS[st.kind].col;
+      const tex = S.story[st.kind];
+      W3.sprite(tex, st.x, 1.0 + Math.sin(this.t * 2.5) * 0.05, st.y, 0.3, (0.3 * tex.image.height) / tex.image.width);
+      this.floorRing(st.x, st.y, 0.55, Math.floor(this.t * 4) % 2 ? col : PAL.cream);
+      if (st.prog > 0) this.floorRing(st.x, st.y, 0.55 * st.prog, PAL.white, 0.06);
+    }
+    const Stp = Ms.step;
+    if (Stp && (Stp.type === 'hold' || Stp.type === 'reach')) {
+      const [x, y] = Stp.at;
+      const col = Stp.type === 'hold' ? (Ms.inZone ? PAL.lime : PAL.pink) : PAL.cyan;
+      this.floorRing(x, y, Stp.r, Math.floor(this.t * 3) % 2 ? col : PAL.cream);
+      if (Stp.type === 'hold') this.floorRing(x, y, Stp.r * Ms.prog, PAL.gold, 0.06);
+    }
+    if (Ms.npc) {
+      const i = Math.max(0, HEROES.findIndex((h) => h.id === Ms.npc.id));
+      const set = S.heroTex[i];
+      W3.sprite(set[Math.floor(this.t * 2) & 1], Ms.npc.x, 0, Ms.npc.y, 0.7, 1.08);
+      W3.decal(S.shadow, Ms.npc.x, Ms.npc.y, 0.6, 0, 0.45);
+    }
+  }
+
   projectStragglers(sim) {
     const cam = this.world.camera;
     const v = this._pv || (this._pv = new THREE.Vector3());
@@ -1575,3 +1667,5 @@ function pixelTex(c) {
   t.colorSpace = THREE.NoColorSpace;
   return t;
 }
+
+Object.assign(Game.prototype, StoryMode);

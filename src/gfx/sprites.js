@@ -627,6 +627,76 @@ function bottlePick() {
   return p;
 }
 
+// Story mode parts and the markers over the things you work: a cartridge fuse, a quarter, Dot's
+// bag with the patch floppies poking out, a fuse box, a payphone handset, a keypad, a junction box.
+function fusePick() {
+  const p = new Pix(8, 16);
+  p.rect(2, 2, 4, 12, '#e8e2c8').rect(2, 2, 1, 12, PAL.white).rect(5, 2, 1, 12, '#a8a288');
+  p.rect(1, 0, 6, 3, PAL.steelLight).rect(1, 13, 6, 3, PAL.steelLight).rect(1, 2, 6, 1, PAL.steelDark).rect(1, 13, 6, 1, PAL.steelDark);
+  micro(p, '30', 2, 6, PAL.strawberryDark);
+  p.outline(PAL.ink);
+  return p;
+}
+
+function quarterPick() {
+  const p = new Pix(12, 12);
+  p.oval(6, 6, 5, 5, '#8a8e98').oval(6, 6, 4, 4, '#c8ccd6').oval(5, 5, 2, 2, PAL.white);
+  p.px(6, 3, '#8a8e98').px(7, 4, '#8a8e98').px(7, 6, '#8a8e98').px(6, 8, '#8a8e98');
+  p.outline(PAL.ink);
+  return p;
+}
+
+function bagPick() {
+  const p = new Pix(20, 18);
+  p.rect(2, 6, 16, 11, '#2a4ab8').rect(2, 6, 16, 1, '#6a8ae8').rect(17, 6, 1, 11, '#1a2a70').rect(2, 16, 16, 1, '#1a2a70');
+  p.rect(6, 3, 8, 1, PAL.ink).rect(6, 3, 1, 4, PAL.ink).rect(13, 3, 1, 4, PAL.ink);
+  // Three floppies poking out of the top: lime, tangerine, bondi.
+  [[4, PAL.lime], [8, PAL.tangerine], [12, PAL.bondi]].forEach(([x, c]) => p.rect(x, 2, 4, 5, c).rect(x + 1, 2, 2, 1, PAL.steelLight));
+  p.rect(5, 10, 10, 4, PAL.cream);
+  micro(p, 'FIX', 6, 10, PAL.strawberryDark);
+  p.outline(PAL.ink);
+  return p;
+}
+
+function fuseboxIcon() {
+  const p = new Pix(14, 16);
+  p.rect(1, 1, 12, 14, '#8a909c').rect(1, 1, 12, 1, '#c8ccd6').rect(12, 1, 1, 14, '#4a4e58');
+  p.rect(3, 3, 8, 10, '#2a2a30');
+  for (let k = 0; k < 3; k++) p.rect(4 + k * 2 + (k ? 1 : 0), 5, 1, 6, k % 2 ? PAL.gold : '#e8e2c8');
+  p.line(9, 3, 7, 7, PAL.gold).line(7, 7, 9, 7, PAL.gold).line(9, 7, 7, 12, PAL.gold);
+  p.outline(PAL.ink);
+  return p;
+}
+
+function payphoneIcon() {
+  const p = new Pix(16, 14);
+  p.rect(2, 2, 12, 3, PAL.cyan).rect(2, 2, 12, 1, PAL.bondiLight);
+  p.rect(2, 5, 3, 4, PAL.cyan).rect(11, 5, 3, 4, PAL.cyan);
+  p.rect(5, 9, 6, 4, '#2a2a30');
+  for (let k = 0; k < 3; k++) p.px(6 + k * 2, 10, PAL.cream).px(6 + k * 2, 12, PAL.cream);
+  p.outline(PAL.ink);
+  return p;
+}
+
+function keypadIcon() {
+  const p = new Pix(14, 16);
+  p.rect(1, 1, 12, 14, '#c8ccd6').rect(1, 1, 12, 1, PAL.white).rect(12, 1, 1, 14, '#8a909c');
+  p.rect(3, 3, 8, 3, '#1a3a1a').rect(4, 4, 6, 1, PAL.lime);
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) p.rect(3 + c * 3, 7 + r * 3, 2, 2, r === 2 && c === 2 ? PAL.tangerine : '#6a6a78');
+  p.outline(PAL.ink);
+  return p;
+}
+
+function junctionIcon() {
+  const p = new Pix(14, 16);
+  p.rect(1, 1, 12, 14, '#4a4e58').rect(1, 1, 12, 1, '#8a909c');
+  p.rect(1, 1, 12, 3, PAL.gold);
+  for (let k = 0; k < 12; k += 3) p.rect(1 + k, 1, 1, 3, PAL.ink);
+  p.line(8, 5, 5, 9, PAL.red).line(5, 9, 9, 9, PAL.red).line(9, 9, 6, 14, PAL.red);
+  p.outline(PAL.ink);
+  return p;
+}
+
 function goo(big) {
   const s = big ? 48 : 32;
   const p = new Pix(s, s);
@@ -730,6 +800,7 @@ export function buildSprites() {
   S.gooBig = tex(goo(true));
   S.shadow = tex(shadowBlob());
   S.portraits = [0, 1, 2, 3, 4].map(portrait);
+  S.story = { fuse: tex(fusePick()), quarter: tex(quarterPick()), bag: tex(bagPick()), fusebox: tex(fuseboxIcon()), payphone: tex(payphoneIcon()), keypad: tex(keypadIcon()), junction: tex(junctionIcon()) };
   S.heroBodies = [0, 1, 2, 3, 4].map((i) => [heroBody(i, 0), heroBody(i, 1)]);
   S.heroTex = S.heroBodies.map((fs) => fs.map(tex));
   S.icons = {};

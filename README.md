@@ -10,6 +10,8 @@ Runs in any modern browser, supports online co-op for up to four players, and sh
 
 | | |
 |---|---|
+| ![Story mode chapter select](docs/screenshots/story-menu.png) | ![Dot's pager in a story cutscene](docs/screenshots/story-pager.png) |
+| ![Entering the bag-check code off the news ticker](docs/screenshots/story-keypad.png) | ![The Millennium Bug taunting you over AIM](docs/screenshots/story-boss.png) |
 | ![Hero select](docs/screenshots/hero-select.png) | ![Broadway horde](docs/screenshots/broadway-horde.png) |
 | ![Tidal Wave special](docs/screenshots/special-tidal-wave.png) | ![Online co-op](docs/screenshots/coop.png) |
 | ![Subway platform](docs/screenshots/subway.png) | ![Game over](docs/screenshots/bsod.png) |
@@ -19,6 +21,14 @@ Runs in any modern browser, supports online co-op for up to four players, and sh
 
 ## Features
 
+- **Story mode: "Insert Disk 2".** At 11:10 PM a program called MILLENNIUM.BUG wakes up in the bank's mainframe and
+  starts turning anyone staring at a screen into a zombie. Dot has the only patch, on three floppies, and it has to go
+  out from the Ball Drop antenna before midnight. Missions have objectives instead of waves: find fuses and quarters,
+  fix a fuse box, call the theater from a payphone and hold the line, read a locker code off the news ticker and type
+  it in, get Dot to the red steps, cut the Bug's power. The horde never stops coming. Cutscenes play out as TV news
+  breaks, pager messages, AIM chats (the Bug types in lowercase) and the crew talking, and chapters have their own
+  music that leans in when a fight starts. Chapter 1 (Times Square, four missions, Tina) is playable; chapters 2 to 5
+  are designed in `docs/story-mode-design.md`.
 - **50 levels, 5 districts, 5 bosses.** Level *n* takes place at 11:(09+*n*) PM on December 31, 1999. The district
   changes every ten levels, and each district ends in a fight with its own boss. Beat level 50 at 11:59 and the year
   rolls over.
@@ -214,6 +224,15 @@ DIFF=hard FROM=1 TO=12 node tools/playtest.mjs      # easy, normal or hard
 node tools/playtest.mjs > run.log && python3 tools/summ.py run.log             # one summary line per log
 ```
 
+`tools/storyplay.mjs` plays every story mission with an autopilot that walks to each objective (fighting on the way,
+holding USE at stations, typing the keypad code) and logs the result; `tools/storycheck.mjs` checks every story
+coordinate is open floor the player can reach.
+
+```sh
+node tools/storycheck.mjs
+ONLY=1-4 TRIES=5 node tools/storyplay.mjs
+```
+
 `tools/shot.mjs` takes screenshots of a `vite preview` build with Playwright.
 
 ## Put it online
@@ -272,16 +291,20 @@ The app is locked to landscape. Fonts are bundled so it works offline.
 - `src/data/`   levels (50-level wave design, level n = 11:(09+n) PM, bosses, Endless), maps (one arena per district),
   heroes, upgrades, achievements (trophies, extras, cheats)
 - `src/game/`   `game.js` (modes, flow, rendering each frame) and `sim.js` (rides, weapons, flow-field zombie AI, waves)
+- Story mode: `src/data/story.js` (chapters, missions, objectives, cutscene lines), `src/game/mission.js` (runs a
+  mission's objectives on top of the sim), `src/game/storymode.js` (chapter select, cutscenes, mission start and end),
+  `src/ui/story.js` (its screens and HUD)
 - `src/core/`   palette, pixel font (Press Start 2P and Silkscreen, thresholded to hard pixels), input, storage
 
 ## Controls
 
 **Keyboard and mouse:** WASD move, arrows or Q/E turn, mouse look up/down/around (click to lock); headshots do double
 damage, legs 60%, click fire, Space and Shift for ride tricks, R or right-click for the hero's special once its meter
-is full, V or middle-click melee, X reload (Dot and Gus), P or Esc pause, M mute.
+is full, V or middle-click melee, X reload (Dot and Gus), P or Esc pause, M mute. In story mode, hold E to use things
+(fuse boxes, payphones, junction boxes; E stops turning right there) and type digits on keypads.
 
 **Gamepad:** left stick moves, right stick aims, RT fires, X reloads, LB or R3 melee, A jumps, B for the ride trick, Y or
-RB for the special, Start pauses. In menus the d-pad or left stick moves, A selects, B goes back, X switches between the
+RB for the special, Start pauses. In story mode, hold LT to use things and work keypads with the d-pad and LT. In menus the d-pad or left stick moves, A selects, B goes back, X switches between the
 campaign and Endless on the hero select screen, and Y changes the number of CPU teammates.
 
 **Hero select:** C (or the CPU button) cycles 0 to 3 CPU teammates; they play the next heroes along from yours.

@@ -69,7 +69,7 @@ function mulberry32(seed) {
   };
 }
 
-function weightsFor(n) {
+export function weightsFor(n) {
   const w = { shambler: 10 };
   // A new kind of zombie nearly every level early on, so the first district never sits still.
   if (n >= ENEMIES.runner.unlock) w.runner = Math.min(9, 2.5 + (n - 2) * 0.6);

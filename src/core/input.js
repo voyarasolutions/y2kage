@@ -65,7 +65,15 @@ export class Input {
       if (hit(2)) this.h.key('Reload');
       if (hit(3) || hit(5)) this.h.key('Special');
       if (hit(9) || hit(8)) this.h.key('Escape');
+      // Story mode: hold LT to use things; the d-pad works the keypad.
+      P.use = !!down[6];
+      if (hit(6)) this.h.key('Use');
+      if (hit(12)) this.h.key('PadUp');
+      if (hit(13)) this.h.key('PadDown');
+      if (hit(14)) this.h.key('PadLeft');
+      if (hit(15)) this.h.key('PadRight');
     } else {
+      P.use = false;
       P.fire = false;
       if (P.prev[0] && !down[0]) this.h.keyUp('Space');
       if (hit(0) || hit(9)) this.h.key('Enter');
@@ -241,7 +249,7 @@ export class Input {
       f -= this.pad.move.y;
       s += this.pad.move.x;
     }
-    const turn = (k.has('ArrowLeft') || k.has('KeyQ') ? -1 : 0) + (k.has('ArrowRight') || k.has('KeyE') ? 1 : 0);
+    const turn = (k.has('ArrowLeft') || k.has('KeyQ') ? -1 : 0) + (k.has('ArrowRight') || (k.has('KeyE') && !this.storyUse) ? 1 : 0);
     const fire = this.mouse.down || this.touch.fire != null || this.pad.fire || k.has('KeyF') || k.has('ControlLeft') || k.has('Enter');
     const look = this.lookDX;
     const lookY = this.lookDY;

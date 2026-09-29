@@ -534,6 +534,13 @@ export function drawDowned(g, sim, t) {
   if (!sim.player.down) return;
   rect(g, 0, 0, W, H - TASKBAR_H, '#0000aa88');
   text(g, 'YOU CRASHED', W / 2, 70, { font: 'big', color: PAL.white, outline: PAL.ink, align: 'center', scale: 2 });
+  if (sim.mission) {
+    // Story mode: you reboot on a timer while the crew covers you.
+    const left = Math.max(0, Math.ceil(sim.mission.rebootIn(sim.player)));
+    text(g, 'Your crew is covering you.', W / 2, 96, { font: 'small', color: PAL.cream, outline: PAL.ink, align: 'center' });
+    text(g, `Rebooting in ${left}...`, W / 2, 106, { font: 'small', color: PAL.cream, outline: PAL.ink, align: 'center' });
+    return;
+  }
   text(g, 'Your crew has to clear this wave.', W / 2, 96, { font: 'small', color: PAL.cream, outline: PAL.ink, align: 'center' });
   text(g, 'You reboot when the next one starts.', W / 2, 106, { font: 'small', color: PAL.cream, outline: PAL.ink, align: 'center' });
 }

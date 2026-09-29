@@ -811,7 +811,7 @@ export class Sim {
       if (!this.alive().length) {
         this.lv.phase = 'done';
         this.emit('dead');
-      } else this.toast(`${P.name} CRASHED`, 'Reboots next wave');
+      } else this.toast(`${P.name} CRASHED`, this.mission ? 'Reboots next objective' : 'Reboots next wave');
     }
   }
 
@@ -1722,7 +1722,9 @@ export class Sim {
     let s = at;
     if (!s) s = this.spawnPoint(kind);
     const B = kind === 'boss' ? this.bossDef : null;
-    const hp = base.hp * cfg.hpMul * (B ? B.hpMul * (1 + COOP_BOSS_HP * (this.players.length - 1)) : this.cheats.swarm ? 0.65 : 1);
+    // Story bosses scale with the people playing, not the CPU crew the story hands you.
+    const crowd = cfg.story ? this.players.filter((P) => !P.bot).length : this.players.length;
+    const hp = base.hp * cfg.hpMul * (B ? B.hpMul * (1 + COOP_BOSS_HP * (crowd - 1)) : this.cheats.swarm ? 0.65 : 1);
     const z = {
       id: this.nextZid++, kind, x: s.x + rand(-0.2, 0.2), y: s.y + rand(-0.2, 0.2),
       hp, max: hp, bs: 0,
@@ -2654,6 +2656,8 @@ export class Sim {
   updateWaves(dt) {
     const L = this.lv;
     const cfg = this.cfg;
+    // Story mode: the mission's objectives run the level instead of numbered waves.
+    if (this.mission) return this.mission.update(dt);
     if (L.phase === 'done') return;
     if (L.phase === 'intro' || L.phase === 'break') {
       const was = Math.ceil(L.t);

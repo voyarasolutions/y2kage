@@ -337,6 +337,29 @@ export const sfx = {
   glitch() {
     tone(1800 + Math.random() * 1200, 0.05, 'square', 0.05);
   },
+  // Story mode chat: AIM's door-open chime, a pager's double chirp, and the Bug's detuned motif
+  // (four notes that slide the wrong way, with static).
+  imChime() {
+    tone(1319, 0.08, 'triangle', 0.1);
+    tone(1760, 0.14, 'triangle', 0.1, null, 0.08);
+  },
+  pager() {
+    for (let i = 0; i < 2; i++) {
+      tone(2637, 0.07, 'square', 0.06, null, i * 0.16);
+      tone(3136, 0.07, 'square', 0.06, null, i * 0.16 + 0.07);
+    }
+  },
+  bugChat() {
+    [587, 554, 740, 466].forEach((f, i) => tone(f, 0.16, 'sawtooth', 0.07, f * (i % 2 ? 1.06 : 0.94), i * 0.15));
+    noise(0.6, 2400, 1.5, 0.04, 'bandpass', 0.05);
+  },
+  // The bag-check alarm and the payphone ringing out.
+  alarm() {
+    for (let i = 0; i < 4; i++) tone(i % 2 ? 660 : 880, 0.18, 'square', 0.09, null, i * 0.2);
+  },
+  ring() {
+    hold([440, 480], 0, 1.2, 0.05);
+  },
   click() {
     tone(1800, 0.02, 'square', 0.06);
   },

@@ -249,10 +249,11 @@ export function drawTitle(g, ui, t) {
   const w = 128;
   const x = W / 2 - w / 2;
   const y = 100;
-  const inner = window98(g, x, y - 8, w, 106, 'Y2KAGE.EXE');
+  const inner = window98(g, x, y - 8, w, 110, 'Y2KAGE.EXE');
   const got = Object.keys(unlocked()).length;
   const items = [
     ['Start Game', () => ui.game.toSelect()],
+    ['Story Mode  NEW', () => ui.game.openStory()],
     ['Daily Challenge', () => ui.game.startDaily()],
     ['Online Co-op', () => ui.game.setMode('mp')],
     [`Shop: ${tokens()} tokens`, () => ui.game.setMode('shop')],
@@ -261,7 +262,7 @@ export function drawTitle(g, ui, t) {
     ['Options', () => ui.game.openOptions()],
   ];
   items.forEach(([label, on], i) => {
-    const b = { x: inner.x + 6, y: inner.y + 1 + i * 12, w: inner.w - 12, h: 11 };
+    const b = { x: inner.x + 6, y: inner.y + 1 + i * 11, w: inner.w - 12, h: 10 };
     button(g, b.x, b.y, b.w, b.h, label, { focus: ui.focus === i });
     ui.addButton(b, on, i);
   });
@@ -272,7 +273,7 @@ export function drawTitle(g, ui, t) {
     text(g, `LEVEL ${best}`, x - 10, y + 70, { font: 'small', color: PAL.cream, outline: PAL.ink, align: 'right' });
     text(g, clockFor(best).label, x - 10, y + 80, { font: 'small', color: PAL.cream, outline: PAL.ink, align: 'right' });
   }
-  drawDailyCard(g, x + w + 8, y - 6, t, ui.focus === 1);
+  drawDailyCard(g, x + w + 8, y - 6, t, ui.focus === 2);
 
   // News ticker along the bottom.
   const ty = H - 12;
@@ -329,6 +330,7 @@ const HOWTO = [
   'Clear a level to pick an UPGRADE. They stack all run.',
   'Every 10th level has a boss. Jump their shockwaves.',
   'Trophies unlock Endless mode and cheats. Gamepads work.',
+  'STORY MODE: hold E (pad LT) to use things. Follow the markers.',
 ];
 
 export function drawHowto(g, ui, t) {
@@ -731,6 +733,11 @@ export function drawBsod(g, ui, t, stats) {
     lines[3] = `Daily Bug Report ${d.key} (${d.twist}): reached wave ${d.wave}.`;
     lines[4] = d.newBest ? '*** NEW BEST TODAY ***' : `Best today: wave ${d.best}. Streak: ${d.streak} day${d.streak === 1 ? '' : 's'}.`;
     lines[5] = '*  Press ENTER (or tap) to try the daily again.';
+  } else if (stats.story) {
+    const st = stats.story;
+    lines[3] = `Mission ${st.id}, ${st.name}: crashed on objective ${st.step} of ${st.steps}.`;
+    lines[4] = st.text ? `"${st.text}"` : '';
+    lines[5] = '*  Press ENTER (or tap) to try the mission again.';
   } else if (stats.endless) {
     const e = stats.endless;
     lines[3] = `Endless, ${e.district}: survived to wave ${e.wave}. Score ${stats.score}.`;

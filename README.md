@@ -63,7 +63,7 @@ Runs in any modern browser, supports online co-op for up to four players, and sh
 - **Tokens and the Upgrade Shop.** Every level, boss, Jackpot and Endless wave pays out tokens. Spend them in the
   Shop on permanent perks: more health, extra rerolls, luckier cards, a head start on your special and free upgrades
   at the start of a run, and each hero's weapon upgrade.
-- **Weapon upgrades.** Every weapon has a second tier in the Shop: Tina's Soaker becomes the 1997 Soaker 3500 (high
+- **Weapon upgrades.** Every weapon has a second tier in the Shop: Tina's green Soaker becomes a CPS 2500 (constant
   pressure), Marcus's yo-yos become see-through X-Brains, Dot's floppies become CD-ROMs, Gus's bottle rocket tube
   becomes dual Roman candles firing coloured fireballs, and Kev's laser pointer becomes a laser tag gun.
 - **Difficulty.** Easy, Normal or Hard in Options. Hard bites harder and brings more zombies but pays 1.5x tokens.
@@ -74,7 +74,7 @@ Runs in any modern browser, supports online co-op for up to four players, and sh
 - **Gamepad support.** Plug in any standard controller (Xbox, PlayStation, Switch Pro) and play without the keyboard.
 - **Five heroes, five rides, five weapons.** Every hero moves differently and shoots differently, and each has a
   special move that charges over time and with kills (R or right-click). Weapons point straight ahead and every shot leaves
-  from the muzzle you see. Tina's Soaker 2500 has a see-through reservoir that drains as she sprays and a pump she works
+  from the muzzle you see. Tina's two Soakers are VS's own painted sprites (src/gfx/art/soakers.js); she works the pump
   to build pressure back up.
 - **Every weapon has a rhythm.** Tina's tank and Kev's heat meter were already there; Dot throws from a box of 12
   floppies (16 CDs) and Gus fires from a rack of 6 rockets (12 candle balls), then reloads. Reloading starts by itself
@@ -162,7 +162,7 @@ player brings their own tier.
 
 | Hero | Upgrade | What changes |
 |---|---|---|
-| Tina | Soaker 3500 | 12 damage a shot (from 8), faster and further spray, 150 tank |
+| Tina | CPS 2500 | 12 damage a shot (from 8), faster and further spray, 150 tank |
 | Marcus | X-Brain yo-yos | 26 damage (from 18), faster throws, 8.5 reach |
 | Dot | CD-ROMs | 32 damage (from 22), four ricochets, faster |
 | Gus | Dual Roman candles | A fireball every 0.32s, alternating fists (was a rocket every 0.75s), smaller blasts |

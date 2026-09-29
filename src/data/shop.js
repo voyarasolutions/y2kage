@@ -27,7 +27,7 @@ export function addTokens(n) {
 
 export const nextCost = (p) => p.costs[perkTier(p.id)];
 
-// Each hero's weapon upgrade (Soaker 3500, X-Brains, CDs, Roman candles, laser tag gun), stored
+// Each hero's weapon upgrade (CPS 2500, X-Brains, CDs, Roman candles, laser tag gun), stored
 // with the perks as 'w:<hero id>'.
 export const WEAPON_COST = 150;
 export function weaponItem(hero) {

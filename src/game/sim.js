@@ -1016,7 +1016,7 @@ export class Sim {
         while (P.fireCd <= 0) {
           P.fireCd += G.every / P.mods.rate;
           if (!bottomless) P.tank -= G.drain * (P.overclock > 0 ? 0.5 : 1);
-          const m = this.muzzle(P, 'soaker');
+          const m = this.muzzle(P, G.tier ? 'soaker2' : 'soaker');
           const a = m.a + rand(-G.spread, G.spread);
           for (const off of this.spread()) {
             const b = a + off;

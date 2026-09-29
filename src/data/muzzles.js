@@ -4,7 +4,9 @@
 import { W, H } from '../core/util.js';
 
 export const MUZZLE = {
-  soaker: { x: 238, y: 118 },
+  // Tina's green starter Soaker, and the CPS 2500 upgrade held at her right hip.
+  soaker: { x: 190, y: 92 },
+  soaker2: { x: 236, y: 94 },
   rocket: { x: 240, y: 114 },
   laser: { x: 236, y: 128 },
   floppy: { x: 298, y: 128 },

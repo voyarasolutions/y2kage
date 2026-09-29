@@ -1,6 +1,7 @@
 // First-person weapons, drawn as pixel-art sprites over the 3D view the way the 16-bit shooters did:
 // flat painted parts, a Rig for the tubes, and the hero's own fist and sleeve. Each weapon has a
-// second tier bought in the Upgrade Shop (Soaker 3500, X-Brains, CDs, Roman candles, laser tag gun).
+// second tier bought in the Upgrade Shop (CPS 2500, X-Brains, CDs, Roman candles, laser tag gun).
+// Tina's Soakers are VS's own painted sprites (gfx/art/soakers.js).
 import { Pix, micro } from '../gfx/pix.js';
 import { Rig, texture, skew } from '../gfx/model.js';
 import { MUZZLE } from '../data/muzzles.js';
@@ -9,6 +10,17 @@ import { sfx } from '../audio/sfx.js';
 import { LOOKS, ramp } from '../gfx/heroart.js';
 import { PAL, FLAVOURS } from '../core/palette.js';
 import { MELEE } from '../data/melee.js';
+import * as SOAKER_ART from '../gfx/art/soakers.js';
+
+// VS's painted Soaker sprites (see gfx/art/soakers.js), and where each one's nozzle sits in it.
+const IMG = {};
+for (const k in SOAKER_ART) {
+  IMG[k] = new Image();
+  IMG[k].src = SOAKER_ART[k];
+}
+const NOZZLE = { green: { x: 29, y: 31 }, cps: { x: 150, y: 43 } };
+// The pump strokes were painted a little further back, so they drop to line their nozzle up.
+const DROP = { cpsPumpA: 19, cpsPumpB: 19 };
 import { W, H } from '../core/util.js';
 
 // A fist seen from behind, knuckles up, three-tone shaded, in the hero's own sleeve.
@@ -126,120 +138,6 @@ function cyl(p, cx, y, w, r) {
   p.px(x0 + Math.round(w * 0.24), y, r.hi);
   p.rect(x0 + Math.round(w * 0.66), y, Math.ceil(w * 0.34), 1, r.dark);
   p.rect(x0 + w - Math.max(1, Math.round(w * 0.1)), y, Math.max(1, Math.round(w * 0.1)), 1, r.deep);
-}
-
-// Tina's Soaker, held at her right hip and pointing straight ahead, seen from just above and behind:
-// a long barrel, a pump she works with her left hand, a pressure chamber bulging out underneath, and a
-// see-through reservoir on top whose water drops as she sprays. Three layers so the pump can slide
-// between the gun and the tank: base, pump, tank.
-// Tier 1 is the lime Soaker 2500. Tier 2 is the 1997 Soaker 3500: bigger, royal blue, twin
-// high-pressure chambers, a flared nozzle and a fatter tank.
-const SOAK = { w: 200, h: 136, a: { x: 44, y: 10 }, b: { x: 96, y: 98 }, far: 0.36, levels: 8 };
-const SOAKERS = [
-  { scale: 1.45, body: PAL.lime, trim: PAL.grape, cap: PAL.tangerine, pump: PAL.tangerine, rib: PAL.tangerineDark, chamber: PAL.gold, tankR: 12, decal: ['2500', PAL.purple, PAL.grape, PAL.white] },
-  { scale: 1.55, body: '#2a5ad8', trim: '#15204a', cap: PAL.gold, pump: PAL.gold, rib: PAL.goldDark, chamber: PAL.steelLight, tankR: 14, decal: ['3500', '#15204a', '#20306a', PAL.red] },
-];
-
-function soakerRig(C) {
-  return new Rig(SOAK.w, SOAK.h, SOAK.a, SOAK.b, SOAK.far, { scale: C.scale });
-}
-
-function soakerDecal(C) {
-  const [num, edge, fill, col] = C.decal;
-  const d = new Pix(29, 14);
-  d.rect(0, 0, 29, 14, edge).rect(1, 1, 27, 12, fill);
-  micro(d, 'SOAKER', 3, 2, PAL.gold);
-  micro(d, num, 7, 8, col);
-  return d;
-}
-
-function soakerBase(L, hi, C, tier) {
-  const R = soakerRig(C);
-  const body = ramp(C.body);
-  const cap = ramp(C.cap);
-  const trim = ramp(C.trim);
-  // Lowest first: the pressure chamber peeks out on the left, then the pump rod, barrel and body.
-  const chamberStripe = (t) => (t < 0.05 || (t > 0.47 && t < 0.52) ? trim : null);
-  R.tube(0.34, 0.86, -16, 19, 21, ramp(C.chamber), { x: -14, round: true, shade: tier ? 'chrome' : 'tube', stripe: chamberStripe });
-  // The 3500's second high-pressure chamber on the right.
-  if (tier) R.tube(0.4, 0.84, -14, 15, 17, ramp(C.chamber), { x: 18, round: true, shade: 'chrome', stripe: chamberStripe });
-  R.tube(0.08, 0.5, -9, 3, 3.5, ramp(PAL.steel), { shade: 'chrome' });
-  R.tube(0.02, 0.62, 0, 10, 12, body, { round: true, stripe: (t) => ((t > 0.1 && t < 0.14) || (t > 0.84 && t < 0.88) ? trim : null) });
-  if (tier) {
-    // Flared high-pressure nozzle with a red tip.
-    R.tube(-0.05, 0.02, 0, 12, 10, ramp(PAL.red), { round: true, cap: 0.3 });
-    R.tube(0.02, 0.07, 0, 13, 13, cap);
-  } else R.tube(0, 0.06, 0, 11, 12, cap, { round: true, cap: 0.3 });
-  R.tube(0.06, 0.085, 0, 13, 13, trim);
-  R.box(0.46, 1.25, -2, 25, 28, body, { shade: 'top', stripe: (t, v) => (v > 0.62 && v < 0.8 ? trim : v > -0.84 && v < -0.76 ? cap : null) });
-  const p = R.render();
-  // Pressure gauge on the side of the chamber, and her right hand on the grip.
-  const g = R.at(0.62, -10, -34);
-  p.oval(Math.round(g.x), Math.round(g.y), 5, 4, PAL.steelDark).oval(Math.round(g.x), Math.round(g.y), 4, 3, PAL.cream);
-  p.line(g.x, g.y, g.x + 3, g.y - 2, PAL.red).px(Math.round(g.x), Math.round(g.y), PAL.ink);
-  if (tier) {
-    // HIGH PRESSURE warning strip along the body.
-    const s = R.at(0.6, 6, -12);
-    const w = new Pix(33, 7);
-    w.rect(0, 0, 33, 7, PAL.gold);
-    for (let k = 0; k < 33; k += 4) w.px(k, 0, PAL.ink).px(k + 1, 6, PAL.ink);
-    micro(w, 'HI-PRESS', 2, 1, PAL.ink);
-    p.draw(w, Math.round(s.x - 16), Math.round(s.y - 3));
-  }
-  const h = R.at(0.9, -6, 30);
-  arm(p, { x: h.x + 4, y: h.y + 10 }, { x: 34, y: 60 }, L, hi);
-  fist(p, Math.round(h.x - 10), Math.round(h.y - 6), L, hi, false, true);
-  p.outline(PAL.ink);
-  return p;
-}
-
-// The reservoir on top, baked once per water level. Water fills it from the bottom of the screen up.
-function soakerTank(C, f) {
-  const R = soakerRig(C);
-  const trim = ramp(C.trim);
-  const water = ramp('#3a8ae8');
-  const air = ramp('#a8dcf4');
-  const top = R.at(0.56, 32, 14).y - 12;
-  const bot = R.at(1, 8, 14).y;
-  const line = top + (1 - f) * (bot - top);
-  R.box(0.62, 0.95, 8, 6, 7, trim, { shade: 'top', x: 10 });
-  R.tube(0.56, 1.02, 20, C.tankR, C.tankR + 1, air, {
-    shade: 'glass', round: true, cap: 0.5, x: 14,
-    stripe: (t, v, key, x, y) => ((t > 0.12 && t < 0.18) || (t > 0.78 && t < 0.84) ? trim : y > line ? (y < line + 1.5 && f < 0.98 ? '#dff4ff' : water) : null),
-  });
-  const p = R.render();
-  const dc = R.at(0.8, 20, 14);
-  p.draw(soakerDecal(C), Math.round(dc.x - 14), Math.round(dc.y - 7));
-  p.outline(PAL.ink);
-  return p;
-}
-
-// The pump grip and her left hand. It is wider than the barrel, so it shows on both sides.
-function soakerPump(L, hi, C) {
-  const R = soakerRig(C);
-  const org = ramp(C.pump);
-  const ribs = ramp(C.rib);
-  R.tube(0.2, 0.38, -5, 12.5, 14, org, { round: true, cap: 0.3, stripe: (t) => (t > 0.08 && t < 0.92 && Math.floor(t * 18) % 3 === 0 ? ribs : null) });
-  const p = R.render();
-  const h = R.at(0.33, -4, -16);
-  arm(p, { x: h.x - 2, y: h.y + 10 }, { x: -46, y: 80 }, L, hi);
-  fist(p, Math.round(h.x - 10), Math.round(h.y - 6), L, hi, true, true);
-  p.outline(PAL.ink);
-  return p;
-}
-
-function soaker(L, hi, tier) {
-  const C = SOAKERS[tier];
-  const tanks = [];
-  return {
-    base: soakerBase(L, hi, C, tier),
-    pump: soakerPump(L, hi, C),
-    rig: soakerRig(C),
-    tank: (f) => {
-      const i = Math.max(0, Math.min(SOAK.levels, Math.round(f * SOAK.levels)));
-      return (tanks[i] ||= soakerTank(C, i / SOAK.levels));
-    },
-  };
 }
 
 // Marcus's yo-yos, turned a little toward you so you see the rim, the gap between the halves, the
@@ -703,7 +601,7 @@ export class WeaponView {
     const L = LOOKS[heroIdx];
     const fl = heroIdx;
     let a;
-    if (kind === 'soaker') a = soaker(L, fl, tier);
+    if (kind === 'soaker') a = {};
     if (kind === 'yoyo') a = tier
       ? { l: yoyoHand(L, fl, true, '#9fd8ff', null, 1), r: yoyoHand(L, fl, false, '#ff8fc4', null, 1) }
       : { l: yoyoHand(L, fl, true, PAL.pink, PAL.strawberryDark, 0), r: yoyoHand(L, fl, false, PAL.cyan, PAL.cyanDark, 0) };
@@ -777,17 +675,19 @@ export class WeaponView {
       const half = Math.floor(this.pumpPh / Math.PI);
       if (pumping && half !== this.pumpHalf && sim.isLocal(P)) sfx.pump(half % 2 === 0);
       this.pumpHalf = half;
-      const rk = a.rig.slide(kick * 0.01);
-      const x = MUZZLE.soaker.x - SOAK.a.x + rk.x;
-      const y = MUZZLE.soaker.y - SOAK.a.y + rk.y + (pumping ? stroke : 0);
-      d(a.base, x, y);
-      const ps = a.rig.slide(stroke * 0.14);
-      d(a.pump, x + ps.x, y + ps.y);
-      d(a.tank(P.tank / G.tank), x, y);
+      // The green starter rocks with each pump; the CPS 2500 has real pump frames.
+      const M = tier ? MUZZLE.soaker2 : MUZZLE.soaker;
+      const N = tier ? NOZZLE.cps : NOZZLE.green;
+      let img = tier ? IMG.cpsIdle : IMG.green;
+      if (tier && pumping) img = stroke < 0.33 ? IMG.cpsIdle : stroke < 0.66 ? IMG.cpsPumpA : IMG.cpsPumpB;
+      const x = M.x - N.x + (!tier && pumping ? stroke * 3 : 0);
+      const y = M.y - N.y + kick + (!tier && pumping ? stroke * 5 : 0);
+      const key = Object.keys(IMG).find((k) => IMG[k] === img);
+      if (img.complete && img.naturalWidth) d(img, x, y + (DROP[key] || 0));
       if (P.fireAnim > 0) {
         for (let i = 0; i < 5 + tier * 4; i++) {
           g.fillStyle = i % 2 ? '#8fd8ff' : '#ffffff';
-          g.fillRect(Math.round(x + SOAK.a.x - 1 + (Math.random() - 0.5) * (5 + tier * 4) + bx), Math.round(y + SOAK.a.y - 2 - Math.random() * (5 + tier * 3) + by), 2, 2);
+          g.fillRect(Math.round(M.x - 1 + (Math.random() - 0.5) * (5 + tier * 4) + bx), Math.round(M.y + kick - 2 - Math.random() * (5 + tier * 3) + by), 2, 2);
         }
       }
     } else if (G.kind === 'yoyo') {

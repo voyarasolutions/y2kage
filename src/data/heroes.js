@@ -14,7 +14,7 @@ export const HEROES = [
     move: { type: 'skate', accel: 13, max: 5.6, friction: 1.3, strafe: 0.85, jump: 4.2 },
     gun: { kind: 'soaker', every: 0.045, dmg: 8, speed: 13, spread: 0.05, life: 0.6, knock: 0.3, tank: 100, drain: 1.6, refill: 50 },
     // Upgrade Shop tier 2 for each weapon: these override the gun.
-    gun2: { name: 'Soaker 3500', desc: 'High pressure: harder, further, bigger tank', dmg: 12, speed: 17, spread: 0.035, life: 0.7, knock: 0.45, tank: 150, drain: 1.5, refill: 70 },
+    gun2: { name: 'CPS 2500', desc: 'Constant pressure: harder, further, bigger tank', dmg: 12, speed: 17, spread: 0.035, life: 0.7, knock: 0.45, tank: 150, drain: 1.5, refill: 70 },
     special: { name: 'TIDAL WAVE', desc: 'A firehose blast that shoves the whole street back.', color: '#4ab8ff' },
   },
   {

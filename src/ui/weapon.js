@@ -1,5 +1,5 @@
 // First-person weapons, drawn as pixel-art sprites over the 3D view the way the 16-bit shooters did:
-// painted parts, a Rig for the tubes, and the hero's own painted fist (gfx/art/hands.js). Each weapon has a
+// flat painted parts, a Rig for the tubes, and the hero's own fist and sleeve. Each weapon has a
 // second tier bought in the Upgrade Shop (CPS 2500, Pro Yo-yos, CDs, Roman candles, laser tag gun).
 // Tina's Soakers are VS's own painted sprites (gfx/art/soakers.js).
 import { Pix, micro } from '../gfx/pix.js';
@@ -12,12 +12,10 @@ import { PAL, FLAVOURS } from '../core/palette.js';
 import { MELEE } from '../data/melee.js';
 import * as SOAKER_ART from '../gfx/art/soakers.js';
 import * as YOYO_ART from '../gfx/art/yoyos.js';
-import { HAND_GRIP, fistTina, fistMarcus, fistDot, fistGus, fistKev } from '../gfx/art/hands.js';
 
 // VS's painted Soaker sprites (see gfx/art/soakers.js), and where each one's nozzle sits in it.
 const IMG = {};
-const FISTS = [fistTina, fistMarcus, fistDot, fistGus, fistKev];
-for (const [k, src] of Object.entries({ ...SOAKER_ART, ...YOYO_ART, ...FISTS })) {
+for (const [k, src] of Object.entries({ ...SOAKER_ART, ...YOYO_ART })) {
   IMG[k] = new Image();
   IMG[k].src = src;
 }
@@ -26,64 +24,110 @@ const NOZZLE = { green: { x: 36, y: 10 }, cps: { x: 150, y: 43 } };
 const DROP = { cpsPumpA: 19, cpsPumpB: 19 };
 import { W, H } from '../core/util.js';
 
-// Every hand in the game is one of the painted fists (gfx/art/hands.js). Art that holds something is
-// baked once the fist image has decoded; until then it is rebuilt each frame (a frame or two at most).
-const handReady = (i) => IMG[i].complete && IMG[i].naturalWidth > 0;
-
-// Draw hero i's painted fist so its grip lands on (x, y). The left hand's forearm runs off to the
-// bottom left; `right` mirrors it for the right hand.
-function paintedFist(p, i, x, y, right = false) {
-  const img = IMG[i];
-  if (!handReady(i)) return;
-  const w = img.naturalWidth;
-  if (!right) {
-    p.g.drawImage(img, Math.round(x - HAND_GRIP.x), Math.round(y - HAND_GRIP.y));
-    return;
-  }
-  p.g.save();
-  p.g.translate(Math.round(x + HAND_GRIP.x + 1), Math.round(y - HAND_GRIP.y));
-  p.g.scale(-1, 1);
-  p.g.drawImage(img, 0, 0);
-  p.g.restore();
-}
-
-// Give a procedural part the painted sprites' finish: light catching the top-left edges, shade on the
-// bottom-right, and a soft brushy grain across the flat colours.
-function paint(p, seed = 0) {
-  const im = p.g.getImageData(0, 0, p.w, p.h);
-  const d = im.data;
-  const w = p.w;
-  const solid = (x, y) => x >= 0 && y >= 0 && x < w && y < p.h && d[(y * w + x) * 4 + 3] > 0 && d[(y * w + x) * 4] + d[(y * w + x) * 4 + 1] + d[(y * w + x) * 4 + 2] > 110;
-  const noise = (x, y) => {
-    const n = Math.sin((x >> 1) * 12.9898 + (y >> 1) * 78.233 + seed * 3.1) * 43758.5453;
-    return (n - Math.floor(n)) * 2 - 1;
-  };
-  const out = new Uint8ClampedArray(d);
-  for (let y = 0; y < p.h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (!solid(x, y)) continue;
-      const k = (y * w + x) * 4;
-      let f = 1 + noise(x, y) * 0.05;
-      let lift = 0;
-      if (!solid(x - 1, y) || !solid(x, y - 1)) lift = 0.16;
-      else if (!solid(x + 1, y) || !solid(x, y + 1)) f *= 0.84;
-      for (let c = 0; c < 3; c++) out[k + c] = d[k + c] * f + ([255, 244, 214][c] - d[k + c] * f) * lift;
+// A fist seen from behind, knuckles up, three-tone shaded, in the hero's own sleeve.
+// L is the hero look from heroart.js; i picks the sleeve style.
+function fist(p, x, y, L, i, flip = false, noArm = false) {
+  const s = L.skin;
+  const t = L.top;
+  const side = (a, w) => (flip ? x + 20 - a - w : x + a);
+  // Forearm and sleeve down to the bottom of the sprite (angled weapons draw their own with arm()).
+  const armTop = noArm ? p.h : y + 13;
+  const armH = p.h - armTop;
+  const sleeveTop = i === 1 ? p.h : i === 3 ? armTop + 9 : armTop + 2;
+  if (!noArm) {
+  p.rect(x - 1, armTop, 22, armH, s.base);
+  p.rect(side(0, 3), armTop, 3, armH, s.light);
+  p.rect(side(16, 5), armTop, 5, armH, s.dark);
+  if (i === 1) {
+    // Marcus: bare forearm, terry wristband with two stripes.
+    p.rect(x - 1, armTop + 1, 22, 6, PAL.white).rect(x - 1, armTop + 2, 22, 1, PAL.tangerine).rect(x - 1, armTop + 5, 22, 1, PAL.tangerine);
+    p.rect(side(17, 4), armTop + 1, 4, 6, '#c8c8d0');
+    p.px(side(10, 1), armTop + 12, s.deep).px(side(12, 1), armTop + 16, s.deep);
+  } else {
+    const w = 24 + (i === 0 ? 2 : 0);
+    const sx = x - 2 - (i === 0 ? 1 : 0);
+    p.rect(sx, sleeveTop, w, p.h - sleeveTop, t.base);
+    p.rect(flip ? sx + w - 4 : sx, sleeveTop, 4, p.h - sleeveTop, t.light);
+    p.rect(flip ? sx : sx + w - 6, sleeveTop, 6, p.h - sleeveTop, t.dark);
+    p.rect(sx, sleeveTop, w, 2, t.dark).rect(sx, sleeveTop + 2, w, 1, t.deep);
+    if (i === 0) {
+      // Tina: windbreaker cuff with a pink stripe.
+      p.rect(sx, sleeveTop + 7, w, 3, PAL.pink).rect(sx, sleeveTop + 10, w, 1, PAL.white);
+      p.rect(sx, sleeveTop, w, 2, '#20202a');
+    }
+    if (i === 2) {
+      // Dot: chunky knit cuff.
+      for (let k = sx; k < sx + w; k += 2) p.rect(k, sleeveTop, 1, 6, t.light);
+      p.rect(sx, sleeveTop + 6, w, 1, t.deep);
+    }
+    if (i === 3) {
+      // Gus: rolled plaid flannel.
+      for (let yy = sleeveTop + 3; yy < p.h; yy++) {
+        for (let k = sx + 1; k < sx + w - 1; k++) {
+          if ((k - sx) % 5 === 2 || (yy - sleeveTop) % 5 === 3) p.px(k, yy, t.dark);
+          if ((k - sx) % 5 === 2 && (yy - sleeveTop) % 5 === 3) p.px(k, yy, t.deep);
+        }
+      }
+      p.rect(sx, sleeveTop, w, 3, t.light).rect(sx, sleeveTop + 3, w, 1, t.deep);
+    }
+    if (i === 4) {
+      // Kev: track sleeve with two white stripes.
+      const k = flip ? sx + 3 : sx + w - 9;
+      p.rect(k, sleeveTop + 3, 2, p.h - sleeveTop, PAL.white).rect(k + 4, sleeveTop + 3, 2, p.h - sleeveTop, PAL.white);
+      p.rect(sx, sleeveTop, w, 3, '#20202a');
     }
   }
-  im.data.set(out);
-  p.g.putImageData(im, 0, 0);
-  return p;
+  }
+  // Back of the hand.
+  p.oval(x + 10, y + 9, 11, 7, s.base);
+  p.oval(flip ? x + 13 : x + 7, y + 8, 6, 4, s.light);
+  p.oval(x + 10, y + 10, 10, 5, s.base);
+  p.rect(side(15, 6), y + 6, 6, 9, s.dark);
+  p.rect(x + 2, y + 15, 17, 1, s.dark);
+  // Tendons.
+  for (let k = 0; k < 3; k++) p.rect(x + 5 + k * 5, y + 9, 1, 4, s.light);
+  // Four curled fingers with knuckles catching the light.
+  for (let k = 0; k < 4; k++) {
+    const fx = x + 1 + k * 5;
+    p.rect(fx, y + 1, 5, 6, s.base);
+    p.rect(fx, y + 1, 4, 1, s.light).px(fx + 1, y + 2, s.hi);
+    p.rect(fx + 4, y + 2, 1, 5, s.dark);
+    p.rect(fx, y + 6, 5, 1, s.dark);
+  }
+  if (i === 0) {
+    // Fingerless gloves: dark back of hand, bare fingers.
+    p.oval(x + 10, y + 10, 10, 5, '#20202a');
+    p.rect(x + 1, y + 6, 20, 2, '#20202a');
+    p.rect(x + 4, y + 9, 12, 1, '#3a3a4a').px(x + 10, y + 11, PAL.pink).px(x + 11, y + 11, PAL.cyan);
+  }
+  // Thumb wrapping over the grip on the inside.
+  const tx = flip ? x + 17 : x - 3;
+  p.rect(tx, y + 4, 6, 8, s.base);
+  p.rect(tx, y + 4, 6, 1, s.light).rect(flip ? tx : tx + 5, y + 5, 1, 7, s.dark);
+  p.rect(flip ? tx + 1 : tx, y + 4, 2, 2, s.hi);
 }
 
-// Room around a part for the fist and forearm: the part sits at (M, M) and `off` tells draw() to
-// shift it back.
-const M = 60;
-function withFist(part, heroIdx, gx, gy, right) {
-  const p = new Pix(part.w + M * 2, part.h + M * 2 + 40);
-  p.draw(part, M, M);
-  paintedFist(p, heroIdx, gx + M, gy + M, right);
-  p.off = M;
-  return p;
+// A forearm reaching in at an angle, from the wrist at w toward the edge of the screen along dir,
+// in the hero's own sleeve. Drawn before the fist, which then sits on the wrist.
+function arm(p, w, dir, L, i) {
+  const R = new Rig(p.w, p.h, w, { x: w.x + dir.x, y: w.y + dir.y }, 0.82);
+  const t = L.top;
+  const sk = L.skin;
+  const white = ramp('#f4f4f4');
+  const dark = ramp('#20202a');
+  let sleeve = t;
+  let stripe = null;
+  if (i === 0) stripe = (q, v) => (q < 0.08 ? dark : q < 0.16 ? ramp(PAL.pink) : q < 0.19 ? white : null);
+  if (i === 1) {
+    sleeve = sk;
+    stripe = (q) => (q < 0.13 ? (q > 0.03 && q < 0.05) || (q > 0.09 && q < 0.11) ? ramp(PAL.tangerine) : white : null);
+  }
+  if (i === 2) stripe = (q, v) => (q < 0.1 && Math.floor((v + 1) * 6) % 2 ? ramp(t.light) : null);
+  if (i === 3) stripe = (q, v) => (q < 0.07 ? ramp(t.light) : Math.floor(q * 22) % 4 === 0 || Math.floor((v + 1) * 5) % 3 === 0 ? ramp(t.dark) : null);
+  if (i === 4) stripe = (q, v) => (q < 0.07 ? dark : v > 0.2 && v < 0.34 || v > 0.46 && v < 0.6 ? white : null);
+  R.tube(-0.05, 0.14, 0, 8, 9, sk);
+  R.tube(0.1, 1.3, 0, 11, 14, sleeve, { stripe, noEdge: true });
+  R.render(p);
 }
 
 // One row of a cylinder seen from behind: highlight stripe left of centre, falloff to the right.
@@ -115,14 +159,7 @@ function floppyTex(col, label, k) {
   micro(p, label, 6, 18, '#2a2a6a');
   p.rect(6, 25, 10 + k * 3, 1, '#8a8aa0').rect(6, 27, 7 + k * 2, 1, '#8a8aa0');
   p.px(2, 2, PAL.ink).px(3, 3, PAL.ink).px(2, 3, PAL.ink);
-  return texture(x2(p));
-}
-
-// Textures at twice the size, so the disks can be held as big as the painted hands holding them.
-function x2(p) {
-  const q = new Pix(p.w * 2, p.h * 2);
-  q.draw(p, 0, 0, p.w * 2, p.h * 2);
-  return q;
+  return texture(p);
 }
 
 // Lay a disk down with its edge showing: the dark side first, then the face on top.
@@ -167,7 +204,7 @@ function cdTex(k) {
     }
   }
   p.px(10, 8, PAL.white).px(9, 9, PAL.white).px(22, 22, PAL.white);
-  return texture(x2(p));
+  return texture(p);
 }
 
 // A CD in its jewel case, for the spares in her other hand.
@@ -187,32 +224,40 @@ function caseTex(col, label, k) {
   micro(p, label, 6, 7, PAL.white);
   p.rect(6, 20, 8 + k * 3, 1, r.hi);
   p.px(28, 3, PAL.white).px(27, 4, PAL.white);
-  return texture(x2(p));
+  return texture(p);
 }
 
-// The disk she's about to throw, pinched upright in her right fist; `empty` is the fist alone.
-const DISK_GRIP = { x: 60, y: 64 };
 function floppyHand(L, hi, tier) {
-  const p = new Pix(120, 110);
-  if (tier) tilted(p, cdTex(0), { x: 26, y: 18 }, { x: 52, y: -13 }, { x: 16, y: 52 }, 1);
-  else tilted(p, floppyTex(DISKS[0][0], DISKS[0][1], 1), { x: 28, y: 20 }, { x: 50, y: -13 }, { x: 16, y: 50 }, 3);
+  const e = new Pix(96, 110);
+  const w = { x: 50, y: 58 };
+  arm(e, w, { x: 30, y: 70 }, L, hi);
+  fist(e, w.x - 10, w.y - 14, L, hi, false, true);
+  e.outline(PAL.ink);
+  const p = new Pix(96, 110);
+  const [col, label] = DISKS[0];
+  if (tier) tilted(p, cdTex(0), { x: 20, y: 12 }, { x: 36, y: -9 }, { x: 11, y: 36 }, 1);
+  else tilted(p, floppyTex(col, label, 1), { x: 22, y: 14 }, { x: 34, y: -9 }, { x: 11, y: 34 }, 2);
   p.outline(PAL.ink);
-  paint(p, 1);
-  return { full: withFist(p, hi, DISK_GRIP.x, DISK_GRIP.y, true), empty: withFist(new Pix(120, 110), hi, DISK_GRIP.x, DISK_GRIP.y, true) };
+  p.draw(e, 0, 0);
+  return { full: p, empty: e };
 }
 
-// The spares resting on her left fist: n of them (four is a full box).
-const STACK_GRIP = { x: 58, y: 92 };
+// The spares in her other hand: n of them (four is a full box).
 function floppyStack(L, hi, tier, n = 4) {
-  const stack = new Pix(130, 110);
+  const p = new Pix(90, 90);
+  const w = { x: 36, y: 50 };
+  arm(p, w, { x: -24, y: 60 }, L, hi);
+  const stack = new Pix(90, 90);
   for (let i = 0; i < n; i++) {
     const [col, label] = tier ? CASES[i] : DISKS[i + 1];
     const tx = tier ? caseTex(col, label, i) : floppyTex(col, label, i);
-    tilted(stack, tx, { x: 16, y: 62 - i * 6 }, { x: 66, y: -10 }, { x: 22, y: tier ? 17 : 18 }, 4);
+    tilted(stack, tx, { x: 10, y: 34 - i * 4 }, { x: 44, y: -7 }, { x: 16, y: tier ? 12 : 13 }, 3);
   }
   stack.outline(PAL.ink);
-  paint(stack, 2);
-  return withFist(stack, hi, STACK_GRIP.x, STACK_GRIP.y, false);
+  p.draw(stack, 0, 0);
+  fist(p, w.x - 10, w.y - 12, L, hi, true, true);
+  p.outline(PAL.ink);
+  return p;
 }
 
 // Gus's firework mortar, held out in front like a bazooka: a striped cardboard tube pointing straight
@@ -244,10 +289,11 @@ function launcher(L, hi) {
     const boom = new Pix(21, 7);
     micro(boom, 'BOOM', 2, 1, PAL.strawberryDark);
     p.draw(boom, Math.round(lb.x - 10), Math.round(lb.y - 3));
-    const h = R.at(0.72, -4, 26);
+    const h = R.at(0.86, -4, 26);
+    arm(p, { x: h.x + 4, y: h.y + 10 }, { x: 30, y: 64 }, L, hi);
+    fist(p, Math.round(h.x - 10), Math.round(h.y - 6), L, hi, false, true);
     p.outline(PAL.ink);
-    paint(p, 3);
-    return withFist(p, hi, h.x + 6, h.y + 6, true);
+    return p;
   };
   return { loaded: make(true), empty: make(false) };
 }
@@ -263,14 +309,14 @@ function romanCandle(L, hi, flip) {
   const paper = ramp('#f4d870');
   const red = ramp(PAL.strawberry);
   const blue = ramp('#2a5ad8');
-  R.tube(0.02, 1.25, 0, 12, 15, paper, {
+  R.tube(0.02, 1.25, 0, 9, 12, paper, {
     stripe: (t, v) => {
       const k = Math.floor(t * 26 + v * 2.2) % 4;
       return k === 0 ? red : k === 2 ? blue : null;
     },
   });
-  R.tube(-0.02, 0.04, 0, 12, 12, ramp('#2a1a10'), { round: true, cap: 0.35 });
-  R.tube(0.05, 0.08, 0, 12.5, 12.5, ramp(PAL.gold));
+  R.tube(-0.02, 0.04, 0, 9, 9, ramp('#2a1a10'), { round: true, cap: 0.35 });
+  R.tube(0.05, 0.08, 0, 9.5, 9.5, ramp(PAL.gold));
   const p = R.render();
   // A little printed label: how many balls are left in it (never true).
   const lb = R.at(0.2, 0, 0);
@@ -278,30 +324,31 @@ function romanCandle(L, hi, flip) {
   tag.rect(0, 0, 17, 7, PAL.cream);
   micro(tag, '10 X', 2, 1, PAL.strawberryDark);
   p.draw(tag, Math.round(lb.x - 8), Math.round(lb.y - 3));
-  const h = R.at(0.5, 0, 0);
+  const h = R.at(0.38, 0, 0);
+  arm(p, { x: h.x + (flip ? -2 : 2), y: h.y + 10 }, { x: flip ? -26 : 26, y: 70 }, L, hi);
+  fist(p, Math.round(h.x - 10), Math.round(h.y - 7), L, hi, flip, true);
   p.outline(PAL.ink);
-  paint(p, flip ? 4 : 5);
-  return withFist(p, hi, h.x, h.y, !flip);
+  return p;
 }
 
 // Gus steers the pogo stick and Kev the scooter with their free hand: a handlebar across
 // the lower screen, the stem dropping out of view, the grip in their fist.
 function handlebar(L, hi, grip, ribbed) {
-  const p = new Pix(190, 110);
+  const p = new Pix(150, 80);
   const r = ramp(grip);
   // Stem and clamp.
-  for (let x = 168; x < 182; x++) p.rect(x, 26, 1, 84, x < 170 ? PAL.steelDark : x < 173 ? PAL.steelLight : x < 178 ? PAL.steel : PAL.steelDark);
-  p.rect(165, 22, 20, 10, '#2a2a30').rect(165, 22, 20, 1, '#5a5a66').rect(167, 26, 3, 3, PAL.steel);
+  for (let x = 128; x < 140; x++) p.rect(x, 24, 1, 56, x < 130 ? PAL.steelDark : x < 132 ? PAL.steelLight : x < 137 ? PAL.steel : PAL.steelDark);
+  p.rect(126, 22, 16, 8, '#2a2a30').rect(126, 22, 16, 1, '#5a5a66').rect(127, 25, 2, 2, PAL.steel);
   // The bar, rising slightly toward the stem.
-  for (let k = 0; k < 8; k++) p.line(40, 34 + k, 174, 24 + k, k < 1 ? PAL.steelLight : k < 3 ? PAL.white : k < 5 ? PAL.steel : PAL.steelDark);
+  for (let k = 0; k < 6; k++) p.line(22, 30 + k, 134, 22 + k, k < 1 ? PAL.steelLight : k < 2 ? PAL.white : k < 4 ? PAL.steel : PAL.steelDark);
   // Grip under the fist, with an end cap poking out.
-  for (let y = 24; y < 44; y++) cyl(p, 44, y, 56, r);
-  if (ribbed) for (let y = 25; y < 44; y += 3) p.rect(18, y, 52, 1, r.deep);
-  else for (let x = 19; x < 70; x += 4) p.rect(x, 24, 1, 20, r.dark);
-  p.rect(12, 24, 5, 20, '#2a2a30').px(12, 24, '#5a5a66');
+  for (let y = 22; y < 37; y++) cyl(p, 20, y, 28, r);
+  if (ribbed) for (let y = 23; y < 37; y += 3) p.rect(7, y, 26, 1, r.deep);
+  else for (let x = 8; x < 33; x += 3) p.rect(x, 22, 1, 15, r.dark);
+  p.rect(5, 22, 3, 15, '#2a2a30').px(5, 22, '#5a5a66');
+  fist(p, 10, 20, L, hi, true);
   p.outline(PAL.ink);
-  paint(p, 6);
-  return withFist(p, hi, 46, 34, false);
+  return p;
 }
 
 // Kev's laser pointer, gripped in his fist and aimed straight ahead: a chrome pen with a knurled grip,
@@ -320,10 +367,11 @@ function laserPen(L, hi) {
   R.box(0.18, 0.5, 9, 2.4, 2.8, chrome, { shade: 'chrome', x: -7 });
   R.tube(0.36, 0.44, 10, 3.5, 3.5, ramp(PAL.strawberry), { round: true });
   const p = R.render();
-  const h = R.at(0.62, 0, 2);
+  const h = R.at(0.74, 0, 2);
+  arm(p, { x: h.x + 2, y: h.y + 10 }, { x: 20, y: 70 }, L, hi);
+  fist(p, Math.round(h.x - 10), Math.round(h.y - 7), L, hi, false, true);
   p.outline(PAL.ink);
-  paint(p, 7);
-  return withFist(p, hi, h.x, h.y, true);
+  return p;
 }
 
 // Kev's upgrade: a 90s laser tag blaster. Chunky grey plastic, a green lens up front, an orange
@@ -345,10 +393,11 @@ function laserTag(L, hi) {
   d.rect(0, 0, 31, 7, '#20202a');
   micro(d, 'LASER TAG', 2, 1, PAL.lime);
   p.draw(d, Math.round(lb.x - 15), Math.round(lb.y - 3));
-  const h = R.at(0.5, -2, 4);
+  const h = R.at(0.56, -2, 4);
+  arm(p, { x: h.x + 2, y: h.y + 10 }, { x: 20, y: 70 }, L, hi);
+  fist(p, Math.round(h.x - 10), Math.round(h.y - 7), L, hi, false, true);
   p.outline(PAL.ink);
-  paint(p, 8);
-  return withFist(p, hi, h.x, h.y, true);
+  return p;
 }
 
 export function weaponBob(P) {
@@ -435,22 +484,26 @@ function bottleArt(p) {
 }
 
 function meleeArt(L, hi, kind) {
-  const p = new Pix(90, 260);
+  const p = new Pix(90, 200);
+  arm(p, { x: PIVOT.x + 2, y: PIVOT.y + 8 }, { x: 34, y: 60 }, L, hi);
   const item = new Pix(90, 200);
   if (kind === 'bat') batArt(item);
   if (kind === 'keyboard') keyboardArt(item);
   if (kind === 'bottle') bottleArt(item);
   item.outline(PAL.ink);
-  paint(item, 9);
   p.draw(item, 0, 0);
-  paintedFist(p, hi, PIVOT.x, PIVOT.y, true);
+  fist(p, PIVOT.x - 10, PIVOT.y - 8, L, hi, false, true);
+  p.outline(PAL.ink);
   return p;
 }
 
 // Empty-handed: a straight-arm shove with the left hand.
 function shoveArt(L, hi) {
-  const p = new Pix(110, 130);
-  paintedFist(p, hi, 60, 24, false);
+  const p = new Pix(96, 110);
+  const w = { x: 46, y: 42 };
+  arm(p, w, { x: -26, y: 70 }, L, hi);
+  fist(p, w.x - 10, w.y - 14, L, hi, true, true);
+  p.outline(PAL.ink);
   return p;
 }
 
@@ -470,16 +523,13 @@ export class WeaponView {
     if (kind === 'floppy') a = { r: floppyHand(L, fl, tier), ls: [0, 1, 2, 3, 4].map((n) => floppyStack(L, fl, tier, n)) };
     if (kind === 'rocket') a = tier ? { l: romanCandle(L, fl, true), r: romanCandle(L, fl, false) } : { tube: launcher(L, fl), grip: handlebar(L, fl, PAL.strawberry, true) };
     if (kind === 'laser') a = { gun: tier ? laserTag(L, fl) : laserPen(L, fl), bar: handlebar(L, fl, PAL.lime, false) };
-    if (handReady(heroIdx)) this.cache[key] = a;
+    this.cache[key] = a;
     return a;
   }
 
   melee(heroIdx, kind) {
     const key = `m${heroIdx}${kind}`;
-    if (this.cache[key]) return this.cache[key];
-    const a = kind === 'shove' ? shoveArt(LOOKS[heroIdx], heroIdx) : meleeArt(LOOKS[heroIdx], heroIdx, kind);
-    if (handReady(heroIdx)) this.cache[key] = a;
-    return a;
+    return (this.cache[key] ||= kind === 'shove' ? shoveArt(LOOKS[heroIdx], heroIdx) : meleeArt(LOOKS[heroIdx], heroIdx, kind));
   }
 
   // The swing: the melee weapon sweeps from the right across to the left, with a smear behind it.
@@ -490,7 +540,7 @@ export class WeaponView {
     const art = this.melee(heroIdx, kind);
     if (kind === 'shove') {
       const k = Math.sin(Math.PI * Math.min(1, ph * 1.2));
-      g.drawImage(art.c, Math.round(W * 0.28 - 24 + k * 34 + bx), Math.round(H - 40 - k * 70 + by));
+      g.drawImage(art.c, Math.round(W * 0.28 + k * 34 + bx), Math.round(H - 40 - k * 70 + by));
       return;
     }
     const ease = (q) => 1 - (1 - q) * (1 - q);
@@ -528,7 +578,7 @@ export class WeaponView {
       by += Math.sin(Math.PI * Math.min(1, Math.max(0, q))) * 30;
     }
     const base = H - 16;
-    const d = (p, x, y) => g.drawImage(p.c || p, Math.round(x + bx - (p.off || 0)), Math.round(y + by - (p.off || 0)));
+    const d = (p, x, y) => g.drawImage(p.c || p, Math.round(x + bx), Math.round(y + by));
 
     if (G.kind === 'soaker') {
       // Refilling pressure: she works the pump back and forth until the tank is full again.
@@ -569,8 +619,8 @@ export class WeaponView {
       const dry = P.ammo <= 0 && P.zipT <= 0;
       const r = throwing || dry ? a.r.empty : a.r.full;
       // The spares in her left hand go down as the box empties.
-      d(a.ls[P.zipT > 0 ? 4 : Math.ceil((4 * Math.max(0, P.ammo - 1)) / Math.max(1, G.mag - 1))], 24, base - 140);
-      d(r, W - 147 + (throwing ? -14 : 0), base - 110 + (throwing ? -12 : 0) + (P.fireCd > 0.05 && !throwing ? 12 : 0));
+      d(a.ls[P.zipT > 0 ? 4 : Math.ceil((4 * Math.max(0, P.ammo - 1)) / Math.max(1, G.mag - 1))], 20, base - 76);
+      d(r, W - 128 + (throwing ? -14 : 0), base - 92 + (throwing ? -12 : 0) + (P.fireCd > 0.05 && !throwing ? 12 : 0));
     } else if (G.kind === 'rocket' && tier) {
       // The candle that just fired kicks back; the other waits its turn.
       const fired = 1 - (P.hand || 0);
@@ -587,12 +637,12 @@ export class WeaponView {
     } else if (G.kind === 'rocket') {
       const loaded = P.fireCd <= 0.05 && (P.ammo > 0 || P.zipT > 0) && !(P.reloadT > 0);
       const tube = loaded ? a.tube.loaded : a.tube.empty;
-      d(a.grip, 20, base - 84);
+      d(a.grip, 20, base - 62);
       d(tube, MUZZLE.rocket.x - TUBE.a.x, MUZZLE.rocket.y - TUBE.a.y + kick * 2);
       if (P.fireAnim > (sim.mode === 'client' ? 0 : 0.1)) flame(g, Math.round(MUZZLE.rocket.x + bx), Math.round(MUZZLE.rocket.y + kick * 2 + by), 1, [PAL.tangerine, PAL.gold, PAL.cream]);
     } else if (G.kind === 'laser') {
       const A = tier ? TAG.a : PEN.a;
-      d(a.bar, 20, base - 84);
+      d(a.bar, 20, base - 60);
       d(a.gun, MUZZLE.laser.x - A.x, MUZZLE.laser.y - A.y + kick);
       if (sim.laser || P.fireAnim > 0) {
         const lx = Math.round(MUZZLE.laser.x - 2 + bx);

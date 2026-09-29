@@ -75,8 +75,7 @@ Runs in any modern browser, supports online co-op for up to four players, and sh
 - **Five heroes, five rides, five weapons.** Every hero moves differently and shoots differently, and each has a
   special move that charges over time and with kills (R or right-click). Weapons point straight ahead and every shot leaves
   from the muzzle you see. Tina's two Soakers and Marcus's yo-yo hands are VS's own painted sprites (src/gfx/art/); she works the pump
-  to build pressure back up. Every other hand is a painted fist built from Marcus's, recoloured to each hero's skin, cuff
-  and sleeve (src/gfx/art/hands.js), and the code-drawn weapons get the same rim light and brushy grain.
+  to build pressure back up.
 - **Every weapon has a rhythm.** Tina's tank and Kev's heat meter were already there; Dot throws from a box of 12
   floppies (16 CDs) and Gus fires from a rack of 6 rockets (12 candle balls), then reloads. Reloading starts by itself
   when you run dry and between waves, or press X. `tools/dpsbench.mjs` holds fire for 20 seconds at a tough zombie and
